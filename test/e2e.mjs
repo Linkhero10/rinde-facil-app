@@ -50,7 +50,7 @@ await page.waitForSelector('#main');
 await step('1. Al inicio pide los datos de la comunidad y crea el proyecto', async () => {
   eq(await page.textContent('h1'), 'Rinde Fácil te guía en tu rendición');
   await page.getByLabel('Nombre de tu comunidad').fill('Comunidad de Prueba');
-  await page.getByLabel('RUT de la comunidad').fill('76123456-0');
+  await page.getByLabel('RUT de la comunidad').fill('11111111-1');
   await page.getByLabel('Nombre de tu proyecto').fill('Sede comunitaria');
   await page.getByRole('button', { name: 'Empezar' }).click();
   await page.waitForSelector('.hero');
@@ -259,10 +259,31 @@ await step('12. Foto de un comprobante: OCR en la nube (servicio de prueba) rell
   ok(!/Compara los datos con la foto/.test(await page.textContent('.issues')), 'al confirmar desaparece el aviso');
 });
 
-await step('12b. Guardar el original del comprobante en el Drive (servicio de prueba)', async () => {
-  await page.getByRole('button', { name: 'Guardar en el Drive' }).click();
+await step('12b. Al confirmar la revisión, el original se archiva solo en Comprobantes/mes del Drive (servicio de prueba)', async () => {
   await page.waitForFunction(() => document.querySelector('.photo-panel') && /Ya está en el Drive/.test(document.querySelector('.photo-panel').textContent), null, { timeout: 8000 });
-  ok(stub.store.calls.some(c => c.action === 'saveFile'), 'el servicio recibió el archivo');
+  const c = stub.store.calls.filter(x => x.action === 'saveFile' && x.category === 'comprobante');
+  eq(c.length, 1); eq(c[0].issueDate, '2026-08-14'); eq(c[0].project, 'Sede comunitaria'); ok(/\.jpg$/.test(c[0].fileName), 'nombre con extensión');
+});
+
+await step('12d. Lo que se saca (Excel de la Carta Gantt) queda también en el Drive; preparar carpeta y ver lo guardado', async () => {
+  await go('#/h/gantt');
+  const before = stub.store.calls.filter(x => x.action === 'saveFile').length;
+  await page.getByRole('button', { name: 'Excel' }).first().click();
+  await page.waitForTimeout(800);
+  const c = stub.store.calls.filter(x => x.action === 'saveFile' && x.category === 'planificacion');
+  eq(c.length, 1); ok(/^carta-gantt-\d{4}-\d{2}-\d{2}\.xlsx$/.test(c[0].fileName), c[0].fileName);
+  eq(c[0].mimeType, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  await page.getByRole('button', { name: 'Guardar en Drive' }).click();
+  await page.waitForTimeout(600);
+  eq(stub.store.calls.filter(x => x.action === 'saveFile' && x.category === 'planificacion').length, 2);
+  await go('#/h/nube');
+  await page.getByRole('button', { name: /Preparar mi carpeta/ }).click();
+  await page.waitForFunction(() => /La carpeta «Rinde fácil» está en tu Drive/.test(document.querySelector('.tool-page').textContent), null, { timeout: 8000 });
+  const t = await page.textContent('.tool-page');
+  ok(/carta-gantt/.test(t) && /Planificacion|planificacion/.test(t), 'lista lo guardado con su ubicación');
+  const exp = await page.evaluate(() => window.RF.store.exportJSON());
+  ok(!exp.includes('clave-de-prueba'), 'la copia no incluye la clave');
+  await shot('12d-drive');
 });
 
 await step('12c. Varios proyectos: crear otro, cambiar entre ellos y que no se mezclen los datos', async () => {

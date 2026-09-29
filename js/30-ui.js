@@ -13,7 +13,7 @@
     down: 'M6 9l6 6 6-6', right: 'M9 6l6 6-6 6', left: 'M15 6l-6 6 6 6', up: 'M6 15l6-6 6 6',
     menu: 'M4 6h16M4 12h16M4 18h16', close: 'M6 6l12 12M18 6L6 18', plus: 'M12 5v14M5 12h14', trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
     camera: 'M4 8h3l2-3h6l2 3h3v11H4V8zM12 17a4 4 0 100-8 4 4 0 000 8z', file: 'M6 3h8l4 4v14H6V3zM14 3v4h4', download: 'M12 4v11M7 11l5 5 5-5M5 20h14',
-    excel: 'M4 4h16v16H4V4zM4 10h16M4 15h16M10 4v16', word: 'M4 4h16v16H4V4zM8 9l1.5 7L12 10l2.5 6L16 9', pdf: 'M6 3h8l4 4v14H6V3zM14 3v4h4M9 15h6M9 18h4', copy: 'M8 8h11v13H8V8zM5 16V3h11', cloud: 'M7 18a4 4 0 01-.5-8 6 6 0 0111.5 1.5A3.5 3.5 0 0117 18H7z',
+    excel: 'M4 4h16v16H4V4zM4 10h16M4 15h16M10 4v16', word: 'M4 4h16v16H4V4zM8 9l1.5 7L12 10l2.5 6L16 9', pdf: 'M6 3h8l4 4v14H6V3zM14 3v4h4M9 15h6M9 18h4', copy: 'M8 8h11v13H8V8zM5 16V3h11', cloud: 'M7 18a4 4 0 01-.5-8 6 6 0 0111.5 1.5A3.5 3.5 0 0117 18H7z', folder: 'M3 6h6l2 2h10v11H3V6z',
     link: 'M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1', sun: 'M12 16a4 4 0 100-8 4 4 0 000 8zM12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5', moon: 'M20 14A8 8 0 0110 4a8 8 0 1010 10z',
     help: 'M12 22a10 10 0 100-20 10 10 0 000 20zM9.5 9a2.5 2.5 0 115 0c0 1.7-2.5 2-2.5 4M12 17v.5', route: 'M6 3v12a3 3 0 003 3h6a3 3 0 003-3V9M6 3l-2 2M6 3l2 2M18 9l-2-2M18 9l2-2',
     gantt: 'M4 6h8M8 12h10M6 18h9', money: 'M3 7h18v10H3V7zM12 14a2 2 0 100-4 2 2 0 000 4z', form: 'M6 3h12v18H6V3zM9 8h6M9 12h6M9 16h4', list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
@@ -140,6 +140,10 @@
       else if (kind === 'pdf') RF.exp.printDoc(d);
       else if (kind === 'txt') U.copyText(RF.exp.docToText(d)).then(function (ok) { toast(ok ? 'Texto copiado. Ya puedes pegarlo.' : 'No se pudo copiar. Usa «Descargar texto».', ok ? 'ok' : 'bad'); });
       else if (kind === 'txtfile') RF.exp.downloadText(d, base);
+      /* todo lo que se saca queda también en la carpeta «Rinde fácil» del Drive de la comunidad (salvo copiar texto) */
+      if (RF.drive && kind !== 'txt' && (kind === 'drive' || RF.drive.auto())) {
+        RF.drive.saveDoc(d, base, kind === 'doc' ? 'doc' : kind === 'txtfile' ? 'txt' : 'xlsx').catch(function () { });
+      }
     }
     bar.appendChild(h('span', { class: 'export-label' }, 'Sacar documento:'));
     bar.appendChild(btn('Excel', { icon: 'excel', onclick: function () { run('xlsx'); } }));
@@ -147,6 +151,7 @@
     bar.appendChild(btn('PDF', { icon: 'pdf', onclick: function () { run('pdf'); } }));
     bar.appendChild(btn('Copiar texto', { icon: 'copy', onclick: function () { run('txt'); } }));
     (extras || []).forEach(function (x) { bar.appendChild(btn(x.label, { icon: x.icon, onclick: x.run })); });
+    if (RF.drive && RF.drive.enabled()) bar.appendChild(btn('Guardar en Drive', { icon: 'cloud', title: 'Guarda una copia Excel en la carpeta «Rinde fácil» de tu Drive', onclick: function () { run('drive'); } }));
     return bar;
   }
 

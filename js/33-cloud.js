@@ -59,8 +59,17 @@
     var to = ctl ? setTimeout(function () { ctl.abort(); }, timeoutMs || 90000) : null;
     var body = JSON.stringify(Object.assign({ action: action, key: c.key || '' }, payload || {}));
     return fetch(c.apiUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body, signal: ctl ? ctl.signal : undefined, redirect: 'follow' })
-      .then(function (r) { if (to) clearTimeout(to); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (r) { if (to) clearTimeout(to); if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(function (t) { try { return JSON.parse(t); } catch (e) { throw new Error('RESPUESTA_INVALIDA'); } }) /* Google a veces devuelve una página de error en vez de datos */
       .catch(function (e) { if (to) clearTimeout(to); if (e && e.name === 'AbortError') throw new Error('TIMEOUT'); throw e; });
+  }
+  /* Apps Script falla de vez en cuando (probado: 1 de 9 lecturas devolvió una página de error); leer y consultar se pueden repetir sin riesgo. */
+  function postRetry(action, payload, timeoutMs, valid) {
+    /* valid: comprueba que la respuesta trae lo esperado (en las pruebas llegó una vez la respuesta de «ping» a una lectura) */
+    return post(action, payload, timeoutMs).then(function (r) { if (valid && !valid(r)) throw new Error('RESPUESTA_INVALIDA'); return r; }).catch(function (e) {
+      if (e && (e.message === 'NO_CONFIGURADO')) throw e;
+      return new Promise(function (res) { setTimeout(res, 1500); }).then(function () { return post(action, payload, timeoutMs); });
+    });
   }
   function ping() { return post('ping', {}, 20000); }
 
@@ -68,31 +77,29 @@
   function recognize(file) {
     return downscale(file).then(function (blob) {
       return blobToBase64(blob).then(function (b64) {
-        return post('ocr', { fileName: file.name || 'comprobante', mimeType: blob.type || file.type || 'image/jpeg', base64: b64 }, 120000).then(function (res) { res._blob = blob; return res; });
+        return postRetry('ocr', { fileName: file.name || 'comprobante', mimeType: blob.type || file.type || 'image/jpeg', base64: b64 }, 120000, function (r) { return !!(r && (r.ok === false || r.engine)); }).then(function (res) { res._blob = blob; return res; });
       });
     });
   }
 
   /* Convierte el texto leído en campos del gasto usando el analizador ya probado del piloto. */
-  function toExpenseFields(rawText, engine) {
-    if (typeof root.parseReceipt !== 'function') return { fields: {}, note: 'Falta el analizador.' };
-    var r = root.parseReceipt(rawText, engine || 'cloud_vision');
-    var f = {}, notes = [];
-    if (r.rut_emisor && r.rut_emisor.normalized) f.rutProveedor = U.rutFormat(r.rut_emisor.normalized);
-    if (r.emisor && r.emisor.nombre_legal) f.proveedor = r.emisor.nombre_legal;
-    if (r.folio && r.folio.normalized != null) f.folio = String(r.folio.normalized);
-    if (r.fecha_emision && r.fecha_emision.iso_8601) f.fecha = r.fecha_emision.iso_8601;
-    var m = r.montos || {};
-    if (m.monto_neto && m.monto_neto.normalized != null) f.neto = m.monto_neto.normalized;
-    if (m.monto_iva && m.monto_iva.normalized != null) f.iva = m.monto_iva.normalized;
-    if (m.monto_total && m.monto_total.normalized != null) f.total = m.monto_total.normalized;
-    if (r.rut_emisor && r.rut_emisor.raw && !r.rut_emisor.dv_valid) notes.push('El RUT leído no tiene dígito verificador válido: compáralo con la foto.');
-    if (m && m.arithmetic_consistent === false) notes.push('Las cifras leídas no cuadran entre sí.');
-    if (!f.total) notes.push('No se pudo leer el total.');
-    return { fields: f, parser: r, note: notes.join(' ') };
+  /* Los montos, la fecha, el RUT y el N° salen del extractor propio (26-receipt.js), que cuadra neto + IVA = total.
+     Del analizador heredado del piloto solo se aprovecha el nombre del proveedor, y solo si coincide el RUT. */
+  function toExpenseFields(rawText, engine, opts) {
+    if (!RF.receipt) return { fields: {}, note: 'Falta el analizador.' };
+    var x = RF.receipt.extract(rawText, opts), f = x.fields, notes = x.notes.slice(), legacy = null;
+    if (typeof root.parseReceipt === 'function') {
+      try {
+        legacy = root.parseReceipt(rawText, engine || 'cloud_vision');
+        var lr = legacy.rut_emisor && legacy.rut_emisor.normalized;
+        if (f.rutProveedor && lr && U.rutClean(lr) === U.rutClean(f.rutProveedor) && legacy.emisor && legacy.emisor.nombre_legal) f.proveedor = legacy.emisor.nombre_legal;
+      } catch (e) { legacy = null; }
+    }
+    notes.push('Los números del OCR pueden tener un dígito equivocado aunque la confianza sea alta: compara el N° de documento y los montos con la foto.');
+    return { fields: f, level: x.level, checks: x.checks, parser: legacy, note: notes.join(' ') };
   }
 
   RF.blobs = blobs;
-  RF.cloud = { configured: configured, post: post, ping: ping, downscale: downscale, blobToBase64: blobToBase64 };
+  RF.cloud = { configured: configured, post: post, postRetry: postRetry, ping: ping, downscale: downscale, blobToBase64: blobToBase64 };
   RF.ocr = { recognize: recognize, toExpenseFields: toExpenseFields };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -15,13 +15,13 @@ function makeEnv(props = {}, visionResult) {
   let idSeq = 0;
   function makeFile(name, content, mime) {
     let data = content, trashed = false, desc = '';
-    const f = { id: 'f' + (++idSeq), getName: () => name, getId: () => f.id, getBlob: () => ({ getDataAsString: () => (typeof data === 'string' ? data : Buffer.from(data).toString()) }), setContent: c => { data = c; }, setDescription: d => { desc = d; }, getDescription: () => desc, setTrashed: t => { trashed = t; f._trashed = t; }, _trashed: false };
+    const f = { id: 'f' + (++idSeq), getUrl: () => 'https://drive.test/f', getName: () => name, getId: () => f.id, getBlob: () => ({ getDataAsString: () => (typeof data === 'string' ? data : Buffer.from(data).toString()) }), setContent: c => { data = c; }, setDescription: d => { desc = d; }, getDescription: () => desc, setTrashed: t => { trashed = t; f._trashed = t; }, _trashed: false };
     return f;
   }
   function makeFolder(name) {
     const files = [], folders = [];
     const it = arr => { let i = 0; return { hasNext: () => { while (i < arr.length && arr[i]._trashed) i++; return i < arr.length; }, next: () => arr[i++] }; };
-    const fo = { name, id: 'd' + (++idSeq), files, folders,
+    const fo = { name, id: 'd' + (++idSeq), files, folders, getName: () => name, getId: () => fo.id, getUrl: () => 'https://drive.test/' + fo.id,
       getFoldersByName: n => it(folders.filter(x => x.name === n)), createFolder: n => { const x = makeFolder(n); folders.push(x); return x; },
       getFilesByName: n => it(files.filter(x => x.getName() === n)), getFiles: () => it(files),
       createFile: (a, b, c) => { const f = typeof a === 'string' ? makeFile(a, b, c) : makeFile(a.name, a.bytes, a.mime); files.push(f); return f; } };
@@ -101,15 +101,45 @@ test('copia de datos: guarda, conserva respaldos, trae la última y rechaza basu
   assert.equal(e.call({ action: 'saveState', key: 'k', state: s1 }).ok, true);
   assert.equal(e.call({ action: 'saveState', key: 'k', state: s2 }).ok, true);
   assert.equal(JSON.parse(e.call({ action: 'loadState', key: 'k' }).state).projects[0].name, 'B');
-  const copias = e.rootHolder.folders[0].folders.find(f => f.name === 'copias');
+  const copias = e.rootHolder.folders[0].folders.find(f => f.name === 'Copias de seguridad');
   assert.ok(copias.files.some(f => /^estado-\d{8}-\d{6}\.json$/.test(f.getName())), 'queda un respaldo de la versión anterior');
 });
-test('archivar comprobante: carpeta por mes e idempotente', () => {
+const child = (f, n) => f.folders.find(x => x.name === n);
+test('archivar comprobante: carpeta del proyecto y del mes, idempotente', () => {
   const e = makeEnv({ RINDE_FACIL_ACCESS_KEY: 'k' });
-  const payload = { action: 'saveFile', key: 'k', mimeType: 'image/jpeg', base64: B64, fileName: 'a/b:c.jpg', issueDate: '2026-08-14' };
+  const payload = { action: 'saveFile', key: 'k', project: 'Invernadero 2026', mimeType: 'image/jpeg', base64: B64, fileName: 'a/b:c.jpg', issueDate: '2026-08-14' };
   const a = e.call(payload); assert.equal(a.ok, true); assert.equal(a.folder, '2026-08'); assert.equal(a.idempotent, false);
+  assert.match(a.where, /Invernadero 2026 . 4 Comprobantes . 2026-08/);
   const b = e.call(payload); assert.equal(b.idempotent, true); assert.equal(b.fileId, a.fileId);
   assert.equal(e.call(Object.assign({}, payload, { issueDate: '2026-13-01' })).error, 'FECHA_INVALIDA');
-  const dir = e.rootHolder.folders[0].folders.find(f => f.name === 'comprobantes').folders.find(f => f.name === '2026-08');
+  const root = e.rootHolder.folders[0]; assert.equal(root.name, 'Rinde fácil');
+  const dir = child(child(child(child(root, 'Proyectos'), 'Invernadero 2026'), '4 Comprobantes'), '2026-08');
   assert.equal(dir.files.length, 1); assert.ok(!/[\\/:]/.test(dir.files[0].getName()), 'nombre sin caracteres peligrosos');
+});
+test('archivar documentos generados: cada categoría en su carpeta; una versión nueva no pisa la anterior', () => {
+  const e = makeEnv({ RINDE_FACIL_ACCESS_KEY: 'k' });
+  const XL = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const base = { action: 'saveFile', key: 'k', project: 'Invernadero 2026', mimeType: XL, fileName: 'carta-gantt.xlsx' };
+  const v1 = e.call(Object.assign({ category: 'planificacion', base64: B64 }, base)); assert.equal(v1.ok, true); assert.equal(v1.folder, '1 Planificación');
+  assert.equal(e.call(Object.assign({ category: 'planificacion', base64: B64 }, base)).idempotent, true, 'mismo contenido: no duplica');
+  const B2 = Buffer.from('otra version').toString('base64');
+  const v2 = e.call(Object.assign({ category: 'planificacion', base64: B2 }, base)); assert.equal(v2.ok, true); assert.match(v2.fileName, /^carta-gantt \(20260929-101500\)\.xlsx$/);
+  const plan = child(child(child(e.rootHolder.folders[0], 'Proyectos'), 'Invernadero 2026'), '1 Planificación');
+  assert.equal(plan.files.length, 2, 'las dos versiones quedan');
+  assert.equal(e.call(Object.assign({ category: 'anexos', base64: B64 }, base, { fileName: 'anexo-1.xlsx' })).folder, '2 Anexos y formularios');
+  assert.equal(e.call(Object.assign({ category: 'rendicion', base64: B64 }, base, { fileName: 'rendicion.xlsx' })).folder, '3 Rendición');
+  assert.equal(e.call(Object.assign({ category: 'comprobante', base64: B64, issueDate: '2026-08-01' }, base)).error, 'TIPO_NO_PERMITIDO', 'un Excel no es un comprobante');
+  assert.equal(e.call(Object.assign({ category: 'otra', base64: B64 }, base)).error, 'CATEGORIA_INVALIDA');
+  assert.equal(e.call(Object.assign({ category: 'anexos', base64: B64 }, base, { mimeType: 'application/x-msdownload' })).error, 'TIPO_NO_PERMITIDO');
+});
+test('setup: arma la carpeta Rinde fácil con su orden y el LEEME, sin duplicar', () => {
+  const e = makeEnv({ RINDE_FACIL_ACCESS_KEY: 'k' });
+  const a = e.call({ action: 'setup', key: 'k', project: 'Mi proyecto' }); assert.equal(a.ok, true); assert.ok(a.rootUrl && a.projectUrl);
+  e.call({ action: 'setup', key: 'k', project: 'Mi proyecto' });
+  assert.equal(e.rootHolder.folders.length, 1, 'una sola carpeta raíz');
+  const root = e.rootHolder.folders[0];
+  assert.deepEqual(root.folders.map(f => f.name).sort(), ['Copias de seguridad', 'Proyectos']);
+  assert.equal(root.files.filter(f => f.getName() === 'LEEME.txt').length, 1);
+  const pr = child(child(root, 'Proyectos'), 'Mi proyecto');
+  assert.deepEqual(pr.folders.map(f => f.name).sort(), ['1 Planificación', '2 Anexos y formularios', '3 Rendición', '4 Comprobantes']);
 });

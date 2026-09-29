@@ -65,9 +65,9 @@
     }
     function applyOcr(e, res) {
       if (!res || !res.ok) { e._ocrNote = 'El servicio respondió con un error: ' + ((res && res.error) || 'desconocido') + '. Anota los datos mirando la foto.'; return; }
-      var out = RF.ocr.toExpenseFields(res.raw_text, 'cloud_vision'), f = out.fields;
+      var out = RF.ocr.toExpenseFields(res.raw_text, 'cloud_vision', { communityRut: c.community && c.community.rut }), f = out.fields;
       Object.keys(f).forEach(function (k) { e[k] = f[k]; });
-      if (f.neto != null || f.iva != null) e.docType = 'factura'; else if (f.total != null) e.docType = e.docType || 'boleta';
+      if (!f.docType && f.total != null) e.docType = e.docType || 'boleta';
       e.ocr = { engine: res.engine || 'cloud_vision', at: new Date().toISOString(), raw: String(res.raw_text || '').slice(0, 6000), confidence: res.confidence == null ? null : res.confidence, ms: res.duration_ms || null, note: out.note };
       e.verified = false; e._manualRendir = false; syncRendir(e, c.community);
       e._ocrNote = 'Leído con Google Cloud Vision. Compara cada dato con la foto antes de seguir.' + (out.note ? ' ' + out.note : '');
@@ -153,18 +153,16 @@
           var acts = h('div', { class: 'row-actions' });
           if (RF.cloud.configured()) acts.appendChild(UI.btn(e.ocr ? 'Leer de nuevo' : 'Leer con la nube', { icon: 'cloud', cls: 'ghost', onclick: function () { UI.toast('Leyendo…'); RF.ocr.recognize(new File([blob], 'comprobante', { type: blob.type })).then(function (res) { applyOcr(e, res); paint(); }).catch(function (er) { UI.toast('No se pudo leer: ' + (er.message || er), 'bad'); }); } }));
           if (RF.cloud.configured()) acts.appendChild(UI.btn(e.driveId ? 'Ya está en el Drive' : 'Guardar en el Drive', { icon: 'cloud', cls: 'ghost', disabled: !!e.driveId, onclick: function () {
-            if (!e.fecha) { UI.toast('Primero anota la fecha del documento: se usa para la carpeta del mes.', 'bad'); return; }
-            var ext = /pdf/.test(blob.type) ? '.pdf' : /png/.test(blob.type) ? '.png' : '.jpg';
-            RF.cloud.blobToBase64(blob).then(function (b64) { return RF.cloud.post('saveFile', { fileName: (String(e.proveedor || 'comprobante').replace(/\s+/g, '_') + '-' + (e.folio || 'sn') + ext), mimeType: blob.type || 'image/jpeg', base64: b64, issueDate: e.fecha }); })
-              .then(function (r) { if (r && r.ok) { e.driveId = r.fileId; silent(); UI.toast('Guardado en el Drive de la comunidad (carpeta ' + r.folder + ').', 'ok'); paintPhoto(); } else UI.toast('No se pudo guardar: ' + ((r && r.error) || 'error'), 'bad'); })
-              .catch(function (er) { UI.toast('No se pudo guardar (' + (er.message || er) + ').', 'bad'); });
+            RF.drive.saveReceipt(e, p).then(function () { paintPhoto(); }).catch(function () { });
           } }));
           acts.appendChild(UI.btn('Quitar foto', { icon: 'trash', cls: 'ghost danger', onclick: function () { RF.blobs.del(e.imgId); e.imgId = null; silent(); paintPhoto(); } }));
           photo.appendChild(acts);
         });
         if (e.ocr && e.ocr.raw) photo.appendChild(h('details', { class: 'ocr-raw' }, h('summary', null, 'Ver el texto que leyó la nube'), h('pre', null, e.ocr.raw)));
       }
-      var fld = function (label, key, opts) { opts = opts || {}; opts.onChange = function (v) { if (key === 'montoRendir') e._manualRendir = true; if (opts.after) opts.after(v); refresh(); }; return UI.field(label, e, key, opts); };
+      var fld = function (label, key, opts) { opts = opts || {}; opts.onChange = function (v) { if (key === 'montoRendir') e._manualRendir = true; if (opts.after) opts.after(v); refresh();
+        /* al confirmar que revisó el comprobante, la foto original se archiva sola en el Drive, en la carpeta del mes */
+        if (key === 'verified' && v && e.imgId && !e.driveId && e.fecha && RF.drive.auto()) RF.drive.saveReceipt(e, p).then(function () { paintPhoto(); }).catch(function () { }); }; return UI.field(label, e, key, opts); };
       var docOpts = D.DOC_TYPES.map(function (d) { return { id: d.id, name: d.name }; });
       var actOpts = [{ id: '', name: 'Sin actividad' }].concat(L.allActivities(p).map(function (x) { return { id: x.act.id, name: x.act.name || '(sin nombre)' }; }));
       var form = h('div', null,
@@ -287,6 +285,26 @@
         UI.btn('Guardar copia en la nube', { icon: 'cloud', onclick: function () { msg('info', 'Guardando…'); RF.cloud.post('saveState', { state: RF.store.exportJSON() }).then(function (r) { if (r && r.ok) { RF.store.update(function (st) { st.cloud.lastSync = new Date().toISOString(); }, { silent: true }); msg('ok', 'Copia guardada en el Drive de la comunidad.'); } else msg('bad', 'No se pudo guardar: ' + ((r && r.error) || 'error')); }).catch(function (e) { msg('bad', 'No se pudo guardar (' + e.message + ').'); }); } }),
         UI.btn('Traer la copia de la nube', { icon: 'download', onclick: function () { UI.confirmBox('Esto reemplaza lo que hay en este dispositivo por la última copia de la nube. ¿Seguir?', 'Reemplazar').then(function (ok) { if (!ok) return; msg('info', 'Trayendo…'); RF.cloud.post('loadState', {}).then(function (r) { if (r && r.ok && r.state) { RF.store.importJSON(r.state); UI.toast('Copia cargada.', 'ok'); } else msg('bad', (r && r.error) || 'No hay copia guardada.'); }).catch(function (e) { msg('bad', 'No se pudo traer (' + e.message + ').'); }); }); } })),
       s.cloud.lastSync ? h('p', { class: 'hint' }, 'Última copia en la nube: ' + new Date(s.cloud.lastSync).toLocaleString('es-CL')) : null, out]));
+    /* carpeta «Rinde fácil» en el Drive de la comunidad */
+    var driveOut = h('div'), savesBox = h('div');
+    function paintSaves() {
+      U.clear(savesBox);
+      var list = (RF.store.get().cloud.saves || []);
+      if (!list.length) { savesBox.appendChild(UI.empty('Aún no se guarda nada desde esta app.')); return; }
+      savesBox.appendChild(h('ul', { class: 'saves' }, list.slice(0, 8).map(function (x) {
+        return h('li', null, x.url ? h('a', { href: x.url, target: '_blank', rel: 'noopener' }, x.name) : h('span', null, x.name), h('span', { class: 'muted' }, ' · ' + (x.where || '') + ' · ' + new Date(x.at).toLocaleString('es-CL')));
+      })));
+    }
+    var pj = RF.store.project();
+    root.appendChild(UI.section('Carpeta «Rinde fácil» en tu Drive', [
+      h('p', { class: 'hint' }, 'Lo que saques (Carta Gantt, anexos, rendición) y las fotos que revises quedan ordenados en una carpeta de tu Drive: Proyectos › nombre del proyecto › Planificación, Anexos, Rendición y Comprobantes por mes. Nunca se borra nada; si un documento cambia, se guarda otra versión.'),
+      UI.field('Guardar en el Drive todo lo que saque o suba', s.cloud, 'autoSave', { type: 'check', onChange: function () { silentSave(); } }),
+      h('div', { class: 'row-actions' },
+        UI.btn('Preparar mi carpeta' + (pj ? ' para «' + pj.name + '»' : ''), { icon: 'folder', cls: 'primary', onclick: function () { U.clear(driveOut); driveOut.appendChild(UI.callout('info', '', 'Preparando la carpeta…')); RF.drive.setup(pj && pj.name).then(function (r) { U.clear(driveOut); driveOut.appendChild(UI.callout('ok', 'Lista.', ' La carpeta «Rinde fácil» está en tu Drive.')); if (r.rootUrl) driveOut.appendChild(h('p', null, h('a', { href: r.rootUrl, target: '_blank', rel: 'noopener' }, 'Abrir la carpeta en Drive'))); paintSaves(); }).catch(function (e) { U.clear(driveOut); driveOut.appendChild(UI.callout('bad', '', e.message === 'NO_CONFIGURADO' ? 'Primero conecta el servicio de tu comunidad.' : 'No se pudo preparar la carpeta (' + e.message + ').')); }); } }),
+        s.cloud.rootUrl ? h('a', { class: 'btn ghost', href: s.cloud.rootUrl, target: '_blank', rel: 'noopener' }, 'Abrir en Drive') : null),
+      driveOut, h('h4', { class: 'grp' }, 'Últimos archivos guardados'), savesBox]));
+    function silentSave() { RF.store.update(function () { }, { silent: true }); }
+    paintSaves();
     var fi = h('input', { type: 'file', accept: 'application/json,.json', class: 'sr-only', 'aria-label': 'Cargar copia' });
     fi.addEventListener('change', function () { var f = fi.files[0]; if (!f) return; f.text().then(function (t) { try { RF.store.importJSON(t); UI.toast('Copia cargada.', 'ok'); } catch (e) { UI.toast(e.message, 'bad'); } }); });
     root.appendChild(UI.section('Copia en tu dispositivo', [fi, h('div', { class: 'row-actions' },

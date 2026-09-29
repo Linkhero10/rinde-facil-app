@@ -19,12 +19,13 @@ Total $1.487.500`;
     req.on('end', () => {
       let p = {};
       try { p = JSON.parse(body || '{}'); } catch { /* vacío */ }
-      store.calls.push({ action: p.action, key: p.key, bytes: (p.base64 || '').length });
+      store.calls.push({ action: p.action, key: p.key, bytes: (p.base64 || '').length, category: p.category, project: p.project, fileName: p.fileName, mimeType: p.mimeType, issueDate: p.issueDate });
       let out;
       if (p.key !== 'clave-de-prueba') out = { ok: false, error: 'CLAVE_INVALIDA' };
       else if (p.action === 'ping') out = { ok: true, version: 'stub', ocr: true };
       else if (p.action === 'ocr') out = { ok: true, engine: 'cloud_vision', raw_text: CANNED, confidence: 0.97, duration_ms: 5, stub: true };
-      else if (p.action === 'saveFile') out = { ok: true, fileId: 'stub-file-1', folder: String(p.issueDate || '').slice(0, 7), idempotent: false };
+      else if (p.action === 'saveFile') out = { ok: true, fileId: 'stub-file-' + store.calls.length, url: 'https://drive.example/file', folderUrl: 'https://drive.example/folder', where: (p.project || 'Sin proyecto') + ' / ' + (p.category || 'comprobante') + (p.issueDate ? ' / ' + String(p.issueDate).slice(0, 7) : ''), folder: String(p.issueDate || '').slice(0, 7), fileName: p.fileName, idempotent: false };
+      else if (p.action === 'setup') out = { ok: true, rootUrl: 'https://drive.example/root', projectUrl: 'https://drive.example/proj', rootName: 'Rinde fácil', projectName: p.project };
       else if (p.action === 'saveState') { store.state = p.state; out = { ok: true, savedAt: 'now' }; }
       else if (p.action === 'loadState') out = store.state ? { ok: true, state: store.state } : { ok: false, error: 'SIN_COPIA' };
       else out = { ok: false, error: 'ACCION_DESCONOCIDA' };

@@ -21,7 +21,7 @@
     return {
       v: 2,
       community: { name: '', rut: '', address: '', legalRep: '', repRut: '', email: '', phone: '', ivaModo: 'no_contribuyente', oc: 'SMI-Chile' },
-      cloud: { apiUrl: '', key: '', lastSync: null },
+      cloud: { apiUrl: '', key: '', lastSync: null, autoSave: true, rootUrl: '', saves: [] },
       holidays: [], projects: [], activeProjectId: null,
       ui: { theme: 'system', open: {} }
     };
@@ -104,11 +104,19 @@
       if (s.activeProjectId === id) s.activeProjectId = s.projects.length ? s.projects[0].id : null;
     });
   }
-  function exportJSON() { return JSON.stringify(get(), null, 2); }
+  /* la clave de acceso al servicio nunca va dentro de una copia: la copia puede compartirse o quedar en un Drive con más gente */
+  function exportJSON() {
+    var copy = JSON.parse(JSON.stringify(get()));
+    copy.cloud = Object.assign({}, copy.cloud, { key: '', saves: [] });
+    return JSON.stringify(copy, null, 2);
+  }
   function importJSON(text) {
     var parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.projects)) throw new Error('El archivo no es una copia de Rinde Fácil.');
+    var mine = get().cloud;
     state = migrate(parsed);
+    /* la conexión con el servicio es de este dispositivo: una copia no la reemplaza */
+    if (mine && (mine.apiUrl || mine.key)) state.cloud = Object.assign({}, state.cloud, { apiUrl: mine.apiUrl || state.cloud.apiUrl, key: mine.key || state.cloud.key, saves: mine.saves || [] });
     dirty = true; persistNow();
     listeners.slice().forEach(function (l) { l(state); });
     return state;

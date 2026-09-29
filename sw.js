@@ -1,6 +1,6 @@
 /* Rinde Fácil: guarda los archivos de la app para que abra sin conexión. Los datos del usuario NO pasan por aquí. */
-var VERSION = 'rf-v2-1';
-var CORE = ['./', 'index.html', 'css/app.css', 'manifest.webmanifest', 'assets/icon.svg', 'vendor/parser.js', 'js/01-util.js', 'js/02-store.js', 'js/10-data.js', 'js/11-tramites.js', 'js/20-logic.js', 'js/21-export.js', 'js/30-ui.js', 'js/31-forms.js', 'js/32-tools-plan.js', 'js/33-cloud.js', 'js/34-tools-gastos.js', 'js/35-flow.js', 'js/40-views.js', 'js/60-app.js'];
+var VERSION = 'rf-v2-2';
+var CORE = ['./', 'index.html', 'css/app.css', 'manifest.webmanifest', 'assets/icon.svg', 'vendor/parser.js', 'js/01-util.js', 'js/02-store.js', 'js/10-data.js', 'js/11-tramites.js', 'js/20-logic.js', 'js/26-receipt.js', 'js/21-export.js', 'js/30-ui.js', 'js/31-forms.js', 'js/32-tools-plan.js', 'js/33-cloud.js', 'js/34-tools-gastos.js', 'js/36-drive.js', 'js/35-flow.js', 'js/40-views.js', 'js/60-app.js'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open(VERSION).then(function (c) { return c.addAll(CORE); }).then(function () { return self.skipWaiting(); })); });
 self.addEventListener('activate', function (e) { e.waitUntil(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k !== VERSION; }).map(function (k) { return caches.delete(k); })); }).then(function () { return self.clients.claim(); })); });
 self.addEventListener('fetch', function (e) {
