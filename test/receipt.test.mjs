@@ -104,3 +104,43 @@ test('la copia de datos no lleva la clave de acceso y no pisa la conexión del d
   assert.equal(RF.store.get().cloud.key, 'clave-secreta', 'la clave local se conserva al importar');
   assert.equal(RF.store.get().projects[0].name, 'P');
 });
+
+test('voucher válido como boleta: nombre del proveedor, forma de pago y N° de comprobante (no hay N° de boleta)', () => {
+  const r = ex(`GETNET
+COMPRA AFECTA
+VALIDO COMO BOLETA
+Rut: 76.123.456-0
+EMPRESA DE EJEMPLO LIMITADA
+RESTAURANTE EL LUGAR
+Pasaje AV LONGITUDINAL 5045 LC 3
+12/09/2026 16:01:48 AID:A0000000041010
+Tarjeta : *7122 Mastercard Prepago
+Monto : $ 19.990
+Total : $ 19.990
+Iva incluido en este pago: $ 3.192
+Aprobación: 956505 Comprobante: 000009`);
+  assert.equal(r.fields.proveedor, 'EMPRESA DE EJEMPLO LIMITADA'); assert.equal(r.fields.docType, 'voucher'); assert.equal(r.fields.formaPago, 'prepago');
+  assert.equal(r.fields.folio, '000009'); assert.match(r.notes.join(' '), /no trae número de boleta del SII/);
+  assert.equal(JSON.stringify([r.fields.neto, r.fields.iva, r.fields.total]), JSON.stringify([16798, 3192, 19990]));
+});
+test('una factura con «Forma de pago: Crédito» no se toma por tarjeta; con «Medio de pago: tarjeta de débito» sí', () => {
+  const base = t => ex(`RUT: 76.123.456-0
+FACTURA ELECTRONICA
+Nº10
+Fecha Emision: 3 de Marzo del 2026
+` + t + `
+MONTO NETO $ 10.000
+I.V.A. 19% $ 1.900
+TOTAL $ 11.900`).fields.formaPago;
+  assert.equal(base('Forma de Pago:Crédito'), undefined);
+  assert.equal(base('MEDIO DE PAGO : TARJETA DE DEBITO'), 'debito');
+});
+test('las formas de pago incluyen débito y prepago, y un voucher sin número solo avisa', () => {
+  const ids = RF.data.FORMAS_PAGO.map(f => f.id);
+  assert.ok(ids.includes('debito') && ids.includes('prepago') && ids.includes('tarjeta'));
+  const e = { id: 'x', cuenta: 'operacion', docType: 'voucher', folio: '', fecha: '2026-09-12', rutProveedor: '76.123.456-0', proveedor: 'X', total: 19990, glosa: 'Prueba', formaPago: 'debito' };
+  const res = RF.logic.evaluateExpense(e, RF.store.newProject('P'), RF.store.get().community, []);
+  assert.equal(res.issues.find(i => i.id === 'sin_folio').level, 'warn');
+  const bol = RF.logic.evaluateExpense(Object.assign({}, e, { docType: 'boleta' }), RF.store.newProject('P'), RF.store.get().community, []);
+  assert.equal(bol.issues.find(i => i.id === 'sin_folio').level, 'error');
+});

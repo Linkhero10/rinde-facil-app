@@ -357,3 +357,11 @@ mark.search-hit{scroll-margin:120px}
 }
 @media print{.sr-overlay{display:none!important}}
 .sr-input::-webkit-search-cancel-button,.sr-input::-webkit-search-decoration{-webkit-appearance:none;appearance:none;display:none}
+
+/* foto del comprobante: zoom al pasar el cursor, dentro del mismo marco */
+.zoom-wrap{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:4px;background:#fff;cursor:zoom-in;touch-action:pan-y}
+.zoom-wrap .receipt-img{display:block;border:0;border-radius:0;cursor:inherit;max-height:520px;width:100%;object-fit:contain;transform-origin:50% 50%;transition:transform .12s ease-out;will-change:transform;user-select:none;-webkit-user-drag:none}
+.zoom-wrap.zooming{cursor:zoom-out}
+.zoom-wrap.zooming .receipt-img{transform:scale(2.8);transition:transform .12s ease-out}
+@media (hover:hover){.zoom-wrap.zooming .receipt-img{transition:transform .08s ease-out}}
+@media (prefers-reduced-motion:reduce){.zoom-wrap .receipt-img{transition:none}}

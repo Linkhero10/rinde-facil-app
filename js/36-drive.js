@@ -66,6 +66,60 @@
     }).then(function (r) { e.driveId = r.fileId; e.driveUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); return r; });
   }
 
+  /* ---------- ficha del gasto: todos los datos ordenados en un texto, junto a la foto ---------- */
+  var FIELD_LABELS = { docType: 'Tipo de documento', folio: 'Número', fecha: 'Fecha', proveedor: 'Proveedor', rutProveedor: 'RUT del proveedor', neto: 'Neto', iva: 'IVA', total: 'Total', formaPago: 'Forma de pago' };
+  function fichaText(e, project, community) {
+    var D = RF.data, L = RF.logic, num = U.parseCLP, money = function (v) { return num(v) ? U.fmtCLP(num(v)) : '—'; };
+    var dt = (D.DOC_BY_ID[e.docType] || {}).name || e.docType || '—', fpName = function (id) { return (D.FORMAS_PAGO.filter(function (f) { return f.id === id; })[0] || {}).name || id || '—'; };
+    var act = ''; try { var a = L.allActivities(project).filter(function (x) { return x.act.id === e.actId; })[0]; act = a ? a.act.name : ''; } catch (er) { act = ''; }
+    var r = null; try { r = L.evaluateExpense(e, project, community, project.expenses || []); } catch (er2) { r = null; }
+    var out = [];
+    out.push('FICHA DEL GASTO · Rinde Fácil', '================================', '',
+      'Proyecto: ' + (project.name || '—') + (project.code ? ' (' + project.code + ')' : ''), 'Comunidad: ' + ((community && community.name) || '—'), 'Generada: ' + new Date().toLocaleString('es-CL'), '',
+      '1. EL DOCUMENTO', '   Tipo: ' + dt, '   Número (folio): ' + (e.folio || '—'), '   Fecha del documento: ' + (e.fecha ? U.fmtDate(e.fecha) : '—'), '   Proveedor: ' + (e.proveedor || '—'), '   RUT del proveedor: ' + (e.rutProveedor ? U.rutFormat(e.rutProveedor) : '—'), '',
+      '2. LOS MONTOS', '   Neto: ' + money(e.neto), '   IVA: ' + money(e.iva), '   Total del documento: ' + money(e.total), '   Monto a rendir: ' + money(e.montoRendir) + (e.pctUso !== '' && e.pctUso != null ? '  (' + e.pctUso + ' % del proyecto)' : ''), '',
+      '3. DÓNDE VA', '   Cuenta: ' + ((D.CUENTA_BY_ID[e.cuenta] || {}).name || '—'), '   Actividad de la Carta Gantt: ' + (act || '—'), '   Ítem del presupuesto: ' + (e.item || '—'), '   Glosa: ' + (e.glosa || '—'), '',
+      '4. EL PAGO', '   Forma de pago: ' + fpName(e.formaPago), '   Fecha del pago: ' + (e.fechaPago ? U.fmtDate(e.fechaPago) : '—'), '',
+      '5. MARCAS', '   Viático o viaje: ' + (e.esViatico ? 'sí' : 'no'), '   Servicio técnico-profesional: ' + (e.servicioTecnico ? 'sí' : 'no'), '');
+    var req = []; try { req = L.requirements(e, project, community); } catch (er3) { req = []; }
+    var has = {}; try { has = L.effectiveHas(e, project); } catch (er4) { has = {}; }
+    out.push('6. RESPALDOS QUE PIDE EL MANUAL');
+    if (!req.length) out.push('   Ninguno adicional.'); else req.forEach(function (q) { out.push('   [' + (has[q.key] ? 'x' : ' ') + '] ' + q.label); });
+    out.push('', '7. REVISIÓN', '   La persona comparó cada dato con el documento original: ' + (e.verified ? 'SÍ' : 'NO todavía'));
+    if (r) { out.push('   Estado según las reglas de la app: ' + (r.status === 'ok' ? 'sin problemas' : r.status === 'warn' ? 'con avisos' : 'con errores')); (r.issues || []).forEach(function (i) { out.push('   - ' + (i.level === 'error' ? 'ERROR: ' : 'Aviso: ') + i.msg); }); }
+    if (e.ocr) {
+      out.push('', '8. LECTURA AUTOMÁTICA', '   Motor: Google Cloud Vision · ' + (e.ocr.at ? new Date(e.ocr.at).toLocaleString('es-CL') : '') + (e.ocr.confidence != null ? ' · confianza ' + Math.round(e.ocr.confidence * 100) + ' %' : ''));
+      var diffs = [];
+      Object.keys(FIELD_LABELS).forEach(function (k) {
+        var was = e.ocr.auto && e.ocr.auto[k] != null ? String(e.ocr.auto[k]) : '', now = e[k] == null ? '' : String(e[k]);
+        if (e.ocr.auto && was !== now) diffs.push('   - ' + FIELD_LABELS[k] + ': leído «' + (was || 'vacío') + '» → quedó «' + (now || 'vacío') + '»');
+      });
+      out.push(diffs.length ? '   Datos que la persona corrigió o completó a mano:' : '   La persona no cambió ningún dato leído.'); diffs.forEach(function (d) { out.push(d); });
+      out.push('', '--- Texto tal como lo leyó el OCR (sin editar) ---', e.ocr.raw || '');
+    } else out.push('', '8. Los datos se anotaron a mano (sin lectura automática).');
+    return out.join('\n');
+  }
+  function baseName(e) { return String(e.proveedor || 'comprobante').replace(/[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 50) + '-' + (String(e.folio || 'sn').replace(/[^A-Za-z0-9]+/g, '')); }
+  function saveFicha(e, project, community) {
+    if (!enabled()) return Promise.reject(new Error('NO_CONFIGURADO'));
+    if (!e.fecha) { RF.ui.toast('Primero anota la fecha del documento: se usa para la carpeta del mes.', 'bad'); return Promise.reject(new Error('SIN_FECHA')); }
+    return send({ project: (project && project.name) || projectName(), category: 'comprobante', fileName: baseName(e) + '.datos.txt', mimeType: 'text/plain', base64: textToB64('﻿' + fichaText(e, project, community)), issueDate: e.fecha }, 'ficha del gasto')
+      .then(function (r) { e.driveFichaAt = new Date().toISOString(); e.driveFichaUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); return r; });
+  }
+  /* copia de todos los datos de la app (5 versiones); se hace sola después de archivar un gasto */
+  function backupState() {
+    if (!enabled()) return Promise.resolve(null);
+    return RF.cloud.post('saveState', { state: RF.store.exportJSON() }, 60000).then(function (r) {
+      if (r && r.ok) RF.store.update(function (s) { s.cloud.lastSync = new Date().toISOString(); }, { silent: true });
+      return r;
+    }).catch(function () { return null; });
+  }
+  /* foto (si hay) + ficha con los datos + copia de seguridad */
+  function archiveExpense(e, project, community) {
+    var first = e.imgId && !e.driveId ? saveReceipt(e, project) : Promise.resolve(null);
+    return first.then(function () { return saveFicha(e, project, community); }).then(function (r) { backupState(); return r; });
+  }
+
   /* Deja armada la carpeta con su orden. */
   function setup(projectName_) {
     return RF.cloud.post('setup', { project: projectName_ || projectName() }, 60000).then(function (r) {
@@ -75,5 +129,5 @@
     });
   }
 
-  RF.drive = { enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, setup: setup, categoryFor: categoryFor, errText: errText };
+  RF.drive = { enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, saveFicha: saveFicha, archiveExpense: archiveExpense, fichaText: fichaText, backupState: backupState, setup: setup, categoryFor: categoryFor, errText: errText };
 })(typeof window !== 'undefined' ? window : globalThis);

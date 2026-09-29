@@ -34,7 +34,7 @@
  */
 
 const RF_WEB = {
-  version: '2.1.0',
+  version: '2.2.0',
   keyProp: 'RINDE_FACIL_ACCESS_KEY',
   rootProp: 'RINDE_FACIL_ROOT_FOLDER_ID',
   limitProp: 'RINDE_FACIL_OCR_DAILY_LIMIT',
@@ -236,7 +236,7 @@ function rfSaveFile_(p) {
   const mime = String(p.mimeType || '').toLowerCase();
   const category = String(p.category || 'comprobante');
   if (!RF_WEB.categories[category]) return { ok: false, error: 'CATEGORIA_INVALIDA' };
-  const allowed = category === 'comprobante' ? RF_WEB.okMime : RF_WEB.okMime.concat(RF_WEB.docMime);
+  const allowed = category === 'comprobante' ? RF_WEB.okMime.concat(['text/plain']) : RF_WEB.okMime.concat(RF_WEB.docMime); // junto a la foto va la ficha con los datos (texto)
   if (allowed.indexOf(mime) < 0) return { ok: false, error: 'TIPO_NO_PERMITIDO' };
   if (!rfIsBase64_(p.base64)) return { ok: false, error: 'BASE64_INVALIDO' };
   if (rfBase64Bytes_(p.base64) > RF_WEB.maxBytes) return { ok: false, error: 'ARCHIVO_MUY_GRANDE' };

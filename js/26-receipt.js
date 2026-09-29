@@ -169,6 +169,52 @@
     return null;
   }
 
+  /* ---------- nombre del proveedor ---------- */
+  var LEGAL = /\b(spa|s\.?a\.?|ltda\.?|limitada|e\.?i\.?r\.?l\.?|sociedad|cia|compania)\b/;
+  var NOT_NAME = /boleta|factura|giro|direccion|telefono|sucursal|casa matriz|\bsii\b|\brut\b|r\.u\.t|valido como|copia|compra afecta|venta|tarjeta|fecha|debit|mastercard|visa|redcompra|prepago|actividades|moneda|iva|comuna|ciudad|www|@|honorarios|electronica|timbre|verifique|comprobante|aprobacion|senor|cliente|ley \d|total|monto/;
+  function cleanName(s) { return String(s || '').replace(/^[\s:]+/, '').replace(/^(emisor|raz[oó]n social|r\.?\s*social)\s*[:.]?\s*/i, '').replace(/^[\s:]+/, '').replace(/\s+/g, ' ').trim(); }
+  function nameLike(s, communityName) {
+    var t = norm(s);
+    if (s.length < 4 || s.length > 70 || NOT_NAME.test(t)) return false;
+    if (/comunidad/.test(t) || (communityName && t.indexOf(norm(communityName)) >= 0)) return false;
+    var letters = (s.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g) || []).length;
+    return letters >= 4 && letters / s.length >= 0.75 && !/\d{3,}/.test(s);
+  }
+  function findProveedor(lines, rut, communityName) {
+    var i, s, n, prev;
+    for (i = 0; i < Math.min(lines.length, 60); i++) { /* 1. etiquetas «Emisor», «Razón social» */
+      if (/^(emisor|raz[oó]n social|r\.?\s*social)\b/i.test(lines[i])) {
+        s = cleanName(lines[i]); if (!s) s = cleanName(lines[i + 1]);
+        if (s && nameLike(s, communityName)) { n = cleanName(lines[i + 1]); if (lines[i] && cleanName(lines[i]) && n && n.length <= 14 && LEGAL.test(norm(n))) s += ' ' + n; return s; }
+      }
+    }
+    for (i = 0; i < Math.min(lines.length, 40); i++) { /* 2. una línea con «SpA», «S.A.», «Ltda.»… fuera de la parte del cliente */
+      if (/se[nñ]or/i.test(lines[i])) break;
+      s = cleanName(lines[i]);
+      if (LEGAL.test(norm(s)) && s.length >= 10 && nameLike(s, communityName)) {
+        prev = cleanName(lines[i - 1]);
+        if (prev && /\s(y|de|del|la|los)$/i.test(prev) && prev === prev.toUpperCase() && nameLike(prev, communityName)) s = prev + ' ' + s;
+        return s;
+      }
+    }
+    if (rut) {
+      for (i = rut.line + 1; i <= Math.min(rut.line + 4, lines.length - 1); i++) { s = cleanName(lines[i]); if (nameLike(s, communityName) && s.split(' ').length >= 2) return s; } /* 3. justo después del RUT (vouchers) */
+      for (i = rut.line - 1; i >= Math.max(0, rut.line - 6); i--) { s = cleanName(lines[i]); if (nameLike(s, communityName) && s.split(' ').length >= 3) return s; } /* 4. justo antes del RUT */
+    }
+    return null;
+  }
+  /* forma de pago: en un voucher o boleta se lee todo el texto; en una factura solo la línea «Medio de pago» (un «Crédito» suelto es plazo, no tarjeta) */
+  function formaPagoOf(lines, dt) {
+    var receipt = !dt || dt === 'boleta' || dt === 'voucher', t = '';
+    if (receipt && lines.length <= 120) t = norm(lines.join(' '));
+    else lines.slice(0, 80).forEach(function (l) { if (/(medio|forma) de pago/i.test(l)) t += ' ' + norm(l); });
+    if (/prepago/.test(t)) return 'prepago';
+    if (/debito/.test(t)) return 'debito';
+    if (/tarjeta.*credito|credito.*tarjeta/.test(t) || (receipt && /credito/.test(t))) return 'tarjeta';
+    if (/transferencia/.test(t)) return 'transferencia';
+    return null;
+  }
+
   function docTypeOf(lines) {
     var head = lines.slice(0, 40).join(' ');
     var t = norm(head);
@@ -188,6 +234,13 @@
     var rut = findRutEmisor(lines, opts.communityRut);
     if (rut) { f.rutProveedor = U.rutFormat(rut.rut); checks.rut = true; } else notes.push('No se encontró un RUT válido del proveedor.');
     var folio = findFolio(lines); if (folio) f.folio = folio;
+    if (!folio && dt === 'voucher') { /* un voucher no trae N° de boleta del SII; se propone el N° de comprobante impreso */
+      var cm = text.match(/comprobante\s*[:.]?\s*(\d{1,12})/i);
+      if (cm) { f.folio = cm[1]; notes.push('Un voucher no trae número de boleta del SII. Se anotó el N° de «Comprobante» (' + cm[1] + '), que es el del voucher.'); }
+      else notes.push('Un voucher no trae número de boleta del SII: puedes dejar el número vacío.');
+    }
+    var prov = findProveedor(lines, rut, opts.communityName); if (prov) f.proveedor = prov;
+    var fp = formaPagoOf(lines, dt); if (fp) f.formaPago = fp;
     var fecha = findDate(lines); if (fecha) { f.fecha = fecha.iso; checks.fecha = true; } else notes.push('No se pudo leer la fecha.');
 
     var isHon = dt === 'honorarios', tri = null;

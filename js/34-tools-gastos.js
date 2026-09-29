@@ -65,10 +65,10 @@
     }
     function applyOcr(e, res) {
       if (!res || !res.ok) { e._ocrNote = 'El servicio respondió con un error: ' + ((res && res.error) || 'desconocido') + '. Anota los datos mirando la foto.'; return; }
-      var out = RF.ocr.toExpenseFields(res.raw_text, 'cloud_vision', { communityRut: c.community && c.community.rut }), f = out.fields;
+      var out = RF.ocr.toExpenseFields(res.raw_text, 'cloud_vision', { communityRut: c.community && c.community.rut, communityName: c.community && c.community.name }), f = out.fields;
       Object.keys(f).forEach(function (k) { e[k] = f[k]; });
       if (!f.docType && f.total != null) e.docType = e.docType || 'boleta';
-      e.ocr = { engine: res.engine || 'cloud_vision', at: new Date().toISOString(), raw: String(res.raw_text || '').slice(0, 6000), confidence: res.confidence == null ? null : res.confidence, ms: res.duration_ms || null, note: out.note };
+      e.ocr = { engine: res.engine || 'cloud_vision', at: new Date().toISOString(), raw: String(res.raw_text || '').slice(0, 6000), confidence: res.confidence == null ? null : res.confidence, ms: res.duration_ms || null, note: out.note, auto: JSON.parse(JSON.stringify(f)) };
       e.verified = false; e._manualRendir = false; syncRendir(e, c.community);
       e._ocrNote = 'Leído con Google Cloud Vision. Compara cada dato con la foto antes de seguir.' + (out.note ? ' ' + out.note : '');
       silent();
@@ -106,6 +106,21 @@
       /* totales por cuenta */
       root.appendChild(UI.section('Por cuenta', [h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid' }, h('thead', null, h('tr', null, ['Cuenta', 'Gastos', 'Rendido', 'Presupuesto'].map(function (x, i) { return h('th', { class: i ? 'r' : '' }, x); }))), h('tbody', null, D.CUENTAS.map(function (cu) { var x = totals[cu.id], tope = x.presupuestado > 0 ? x.presupuestado : x.aprobado; return h('tr', { class: tope > 0 && x.rendido > tope ? 'row-bad' : '' }, h('th', { scope: 'row' }, cu.name), h('td', { class: 'r' }, String(x.cantidad)), h('td', { class: 'r' }, U.fmtCLP(x.rendido)), h('td', { class: 'r' }, tope ? U.fmtCLP(tope) : '—')); }))))]));
       root.appendChild(UI.section('Sacar la rendición', [UI.exportBar(function () { return rendicionDoc(p, c.community); }, 'rendicion-gastos'), h('div', { class: 'row-actions' }, UI.btn('Carpeta de respaldos por gasto', { icon: 'list', onclick: function () { RF.exp.printDoc(expedienteDoc(p, c.community)); } }), UI.btn('Ver el cuadre completo', { icon: 'check', onclick: function () { location.hash = '#/h/revision'; } }))]));
+    }
+
+    /* foto con zoom al pasar el cursor (o al tocar en el celular), dentro del mismo marco */
+    function canHover() { return !!(root.matchMedia && root.matchMedia('(hover: hover)').matches); }
+    function zoomBox(src) {
+      var img = h('img', { src: src, alt: 'Foto del comprobante', class: 'receipt-img', draggable: 'false' });
+      var box = h('div', { class: 'zoom-wrap', 'aria-label': 'Foto del comprobante con zoom' }, img);
+      function origin(cx, cy) { var r = box.getBoundingClientRect(); img.style.transformOrigin = Math.max(0, Math.min(100, (cx - r.left) / r.width * 100)) + '% ' + Math.max(0, Math.min(100, (cy - r.top) / r.height * 100)) + '%'; }
+      var last = 'mouse';
+      box.addEventListener('pointerenter', function (ev) { last = ev.pointerType || 'mouse'; if (last === 'mouse') { origin(ev.clientX, ev.clientY); box.classList.add('zooming'); } });
+      box.addEventListener('pointermove', function (ev) { last = ev.pointerType || last; if (last === 'mouse') origin(ev.clientX, ev.clientY); });
+      box.addEventListener('pointerleave', function (ev) { if ((ev.pointerType || 'mouse') === 'mouse') box.classList.remove('zooming'); });
+      box.addEventListener('click', function (ev) { if (last === 'mouse') return; origin(ev.clientX, ev.clientY); box.classList.toggle('zooming'); });
+      box.addEventListener('touchmove', function (ev) { if (box.classList.contains('zooming') && ev.touches[0]) { ev.preventDefault(); origin(ev.touches[0].clientX, ev.touches[0].clientY); } }, { passive: false });
+      return box;
     }
 
     /* ---- editor ---- */
@@ -149,11 +164,11 @@
           if (!blob) { photo.appendChild(UI.empty('La foto ya no está en este dispositivo.')); return; }
           var url = URL.createObjectURL(blob);
           if (/pdf/.test(blob.type)) photo.appendChild(h('a', { class: 'btn', href: url, target: '_blank', rel: 'noopener' }, 'Abrir el PDF'));
-          else { var img = h('img', { src: url, alt: 'Foto del comprobante', class: 'receipt-img', onclick: function () { img.classList.toggle('zoomed'); } }); photo.appendChild(img); photo.appendChild(h('p', { class: 'hint' }, 'Toca la foto para acercarla.')); }
+          else { photo.appendChild(zoomBox(url)); photo.appendChild(h('p', { class: 'hint' }, 'Pasa el cursor sobre la foto para acercarla (en el celular, tócala y arrastra).')); }
           var acts = h('div', { class: 'row-actions' });
           if (RF.cloud.configured()) acts.appendChild(UI.btn(e.ocr ? 'Leer de nuevo' : 'Leer con la nube', { icon: 'cloud', cls: 'ghost', onclick: function () { UI.toast('Leyendo…'); RF.ocr.recognize(new File([blob], 'comprobante', { type: blob.type })).then(function (res) { applyOcr(e, res); paint(); }).catch(function (er) { UI.toast('No se pudo leer: ' + (er.message || er), 'bad'); }); } }));
           if (RF.cloud.configured()) acts.appendChild(UI.btn(e.driveId ? 'Ya está en el Drive' : 'Guardar en el Drive', { icon: 'cloud', cls: 'ghost', disabled: !!e.driveId, onclick: function () {
-            RF.drive.saveReceipt(e, p).then(function () { paintPhoto(); }).catch(function () { });
+            RF.drive.archiveExpense(e, p, c.community).then(function () { paintPhoto(); }).catch(function () { });
           } }));
           acts.appendChild(UI.btn('Quitar foto', { icon: 'trash', cls: 'ghost danger', onclick: function () { RF.blobs.del(e.imgId); e.imgId = null; silent(); paintPhoto(); } }));
           photo.appendChild(acts);
@@ -162,7 +177,7 @@
       }
       var fld = function (label, key, opts) { opts = opts || {}; opts.onChange = function (v) { if (key === 'montoRendir') e._manualRendir = true; if (opts.after) opts.after(v); refresh();
         /* al confirmar que revisó el comprobante, la foto original se archiva sola en el Drive, en la carpeta del mes */
-        if (key === 'verified' && v && e.imgId && !e.driveId && e.fecha && RF.drive.auto()) RF.drive.saveReceipt(e, p).then(function () { paintPhoto(); }).catch(function () { }); }; return UI.field(label, e, key, opts); };
+        if (key === 'verified' && v && e.fecha && RF.drive.auto()) RF.drive.archiveExpense(e, p, c.community).then(function () { paintPhoto(); }).catch(function () { }); }; return UI.field(label, e, key, opts); };
       var docOpts = D.DOC_TYPES.map(function (d) { return { id: d.id, name: d.name }; });
       var actOpts = [{ id: '', name: 'Sin actividad' }].concat(L.allActivities(p).map(function (x) { return { id: x.act.id, name: x.act.name || '(sin nombre)' }; }));
       var form = h('div', null,
@@ -186,7 +201,8 @@
         h('div', { class: 'checks' }, fld('Es un viático o viaje', 'esViatico', { type: 'check' }), fld('Es un servicio técnico-profesional (no pide cotizaciones)', 'servicioTecnico', { type: 'check' }), e.cuenta === 'inversion' ? fld('Es un inmueble o derechos de agua', 'esInmueble', { type: 'check' }) : null),
         h('h4', { class: 'grp' }, '6. Respaldos que hay que guardar'), reqBox,
         h('h4', { class: 'grp' }, '7. Revisión humana'),
-        fld('Comparé cada dato con el documento original y está correcto', 'verified', { type: 'check', hint: e.ocr ? 'Obligatorio: los datos leídos por la nube pueden tener errores (por ejemplo, un dígito del RUT).' : '' }));
+        fld('Comparé cada dato con el documento original y está correcto', 'verified', { type: 'check', hint: e.ocr ? 'Obligatorio: los datos leídos por la nube pueden tener errores (por ejemplo, un dígito del RUT).' : '' }),
+        RF.cloud.configured() ? h('div', { class: 'row-actions' }, UI.btn(e.driveFichaAt ? 'Actualizar la ficha en el Drive' : 'Guardar la ficha en el Drive', { icon: 'cloud', cls: 'ghost', onclick: function () { RF.drive.saveFicha(e, p, c.community).then(function () { paint(); }).catch(function () { }); } }), h('span', { class: 'hint' }, 'La ficha es un texto con todos los datos de este gasto y lo que leyó la nube. Se guarda sola al marcar la revisión; usa este botón si cambias algo después.')) : null);
       var head = h('div', { class: 'row-actions between' }, UI.btn('← Volver a la lista', { cls: 'ghost', onclick: function () { st.editing = null; paint(); } }),
         h('div', { class: 'row-actions' }, UI.btn('Duplicar', { icon: 'copy', cls: 'ghost', onclick: function () { var d = U.deepClone(e); d.id = U.uid('g'); d.imgId = null; d.verified = false; d.folio = ''; p.expenses.push(d); silent(); st.editing = d.id; paint(); UI.toast('Gasto duplicado (sin foto ni número).', 'ok'); } }),
           UI.btn('Borrar gasto', { icon: 'trash', cls: 'ghost danger', onclick: function () { UI.confirmBox('¿Borrar este gasto? No se puede deshacer.', 'Borrar').then(function (ok) { if (!ok) return; if (e.imgId) RF.blobs.del(e.imgId); p.expenses.splice(p.expenses.indexOf(e), 1); silent(); st.editing = null; paint(); }); } })));

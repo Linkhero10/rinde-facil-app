@@ -75,7 +75,9 @@
     { id: 'transferencia', name: 'Transferencia' },
     { id: 'cheque', name: 'Cheque' },
     { id: 'efectivo', name: 'Efectivo' },
+    { id: 'debito', name: 'Tarjeta de débito' },
     { id: 'tarjeta', name: 'Tarjeta de crédito' },
+    { id: 'prepago', name: 'Tarjeta prepago' },
     { id: 'electronico', name: 'Pago electrónico (PayPal u otro)' }
   ];
 

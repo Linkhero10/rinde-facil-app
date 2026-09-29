@@ -19,7 +19,7 @@ Total $1.487.500`;
     req.on('end', () => {
       let p = {};
       try { p = JSON.parse(body || '{}'); } catch { /* vacío */ }
-      store.calls.push({ action: p.action, key: p.key, bytes: (p.base64 || '').length, category: p.category, project: p.project, fileName: p.fileName, mimeType: p.mimeType, issueDate: p.issueDate });
+      store.calls.push({ action: p.action, key: p.key, bytes: (p.base64 || '').length, category: p.category, project: p.project, fileName: p.fileName, mimeType: p.mimeType, issueDate: p.issueDate, text: p.mimeType === 'text/plain' && p.base64 ? Buffer.from(p.base64, 'base64').toString('utf8') : undefined });
       let out;
       if (p.key !== 'clave-de-prueba') out = { ok: false, error: 'CLAVE_INVALIDA' };
       else if (p.action === 'ping') out = { ok: true, version: 'stub', ocr: true };

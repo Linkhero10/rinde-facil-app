@@ -68,7 +68,10 @@
 
     if (!exp.cuenta) add('error', 'sin_cuenta', 'Elige la cuenta del gasto.', 'cuenta');
     if (!exp.docType) add('error', 'sin_tipo', 'Elige el tipo de documento.', 'docType');
-    if (!String(exp.folio || '').trim() && exp.docType !== 'certificado_viatico') add('error', 'sin_folio', 'Falta el número del documento.', 'folio');
+    if (!String(exp.folio || '').trim() && exp.docType !== 'certificado_viatico') {
+      if (exp.docType === 'voucher') add('warn', 'sin_folio', 'Un voucher no trae número de boleta del SII. Puedes anotar el N° de comprobante que trae impreso o dejarlo vacío.', 'folio');
+      else add('error', 'sin_folio', 'Falta el número del documento.', 'folio');
+    }
     if (!exp.fecha) add('error', 'sin_fecha', 'Falta la fecha del documento.', 'fecha');
     if (!String(exp.proveedor || '').trim()) add('error', 'sin_proveedor', 'Falta el nombre del proveedor.', 'proveedor');
     if (exp.docType !== 'invoice') {

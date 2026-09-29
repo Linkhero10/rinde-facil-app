@@ -129,6 +129,8 @@ test('archivar documentos generados: cada categoría en su carpeta; una versión
   assert.equal(e.call(Object.assign({ category: 'anexos', base64: B64 }, base, { fileName: 'anexo-1.xlsx' })).folder, '2 Anexos y formularios');
   assert.equal(e.call(Object.assign({ category: 'rendicion', base64: B64 }, base, { fileName: 'rendicion.xlsx' })).folder, '3 Rendición');
   assert.equal(e.call(Object.assign({ category: 'comprobante', base64: B64, issueDate: '2026-08-01' }, base)).error, 'TIPO_NO_PERMITIDO', 'un Excel no es un comprobante');
+  const ficha = e.call(Object.assign({}, base, { category: 'comprobante', mimeType: 'text/plain', fileName: 'Proveedor-123.datos.txt', base64: B64, issueDate: '2026-08-01' }));
+  assert.equal(ficha.ok, true); assert.equal(ficha.folder, '2026-08', 'la ficha de datos va junto a la foto');
   assert.equal(e.call(Object.assign({ category: 'otra', base64: B64 }, base)).error, 'CATEGORIA_INVALIDA');
   assert.equal(e.call(Object.assign({ category: 'anexos', base64: B64 }, base, { mimeType: 'application/x-msdownload' })).error, 'TIPO_NO_PERMITIDO');
 });

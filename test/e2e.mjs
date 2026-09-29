@@ -253,6 +253,18 @@ await step('12. Foto de un comprobante: OCR en la nube (servicio de prueba) rell
   ok(/Compara los datos con la foto/.test(await page.textContent('.issues')), 'exige «Lo revisé» antes de dar por bueno');
   ok(await page.locator('img.receipt-img').isVisible(), 'muestra la foto al lado');
   ok(stub.store.calls.some(c => c.action === 'ocr' && c.bytes > 100), 'el servicio recibió la imagen');
+  eq(await page.inputValue('input[data-key="proveedor"]'), 'EMPRESA FANTASÍA SPA');
+  /* zoom al pasar el cursor, dentro del mismo marco */
+  const box = page.locator('.zoom-wrap'); const bb = await box.boundingBox();
+  await page.mouse.move(bb.x + bb.width * 0.3, bb.y + bb.height * 0.3);
+  await page.waitForTimeout(250);
+  ok(await box.evaluate(el => el.classList.contains('zooming')), 'al pasar el cursor se acerca');
+  const sc = await page.locator('.zoom-wrap img').evaluate(el => new DOMMatrix(getComputedStyle(el).transform).a);
+  ok(sc > 2, 'la foto se agranda (escala ' + sc + ')');
+  const bb2 = await box.boundingBox(); eq(Math.round(bb2.width), Math.round(bb.width), 'no ocupa toda la pantalla: el marco no cambia');
+  await shot('12-zoom');
+  await page.mouse.move(5, 5); await page.waitForTimeout(250);
+  ok(!(await box.evaluate(el => el.classList.contains('zooming'))), 'al salir vuelve a su tamaño');
   await shot('12-ocr');
   await page.locator('label.check', { hasText: 'Comparé cada dato' }).locator('input').check();
   await page.waitForTimeout(200);
@@ -261,8 +273,13 @@ await step('12. Foto de un comprobante: OCR en la nube (servicio de prueba) rell
 
 await step('12b. Al confirmar la revisión, el original se archiva solo en Comprobantes/mes del Drive (servicio de prueba)', async () => {
   await page.waitForFunction(() => document.querySelector('.photo-panel') && /Ya está en el Drive/.test(document.querySelector('.photo-panel').textContent), null, { timeout: 8000 });
-  const c = stub.store.calls.filter(x => x.action === 'saveFile' && x.category === 'comprobante');
-  eq(c.length, 1); eq(c[0].issueDate, '2026-08-14'); eq(c[0].project, 'Sede comunitaria'); ok(/\.jpg$/.test(c[0].fileName), 'nombre con extensión');
+  const c = stub.store.calls.filter(x => x.action === 'saveFile' && x.category === 'comprobante' && /\.jpg$/.test(x.fileName));
+  eq(c.length, 1); eq(c[0].issueDate, '2026-08-14'); eq(c[0].project, 'Sede comunitaria');
+  await page.waitForTimeout(600);
+  const f = stub.store.calls.filter(x => x.action === 'saveFile' && /\.datos\.txt$/.test(x.fileName));
+  eq(f.length, 1, 'una ficha con los datos junto a la foto'); eq(f[0].category, 'comprobante'); eq(f[0].issueDate, '2026-08-14');
+  ok(/Proveedor: EMPRESA FANTASÍA SPA/.test(f[0].text) && /Texto tal como lo leyó el OCR/.test(f[0].text) && /Número \(folio\): 1042/.test(f[0].text) && /SÍ/.test(f[0].text), 'la ficha trae proveedor, folio, revisión y el texto del OCR');
+  ok(stub.store.calls.some(x => x.action === 'saveState'), 'también se guardó la copia de seguridad');
 });
 
 await step('12d. Lo que se saca (Excel de la Carta Gantt) queda también en el Drive; preparar carpeta y ver lo guardado', async () => {

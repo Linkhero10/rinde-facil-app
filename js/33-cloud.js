@@ -92,7 +92,7 @@
       try {
         legacy = root.parseReceipt(rawText, engine || 'cloud_vision');
         var lr = legacy.rut_emisor && legacy.rut_emisor.normalized;
-        if (f.rutProveedor && lr && U.rutClean(lr) === U.rutClean(f.rutProveedor) && legacy.emisor && legacy.emisor.nombre_legal) f.proveedor = legacy.emisor.nombre_legal;
+        if (!f.proveedor && f.rutProveedor && lr && U.rutClean(lr) === U.rutClean(f.rutProveedor) && legacy.emisor && legacy.emisor.nombre_legal) f.proveedor = legacy.emisor.nombre_legal;
       } catch (e) { legacy = null; }
     }
     notes.push('Los números del OCR pueden tener un dígito equivocado aunque la confianza sea alta: compara el N° de documento y los montos con la foto.');
