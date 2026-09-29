@@ -108,7 +108,7 @@ const child = (f, n) => f.folders.find(x => x.name === n);
 test('archivar comprobante: carpeta del proyecto y del mes, idempotente', () => {
   const e = makeEnv({ RINDE_FACIL_ACCESS_KEY: 'k' });
   const payload = { action: 'saveFile', key: 'k', project: 'Invernadero 2026', mimeType: 'image/jpeg', base64: B64, fileName: 'a/b:c.jpg', issueDate: '2026-08-14' };
-  const a = e.call(payload); assert.equal(a.ok, true); assert.equal(a.folder, '2026-08'); assert.equal(a.idempotent, false);
+  const a = e.call(payload); assert.equal(a.ok, true, JSON.stringify(a)); assert.equal(a.folder, '2026-08'); assert.equal(a.idempotent, false);
   assert.match(a.where, /Invernadero 2026 . 4 Comprobantes . 2026-08/);
   const b = e.call(payload); assert.equal(b.idempotent, true); assert.equal(b.fileId, a.fileId);
   assert.equal(e.call(Object.assign({}, payload, { issueDate: '2026-13-01' })).error, 'FECHA_INVALIDA');
@@ -140,8 +140,28 @@ test('setup: arma la carpeta Rinde fácil con su orden y el LEEME, sin duplicar'
   e.call({ action: 'setup', key: 'k', project: 'Mi proyecto' });
   assert.equal(e.rootHolder.folders.length, 1, 'una sola carpeta raíz');
   const root = e.rootHolder.folders[0];
-  assert.deepEqual(root.folders.map(f => f.name).sort(), ['Copias de seguridad', 'Proyectos']);
+  assert.deepEqual(root.folders.map(f => f.name).sort(), ['Actas de mesas de trabajo', 'Copias de seguridad', 'Documentos oficiales', 'Proyectos']);
   assert.equal(root.files.filter(f => f.getName() === 'LEEME.txt').length, 1);
   const pr = child(child(root, 'Proyectos'), 'Mi proyecto');
   assert.deepEqual(pr.folders.map(f => f.name).sort(), ['1 Planificación', '2 Anexos y formularios', '3 Rendición', '4 Comprobantes']);
+});
+
+test('documentos oficiales y actas van a la raíz: por tipo y por mes, sin pisar versiones', () => {
+  const e = makeEnv({ RINDE_FACIL_ACCESS_KEY: 'k' });
+  const PDF = 'application/pdf', DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const a = e.call({ action: 'saveFile', key: 'k', category: 'oficial', subfolder: 'Actas de no objeción', fileName: '2026-09-12 · Acta de no objeción.pdf', mimeType: PDF, base64: B64 });
+  assert.equal(a.ok, true); assert.equal(a.where, 'Documentos oficiales / Actas de no objeción');
+  const B2 = Buffer.from('version corregida').toString('base64');
+  const b = e.call({ action: 'saveFile', key: 'k', category: 'oficial', subfolder: 'PEA y sus cambios', fileName: 'PEA corregido.docx', mimeType: DOCX, base64: B64 });
+  assert.equal(b.ok, true); assert.equal(b.where, 'Documentos oficiales / PEA y sus cambios');
+  const c = e.call({ action: 'saveFile', key: 'k', category: 'oficial', subfolder: 'PEA y sus cambios', fileName: 'PEA corregido.docx', mimeType: DOCX, base64: B2 });
+  assert.match(c.fileName, /PEA corregido \(20260929-101500\)\.docx/, 'una versión nueva no pisa la anterior');
+  assert.equal(e.call({ action: 'saveFile', key: 'k', category: 'oficial', fileName: 'sin tipo.pdf', mimeType: PDF, base64: B64 }).where, 'Documentos oficiales / Otros');
+  const t = e.call({ action: 'saveFile', key: 'k', category: 'acta', fileName: 'Acta mesa.pdf', mimeType: PDF, base64: B64, issueDate: '2026-09-20' });
+  assert.equal(t.where, 'Actas de mesas de trabajo / 2026-09');
+  assert.equal(e.call({ action: 'saveFile', key: 'k', category: 'acta', fileName: 'x.pdf', mimeType: PDF, base64: B64, issueDate: 'mal' }).error, 'FECHA_INVALIDA');
+  assert.equal(e.call({ action: 'saveFile', key: 'k', category: 'oficial', fileName: 'x.exe', mimeType: 'application/x-msdownload', base64: B64 }).error, 'TIPO_NO_PERMITIDO');
+  const root = e.rootHolder.folders[0];
+  assert.ok(child(child(child(root, 'Documentos oficiales'), 'Actas de no objeción'), 'x') === undefined);
+  assert.equal(child(root, 'Documentos oficiales').folders.length, 3);
 });

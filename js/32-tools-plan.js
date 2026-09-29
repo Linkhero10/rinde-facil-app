@@ -28,7 +28,7 @@
         { id: 'no_contribuyente', name: 'No soy contribuyente de IVA (rindo el valor total)' },
         { id: 'recupera', name: 'Soy contribuyente y recupero el IVA (rindo el valor neto)' },
         { id: 'no_usa', name: 'Soy contribuyente y NO uso el IVA (rindo el total con Anexo 1)' }],
-        hint: 'Manual p. 7. Si dudas, pregunta a tu contador o a SMI.' }));
+        hint: 'Manual p. 7. Si dudas, pregunta a tu contador o al Organismo Colaborador.' }));
     root.appendChild(UI.section('Tu comunidad', [comFields]));
 
     /* lista de proyectos */
@@ -186,26 +186,39 @@
   } };
 
   /* ================= PEA ================= */
-  TOOLS.pea = { title: 'PEA: los 3 documentos', icon: 'form', desc: 'Información general, un formulario por proyecto y presupuesto con Carta Gantt.', render: function () {
-    var c = ctx(), p = c.project; if (!p) return page('PEA', '', needProject(c));
-    var root = h('div');
-    var pd = L.peaDeadline(p, U.todayISO());
-    root.appendChild(UI.callout('info', 'Ojo:', ' estos documentos son un borrador para reunir y copiar tu información. No tenemos el formulario oficial del PEA, así que confirma el formato vigente con tu ejecutivo técnico o con SMI (Componente 3).'));
-    if (pd) root.appendChild(UI.callout(pd.diasRestantes < 0 ? 'bad' : pd.diasRestantes <= 15 ? 'warn' : 'ok', 'Plazo:', ' vence el ' + U.fmtDate(pd.fin) + (pd.diasRestantes >= 0 ? ' (faltan ' + pd.diasRestantes + ' días)' : ' (ya pasó; con prórroga hasta ' + U.fmtDate(pd.finProrroga) + ')') + '.'));
-    root.appendChild(h('h3', { class: 'sub-title' }, '1 · Información general del plan')); root.appendChild(RF.forms.renderSingle('peaGeneral', c));
-    root.appendChild(h('h3', { class: 'sub-title' }, '2 · Un formulario por proyecto')); root.appendChild(RF.forms.renderRepeat('peaProyecto', c));
-    root.appendChild(h('h3', { class: 'sub-title' }, '3 · Presupuesto y Carta Gantt'));
-    root.appendChild(UI.section('Estos dos documentos ya los armas en sus propias herramientas', [h('div', { class: 'row-actions' }, UI.btn('Abrir Carta Gantt', { icon: 'gantt', onclick: function () { location.hash = '#/h/gantt'; } }), UI.btn('Abrir Presupuesto', { icon: 'money', onclick: function () { location.hash = '#/h/presupuesto'; } }))]));
-    root.appendChild(UI.section('Todo el PEA en un solo documento', [UI.exportBar(function () {
+  function peaDoc(p, c) {
+
       var blocks = [], d1 = RF.forms.docOf('peaGeneral', RF.forms.getSingle(p, 'peaGeneral'), c);
       blocks.push({ t: 'h', text: '1. Información general' }); d1.blocks.forEach(function (b) { blocks.push(b); });
       RF.forms.getList(p, 'peaProyecto').forEach(function (it, i) { var d = RF.forms.docOf('peaProyecto', it.data, c); blocks.push({ t: 'h', text: '2.' + (i + 1) + ' ' + d.title }); d.blocks.forEach(function (b) { blocks.push(b); }); });
       var gd = ganttDoc(p, c.community); blocks.push({ t: 'h', text: '3a. Carta Gantt' }); gd.blocks.forEach(function (b) { blocks.push(b); });
       var bd = budgetDoc(p, c.community); blocks.push({ t: 'h', text: '3b. Presupuesto' }); bd.blocks.forEach(function (b) { blocks.push(b); });
       return { title: 'Programa de Ejecución de Actividades (PEA)', subtitle: (c.community.name || 'Comunidad') + ' · ' + (p.name || ''), sheet: 'PEA', footer: 'Borrador generado con Rinde Fácil. No es el formulario oficial de CORFO.', blocks: blocks };
-    }, 'pea-completo')]));
+    
+  }
+
+  TOOLS.pea = { title: 'PEA: los 3 documentos', icon: 'form', desc: 'Información general, un formulario por proyecto y presupuesto con Carta Gantt.', render: function () {
+    var c = ctx(), p = c.project; if (!p) return page('PEA', '', needProject(c));
+    var root = h('div');
+    var pd = L.peaDeadline(p, U.todayISO());
+    root.appendChild(UI.callout('info', 'Ojo:', ' estos documentos son un borrador para reunir y copiar tu información. No tenemos el formulario oficial del PEA, así que confirma el formato vigente con tu ejecutivo técnico o con el Organismo Colaborador (Componente 3).'));
+    if (pd) root.appendChild(UI.callout(pd.diasRestantes < 0 ? 'bad' : pd.diasRestantes <= 15 ? 'warn' : 'ok', 'Plazo:', ' vence el ' + U.fmtDate(pd.fin) + (pd.diasRestantes >= 0 ? ' (faltan ' + pd.diasRestantes + ' días)' : ' (ya pasó; con prórroga hasta ' + U.fmtDate(pd.finProrroga) + ')') + '.'));
+    root.appendChild(h('h3', { class: 'sub-title' }, '1 · Información general del plan')); root.appendChild(RF.forms.renderSingle('peaGeneral', c));
+    root.appendChild(h('h3', { class: 'sub-title' }, '2 · Un formulario por proyecto')); root.appendChild(RF.forms.renderRepeat('peaProyecto', c));
+    root.appendChild(h('h3', { class: 'sub-title' }, '3 · Presupuesto y Carta Gantt'));
+    root.appendChild(UI.section('Estos dos documentos ya los armas en sus propias herramientas', [h('div', { class: 'row-actions' }, UI.btn('Abrir Carta Gantt', { icon: 'gantt', onclick: function () { location.hash = '#/h/gantt'; } }), UI.btn('Abrir Presupuesto', { icon: 'money', onclick: function () { location.hash = '#/h/presupuesto'; } }))]));
+    root.appendChild(UI.section('Todo el PEA en un solo documento', [UI.exportBar(function () { return peaDoc(p, c); }, 'pea-completo')]));
     return page('PEA: los 3 documentos', 'El PEA se compone de información general, un formulario por proyecto y el presupuesto con la Carta Gantt.', root);
   } };
+
+  function reitemDoc(p, c) {
+    var r = p.reitem;
+
+      return { title: r.tipo === 'reprog' ? 'Solicitud de reprogramación' : 'Solicitud de reitemización', subtitle: (p.name || '') + (p.code ? ' · ' + p.code : ''), sheet: 'Cambios PEA', footer: 'Borrador generado con Rinde Fácil. Envíalo a tu ejecutivo técnico de CORFO (con apoyo del Organismo Colaborador si quieres).', blocks: [
+        { t: 'p', text: 'Comunidad: ' + (c.community.name || '') }, { t: 'h', text: 'Motivo' }, { t: 'p', text: r.motivo || '' }, { t: 'h', text: 'Cambios' },
+        { t: 'table', head: ['Cuenta', 'Ítem o actividad', 'Monto actual ($)', 'Monto nuevo ($)', 'Diferencia ($)'], types: ['text', 'text', 'money', 'money', 'money'], rows: r.rows.map(function (x) { return [(D.CUENTA_BY_ID[x.cuenta] || {}).name, x.item, num(x.actual), num(x.nuevo), num(x.nuevo) - num(x.actual)]; }), foot: ['Total', '', 'SUM', 'SUM', 'SUM'] }, { t: 'sign', labels: [c.community.legalRep || 'Representante de la comunidad'] }] };
+    
+  }
 
   /* ================= Cambios al PEA (reitemización) ================= */
   TOOLS.reitem = { title: 'Cambios al PEA', icon: 'edit', desc: 'Mueve montos entre cuentas o cambia fechas y explica por qué.', render: function () {
@@ -242,13 +255,17 @@
     root.appendChild(UI.callout('info', 'Recuerda:', ' si solo cambian los plazos se llama reprogramación; si cambian actividades o presupuesto, reitemización. No gastes bajo el nuevo detalle hasta que CORFO lo apruebe.'));
     root.appendChild(UI.section('Qué cambia', [UI.field('Tipo de cambio', r, 'tipo', { type: 'select', options: [{ id: 'reitem', name: 'Reitemización (actividades o presupuesto)' }, { id: 'reprog', name: 'Reprogramación (solo fechas)' }], noEmpty: true }), body, chk]));
     root.appendChild(UI.section('Por qué', [UI.field('Motivo del cambio', r, 'motivo', { type: 'textarea', rows: 4, cls: 'wide', onChange: check, hint: 'Explica qué actividad, monto o ítem del PEA vigente se ve afectado.' })]));
-    root.appendChild(UI.section('Sacar la solicitud', [UI.exportBar(function () {
-      return { title: r.tipo === 'reprog' ? 'Solicitud de reprogramación' : 'Solicitud de reitemización', subtitle: (p.name || '') + (p.code ? ' · ' + p.code : ''), sheet: 'Cambios PEA', footer: 'Borrador generado con Rinde Fácil. Envíalo a tu ejecutivo técnico de CORFO (con apoyo de SMI si quieres).', blocks: [
-        { t: 'p', text: 'Comunidad: ' + (c.community.name || '') }, { t: 'h', text: 'Motivo' }, { t: 'p', text: r.motivo || '' }, { t: 'h', text: 'Cambios' },
-        { t: 'table', head: ['Cuenta', 'Ítem o actividad', 'Monto actual ($)', 'Monto nuevo ($)', 'Diferencia ($)'], types: ['text', 'text', 'money', 'money', 'money'], rows: r.rows.map(function (x) { return [(D.CUENTA_BY_ID[x.cuenta] || {}).name, x.item, num(x.actual), num(x.nuevo), num(x.nuevo) - num(x.actual)]; }), foot: ['Total', '', 'SUM', 'SUM', 'SUM'] }, { t: 'sign', labels: [c.community.legalRep || 'Representante de la comunidad'] }] };
-    }, 'cambios-pea')]));
+    root.appendChild(UI.section('Sacar la solicitud', [UI.exportBar(function () { return reitemDoc(p, c); }, 'cambios-pea')]));
     return page('Cambios al PEA', 'Si necesitas mover plata entre cuentas o cambiar fechas, se pide antes de gastar.', root);
   } };
+
+  function cotDoc(p) {
+
+      var blocks = [];
+      p.cotizaciones.forEach(function (cq, i) { blocks.push({ t: 'h', text: (i + 1) + '. ' + (cq.descripcion || 'Compra') + ' · neto ' + U.fmtCLP(num(cq.neto)) }); blocks.push({ t: 'table', head: ['Proveedor', 'Monto neto ($)', 'Fecha'], types: ['text', 'money', 'date'], rows: (cq.cots || []).map(function (x) { return [x.proveedor, num(x.monto), x.fecha]; }) }); blocks.push({ t: 'p', text: 'Elección y motivo: ' + (cq.justificacion || '') + ' · ' + status(cq).msg }); });
+      return { title: 'Cuadro comparativo de cotizaciones', subtitle: p.name, sheet: 'Cotizaciones', footer: 'Generado con Rinde Fácil. Guárdalo en el expediente junto con las cotizaciones originales.', blocks: blocks };
+    
+  }
 
   /* ================= Cotizaciones ================= */
   TOOLS.cotizaciones = { title: 'Cotizaciones', icon: 'scale', desc: 'Compara cotizaciones. Sobre $10 M netos se piden 2 de proveedores distintos.', render: function () {
@@ -289,11 +306,7 @@
     paint();
     root.appendChild(UI.callout('info', 'Regla (Manual p. 8):', ' sobre $10.000.000 netos se piden al menos 2 cotizaciones de proveedores distintos y no relacionados, salvo servicios técnico-profesionales. Con una o ninguna, pide autorización a CORFO antes de comprar. No dividas la compra para evitar el umbral.'));
     root.appendChild(UI.section('Tus compras', [body]));
-    root.appendChild(UI.section('Sacar el cuadro comparativo', [UI.exportBar(function () {
-      var blocks = [];
-      p.cotizaciones.forEach(function (cq, i) { blocks.push({ t: 'h', text: (i + 1) + '. ' + (cq.descripcion || 'Compra') + ' · neto ' + U.fmtCLP(num(cq.neto)) }); blocks.push({ t: 'table', head: ['Proveedor', 'Monto neto ($)', 'Fecha'], types: ['text', 'money', 'date'], rows: (cq.cots || []).map(function (x) { return [x.proveedor, num(x.monto), x.fecha]; }) }); blocks.push({ t: 'p', text: 'Elección y motivo: ' + (cq.justificacion || '') + ' · ' + status(cq).msg }); });
-      return { title: 'Cuadro comparativo de cotizaciones', subtitle: p.name, sheet: 'Cotizaciones', footer: 'Generado con Rinde Fácil. Guárdalo en el expediente junto con las cotizaciones originales.', blocks: blocks };
-    }, 'cotizaciones')]));
+    root.appendChild(UI.section('Sacar el cuadro comparativo', [UI.exportBar(function () { return cotDoc(p); }, 'cotizaciones')]));
     return page('Cotizaciones', 'Prueba que pagaste un precio de mercado.', root);
   } };
 
@@ -380,5 +393,5 @@
   formTool('peaGeneral', 'form', 'PEA · información general.', '');
   formTool('peaProyecto', 'form', 'PEA · un formulario por proyecto.', '');
 
-  RF.plan = { ganttDoc: ganttDoc, budgetDoc: budgetDoc, ganttMonths: ganttMonths };
+  RF.plan = { ganttDoc: ganttDoc, budgetDoc: budgetDoc, ganttMonths: ganttMonths, peaDoc: peaDoc, reitemDoc: reitemDoc, cotDoc: cotDoc };
 })(typeof window !== 'undefined' ? window : globalThis);

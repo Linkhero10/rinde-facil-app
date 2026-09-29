@@ -351,9 +351,9 @@ await step('15. Inicio con avance, siguiente paso y diagrama por actor', async (
   await page.waitForSelector('.hero');
   ok(await page.locator('.phase-card').count() === 6, 'seis fases');
   ok(await page.locator('.fstep').count() === 31, 'diagrama con 31 nodos');
-  await page.locator('.fchip', { hasText: 'SMI' }).click();
+  await page.locator('.fchip', { hasText: 'Organismo Colaborador' }).click();
   const live = await page.locator('.fstep:not(.dim)').evaluateAll(els => els.map(e => e.dataset.id));
-  eq(live.join(','), '10,20,24', 'SMI solo aparece en 10, 20 y 24');
+  eq(live.join(','), '10,20,24', 'el Organismo Colaborador solo aparece en 10, 20 y 24');
   await page.locator('.fstep[data-id="23"]').click();
   ok(/10 días hábiles/.test(await page.textContent('.inspector')) && /única vez/.test(await page.textContent('.inspector')), 'paso 23 con plazo y única vez');
   await shot('15-home-flow');
@@ -394,6 +394,93 @@ await step('15b. Buscador: «/» lo abre, «gasto» muestra la ruta Herramientas
   await page.waitForFunction(() => /^#\/t\//.test(location.hash));
   await page.waitForTimeout(300);
   ok(await page.locator('main mark.search-hit').count() > 0, 'marca el paso encontrado');
+});
+
+await step('15c. Qué necesitará tu proyecto: solo se muestran los trámites que te tocan; los pasos traen botones a su documento', async () => {
+  await go('#/h/necesidades');
+  ok(/Todavía no marcas nada/.test(await page.textContent('.tool-page')), 'al inicio muestra todo');
+  const f4Before = await page.locator('.side .acc-head', { hasText: 'Gastos y respaldos' }).textContent();
+  await page.getByLabel(/Viajes, pasajes o viáticos/).check();
+  await page.waitForTimeout(250);
+  ok(/Te tocan\s*\d+\s*de\s*\d+ trámites/.test((await page.textContent('.tool-page')).replace(/\s+/g, ' ')), 'cuenta los trámites que le tocan');
+  const f4After = await page.locator('.side .acc-head', { hasText: 'Gastos y respaldos' }).textContent();
+  ok(f4Before !== f4After, 'la barra lateral cambia: ' + f4Before + ' → ' + f4After);
+  await go('#/t/TRM-010');
+  ok(/no te toca por ahora/i.test(await page.textContent('.view')), 'el trámite de administración avisa que no toca');
+  await go('#/t/TRM-011');
+  ok(!/no te toca por ahora/i.test(await page.textContent('.view')), 'el de viáticos sí toca');
+  const rell = page.locator('.step-docs a', { hasText: 'Rellenar · Anexo 4' });
+  ok(await rell.count() >= 1, 'un paso que pide llenar el Anexo 4 trae el botón');
+  await page.locator('.step-docs button', { hasText: 'Ver formato' }).first().click();
+  await page.waitForSelector('.print-overlay iframe');
+  await page.waitForTimeout(300);
+  const txt = await page.frameLocator('.print-overlay iframe').locator('body').textContent();
+  ok(/viático/i.test(txt), 'muestra el formato del certificado');
+  await shot('15c-formato');
+  await page.locator('.print-overlay button', { hasText: 'Cerrar' }).click();
+  await rell.first().click();
+  await page.waitForFunction(() => /^#\/h\/anexo4/.test(location.hash));
+  await page.waitForSelector('.view.tool .back', { timeout: 5000 });
+  ok(/Volver a:/.test(await page.textContent('.view')), 'permite volver al trámite');
+  /* agregar algo después de aprobado el PEA */
+  await go('#/h/necesidades');
+  await page.getByLabel('Mi PEA ya fue aprobado por CORFO').check();
+  await page.waitForTimeout(200);
+  await page.getByLabel(/Comprar terreno, inmueble o derechos de agua/).check();
+  await page.waitForTimeout(250);
+  ok(/Esto no estaba en tu PEA aprobado/.test(await page.textContent('.tool-page')), 'avisa que hay que modificar el PEA');
+  ok(/reitemización/.test(await page.textContent('.warn-card')) && /asamblea/.test(await page.textContent('.warn-card')), 'explica el camino');
+  await shot('15c-necesidades');
+});
+
+await step('15d. Documentos oficiales: subir el acta de no objeción; queda registrada y en el Drive (servicio de prueba)', async () => {
+  await go('#/h/documentos');
+  await page.getByRole('button', { name: 'Agregar un documento' }).first().click();
+  await page.locator('.file-pick input[type=file]').setInputFiles(FIXTURE);
+  await page.getByLabel('¿Qué documento es?').selectOption('acta_no_objecion');
+  await page.waitForTimeout(150);
+  ok(/Este documento cambia algo del PEA/.test(await page.textContent('.tool-page')), 'el acta de no objeción sugiere que cambia el PEA');
+  await page.getByLabel('Presupuesto').check();
+  await page.getByLabel('Nota (opcional)').fill('CORFO autoriza agregar una actividad.');
+  await page.getByRole('button', { name: 'Guardar el documento' }).click();
+  await page.waitForSelector('table.list-grid');
+  await page.waitForTimeout(800);
+  ok(/Acta de No Objeción/.test(await page.textContent('table.list-grid')), 'aparece en la lista');
+  ok(/Cambios al PEA: qué falta hacer/.test(await page.textContent('.tool-page')), 'queda en el historial de cambios al PEA');
+  const o = stub.store.calls.filter(x => x.action === 'saveFile' && x.category === 'oficial');
+  eq(o.length, 2, 'archivo y ficha en el Drive');
+  eq(o[0].mimeType, 'image/jpeg');
+  ok(o.every(x => x.subfolder === 'Actas de no objeción'), 'va a la carpeta de su tipo');
+  const ficha = o.find(x => /\.datos\.txt$/.test(x.fileName));
+  ok(/Qué cambia: presupuesto/.test(ficha.text) && /Acta de No Objeción/.test(ficha.text), 'la ficha dice qué cambia');
+  await page.getByLabel('Ya lo configuré en SGP').check();
+  await page.getByLabel('Ya actualicé mi Carta Gantt y presupuesto').check();
+  await page.waitForTimeout(250);
+  ok(/Al día/.test(await page.textContent('.timeline')), 'al terminar los dos pasos queda al día');
+  await shot('15d-documentos');
+});
+
+await step('15e. Actas de mesas de trabajo: aviso de asistencia mínima, compromisos pendientes y Drive', async () => {
+  await go('#/h/actas');
+  await page.getByRole('button', { name: 'Agregar un acta' }).click();
+  await page.getByLabel('Representantes de CORFO').fill('1');
+  await page.waitForTimeout(150);
+  ok(/al menos dos representantes/.test(await page.textContent('.tool-page')), 'avisa el mínimo de asistentes');
+  await page.getByLabel('Representantes de CORFO').fill('2'); await page.getByLabel('Representantes de la comunidad').fill('3'); await page.getByLabel('Representantes del Organismo Colaborador').fill('2');
+  await page.getByLabel('Temas tratados').fill('Cambio de cronograma del proyecto.');
+  await page.getByRole('button', { name: 'Agregar un acuerdo' }).click();
+  await page.getByLabel('Acuerdo o compromiso').fill('Enviar el PEA corregido');
+  await page.locator('.file-pick input[type=file]').setInputFiles(FIXTURE);
+  await page.getByRole('button', { name: 'Guardar el acta' }).click();
+  await page.waitForSelector('table.list-grid');
+  await page.waitForTimeout(800);
+  ok(/Compromisos pendientes \(1\)/.test(await page.textContent('.tool-page')), 'lista el compromiso pendiente');
+  ok(/Organismo Colaborador/.test(await page.textContent('table.list-grid')), 'habla del Organismo Colaborador');
+  ok(!/\bSMI\b/.test(await page.textContent('.tool-page')), 'no menciona SMI');
+  const a = stub.store.calls.filter(x => x.action === 'saveFile' && x.category === 'acta');
+  ok(a.length === 2 && a.every(x => /^\d{4}-\d{2}-\d{2}$/.test(x.issueDate)), 'archivo y ficha en Actas de mesas de trabajo');
+  ok(/Enviar el PEA corregido/.test(a.find(x => /\.datos\.txt$/.test(x.fileName)).text), 'la ficha trae los acuerdos');
+  await shot('15e-actas');
 });
 
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });

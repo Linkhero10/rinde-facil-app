@@ -7,7 +7,7 @@
     { id: 'corfo', name: 'CORFO', full: 'Corporación de Fomento de la Producción' },
     { id: 'comunidad', name: 'Comunidad', full: 'Titular del convenio' },
     { id: 'novandina', name: 'Novandina (ex SQM)', full: 'Transfiere el dinero del AIA' },
-    { id: 'smi', name: 'SMI', full: 'Organismo Colaborador: apoya si la comunidad lo pide' }
+    { id: 'smi', name: 'Organismo Colaborador', full: 'Apoya a la comunidad si ella lo pide' }
   ];
 
   var FASES = [

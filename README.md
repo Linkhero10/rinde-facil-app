@@ -30,7 +30,7 @@ Abre `http://127.0.0.1:8790/index.html`. En celular funciona igual y se puede «
 
 ## Servicio en la nube (OCR y copias)
 
-`backend/WebApi.gs` va en el proyecto de Apps Script de **cada comunidad** (junto a `CloudOcrAdapter.gs` del bundle de Rinde fácil). Decisión vigente (25-sep-2026): cada comunidad tiene su propio Google Workspace; nada pasa por un servidor de SMI.
+`backend/WebApi.gs` va en el proyecto de Apps Script de **cada comunidad** (junto a `CloudOcrAdapter.gs` del bundle de Rinde fácil). Decisión vigente (25-sep-2026): cada comunidad tiene su propio Google Workspace; nada pasa por un servidor central.
 
 1. Copiar `WebApi.gs` al proyecto (el bundle ya trae `CloudOcrAdapter.gs` y los permisos de Drive y Cloud Vision).
 2. Propiedades de la secuencia de comandos: `RINDE_FACIL_ACCESS_KEY` (una clave larga), `RINDE_FACIL_GCP_PROJECT_ID`, `RINDE_FACIL_OCR_PROVIDER=cloud_vision`; opcionales `RINDE_FACIL_ROOT_FOLDER_ID` y `RINDE_FACIL_OCR_DAILY_LIMIT`.
@@ -74,3 +74,21 @@ test/                     pruebas
 ## Fuentes
 
 Manual de presentación de informes y rendición (CORFO), Flujograma proceso comunidades, «Introducción al Acuerdo», presentaciones de configuración y de rendición, e inventario `_FARO/07_evaluaciones/inventario_tramites_corfo.json` (29 trámites). Cada trámite conserva su fuente; el Manual manda sobre las presentaciones (decisión del 27-sep-2026).
+
+## Novedades de la versión con documentos oficiales
+
+- **Qué necesitará tu proyecto** (`js/12-needs.js`, `js/38-tools-needs.js`): la comunidad marca viáticos, insumos, inmuebles, etc. y la app muestra solo los trámites que le tocan. El avance se cuenta en trámites (no en pasos). Lo que no estaba en el PEA aprobado se anota como cambio y se avisa que conviene modificar el PEA (reitemización o reprogramación).
+- **Botones en cada paso** (`STEP_TOOLS` en `12-needs.js`): «Rellenar» abre la herramienta por casillas y «Ver formato» muestra el documento como queda, sin salir del trámite.
+- **Documentos oficiales y actas de mesas de trabajo** (`js/37-repo.js`): registro de lo que llega de CORFO (PEA corregido, acta de no objeción, resoluciones…) con la marca «¿cambia el PEA?», y de las actas de las mesas (asistencia mínima, acuerdos y plazos). Se guardan en el dispositivo y en el Drive de la comunidad.
+- En toda la app se habla del **Organismo Colaborador** (no de la institución que hoy cumple ese rol).
+
+Carpeta que arma `backend/WebApi.gs` (versión 2.3.0) en el Drive de la comunidad:
+
+```
+Rinde fácil/
+  LEEME.txt
+  Documentos oficiales/<tipo>/          (PEA y sus cambios, Actas de no objeción, Resoluciones y oficios…)
+  Actas de mesas de trabajo/AAAA-MM/
+  Copias de seguridad/
+  Proyectos/<proyecto>/{1 Planificación, 2 Anexos y formularios, 3 Rendición, 4 Comprobantes/AAAA-MM}
+```

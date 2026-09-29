@@ -203,19 +203,38 @@
 
   /* ---------- avance por trámite / fase ---------- */
   function itemSteps(tid) { var t = RF.tramites.byId[tid]; return t ? t.steps.length : 0; }
+  /* ---------- qué trámites le tocan a este proyecto (según «Qué necesitará tu proyecto») ---------- */
+  function needsAnswered(p) { return !!(p && p.needsSet); }
+  function effectiveNeeds(p, community) {
+    var out = {}, sel = (p && p.needs) || {};
+    Object.keys(sel).forEach(function (k) { if (sel[k]) out[k] = true; });
+    var dv = RF.needs ? RF.needs.derivedFromExpenses(p || {}) : {}; Object.keys(dv).forEach(function (k) { out[k] = true; }); /* lo que ya gastó también cuenta */
+    var com = community || (RF.store && RF.store.get && RF.store.get().community) || {};
+    if (com.ivaModo === 'no_usa') out.iva_no = true;
+    return out;
+  }
+  function applies(p, tid, community) {
+    var map = RF.needs && RF.needs.APPLIES[tid];
+    if (!map || !needsAnswered(p)) return true;
+    if (p.show && p.show[tid]) return true; /* «me toca igual» */
+    var eff = effectiveNeeds(p, community);
+    return map.some(function (k) { return !!eff[k]; });
+  }
   function itemProgress(project, tid) {
     var n = itemSteps(tid), done = 0;
-    if (project && project.na && project.na[tid]) return { done: n, total: n, na: true, complete: true };
+    if (project && project.na && project.na[tid]) return { done: 0, total: 0, na: true, complete: true };
+    if (project && project.needsSet && !applies(project, tid)) return { done: 0, total: 0, na: true, auto: true, complete: true };
     for (var i = 0; i < n; i++) if (project && project.done[tid + ':' + i]) done++;
     return { done: done, total: n, na: false, complete: n > 0 && done === n };
   }
   function progress(project) {
-    var porFase = {}, total = 0, done = 0, next = null, cur = null;
+    var porFase = {}, total = 0, done = 0, tramTotal = 0, tramDone = 0, next = null, cur = null;
     D.FASES.forEach(function (f) {
-      var d = 0, t = 0, started = false, complete = true;
+      var d = 0, t = 0, td = 0, tt = 0, started = false, complete = true;
       f.items.forEach(function (tid) {
         var ip = itemProgress(project, tid);
         d += ip.done; t += ip.total;
+        if (!ip.na) { tt++; if (ip.complete) td++; }
         if (ip.done > 0 && !ip.na) started = true;
         if (!ip.complete) {
           complete = false;
@@ -225,11 +244,11 @@
           }
         }
       });
-      porFase[f.id] = { done: d, total: t, started: started, complete: complete };
-      total += t; done += d;
+      porFase[f.id] = { done: d, total: t, tramDone: td, tramTotal: tt, started: started, complete: complete };
+      total += t; done += d; tramTotal += tt; tramDone += td;
       if (!cur && !complete) cur = f.id;
     });
-    return { porFase: porFase, done: done, total: total, next: next, faseActual: cur || 'F6', pct: total ? Math.round(done * 100 / total) : 0 };
+    return { porFase: porFase, done: done, total: total, tramDone: tramDone, tramTotal: tramTotal, next: next, faseActual: cur || 'F6', pct: total ? Math.round(done * 100 / total) : 0 };
   }
   function skippedPhases(project) {
     var prog = progress(project), out = [];
@@ -266,6 +285,22 @@
     else if (project.end < project.start) add(g1, 'error', 'El término del proyecto es anterior al inicio.', { tool: 'proyecto' });
     if (!project.periodoInicio || !project.periodoFin) add(g1, 'info', 'Indica el período que estás rindiendo para poder revisar las fechas.', { tool: 'proyecto' });
     if (!g1.items.length) add(g1, 'ok', 'Datos del proyecto completos.');
+
+    /* 1b. Lo que planeó frente a lo que gasta */
+    if (needsAnswered(project)) {
+      var gp = grp('plan', 'Lo que planeaste'), dv = RF.needs.derivedFromExpenses(project), sel = project.needs || {};
+      Object.keys(dv).forEach(function (k) {
+        if (sel[k]) return;
+        add(gp, 'warn', 'Anotaste gastos de «' + RF.needs.BY_ID[k].name + '» que no marcaste en «Qué necesitará tu proyecto».' + (project.peaAprobado ? ' Tu PEA ya está aprobado: si no estaba en el PEA, conviene pedir el cambio antes de rendirlo.' : ''), { tool: 'necesidades' });
+      });
+      (project.needsAdded || []).forEach(function (a) {
+        var nd = RF.needs.BY_ID[a.id]; add(gp, 'warn', 'Agregaste «' + (nd ? nd.name : a.id) + '» después de aprobado el PEA (' + U.fmtDate(String(a.at).slice(0, 10)) + '). Pide la modificación del PEA y guarda la respuesta de CORFO en «Documentos».', { tool: 'reitem' });
+      });
+      (project.needsCustom || []).forEach(function (c) {
+        if (project.peaAprobado) add(gp, 'warn', 'Agregaste «' + c.name + '», que no estaba en tu PEA aprobado. Conviene pedir la modificación del PEA.', { tool: 'reitem' });
+      });
+      if (!gp.items.length) add(gp, 'ok', 'Lo que gastas coincide con lo que planeaste.');
+    }
 
     /* 2. Plazos */
     var g2 = grp('plazos', 'Plazos');
@@ -391,6 +426,6 @@
     totalsByCuenta: totalsByCuenta, adminByMonth: adminByMonth, expensesByActivity: expensesByActivity, budgetByActivity: budgetByActivity,
     allActivities: allActivities, ganttIssues: ganttIssues, activityDays: activityDays,
     peaDeadline: peaDeadline, aclaracionDeadline: aclaracionDeadline,
-    itemProgress: itemProgress, progress: progress, skippedPhases: skippedPhases, reconcile: reconcile
+    itemProgress: itemProgress, applies: applies, needsAnswered: needsAnswered, effectiveNeeds: effectiveNeeds, progress: progress, skippedPhases: skippedPhases, reconcile: reconcile
   };
 })(typeof window !== 'undefined' ? window : globalThis);

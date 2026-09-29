@@ -107,6 +107,9 @@
     verificador: ['¿Se puede pagar esto?', 'Verificar un gasto'],
     cuentas: ['¿En qué cuenta va?', 'Recursos humanos', 'Gastos operacionales', 'Inversión', 'Administración'],
     nofinanciable: ['Gastos no financiables', 'Lo que no se puede pagar con el aporte'],
+    necesidades: ['Qué necesitará tu proyecto', 'Sueldos', 'Honorarios', 'Insumos', 'Viáticos', 'Inmuebles', 'Pagos en efectivo', 'Mi PEA ya está aprobado', 'Agregar algo que no estaba en el PEA', 'Trámites que te tocan'],
+    documentos: ['Subir un documento', 'PEA corregido por CORFO', 'Acta de No Objeción', 'Acta de asamblea', 'Resolución u oficio', 'Observaciones de CORFO', '¿Cambia el PEA?', 'Cambios al PEA: qué falta hacer', 'Trazabilidad', 'Registro de documentos'],
+    actas: ['Mesa de Trabajo', 'Acta firmada', 'Asistentes de CORFO, la comunidad y el Organismo Colaborador', 'Acuerdos y compromisos', 'Compromisos pendientes', 'Estado del acta', 'Revisada por CORFO'],
     nube: ['Dirección del servicio', 'Clave de acceso', 'Probar conexión', 'Guardar copia en la nube', 'Traer la copia de la nube', 'Carpeta Rinde fácil en tu Drive', 'Descargar copia', 'Cargar una copia', 'Borrar todo', 'Google Drive', 'Google Cloud Vision', 'Lectura automática de fotos']
   };
   var REGLAS = [

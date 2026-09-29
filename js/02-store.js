@@ -14,15 +14,16 @@
       start: '', end: '', desembolso1: '', periodoInicio: '', periodoFin: '',
       budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: 0 },
       done: {}, gantt: { stages: [] }, budgetLines: [], expenses: [], forms: {}, pea: { general: {}, proyecto: {} },
-      observations: [], cotizaciones: [], reitem: { rows: [], motivo: '' }, notes: '', createdAt: new Date().toISOString()
+      observations: [], cotizaciones: [], reitem: { rows: [], motivo: '' }, notes: '',
+      needs: {}, needsSet: false, peaAprobado: false, peaAprobadoAt: '', needsPea: null, needsAdded: [], needsCustom: [], show: {}, createdAt: new Date().toISOString()
     };
   }
   function defaults() {
     return {
       v: 2,
-      community: { name: '', rut: '', address: '', legalRep: '', repRut: '', email: '', phone: '', ivaModo: 'no_contribuyente', oc: 'SMI-Chile' },
+      community: { name: '', rut: '', address: '', legalRep: '', repRut: '', email: '', phone: '', ivaModo: 'no_contribuyente', oc: '' },
       cloud: { apiUrl: '', key: '', lastSync: null, autoSave: true, rootUrl: '', saves: [] },
-      holidays: [], projects: [], activeProjectId: null,
+      holidays: [], projects: [], activeProjectId: null, repo: { docs: [], actas: [] },
       ui: { theme: 'system', open: {} }
     };
   }
@@ -31,9 +32,11 @@
     if (!s || typeof s !== 'object') return d;
     var out = Object.assign({}, d, s);
     out.community = Object.assign({}, d.community, s.community || {});
+    if (/^SMI/i.test(out.community.oc || '')) out.community.oc = ''; /* el organismo se nombra por su rol, no por la institución */
     out.cloud = Object.assign({}, d.cloud, s.cloud || {});
     out.ui = Object.assign({}, d.ui, s.ui || {});
     out.holidays = Array.isArray(s.holidays) ? s.holidays : [];
+    out.repo = { docs: Array.isArray(s.repo && s.repo.docs) ? s.repo.docs : [], actas: Array.isArray(s.repo && s.repo.actas) ? s.repo.actas : [] };
     out.projects = (Array.isArray(s.projects) ? s.projects : []).map(function (p) {
       var np = Object.assign(newProject(p && p.name), p);
       np.budgetApproved = Object.assign({ rrhh: 0, operacion: 0, inversion: 0, administracion: 0 }, p.budgetApproved || {});
@@ -43,6 +46,8 @@
       np.done = p.done && typeof p.done === 'object' ? p.done : {};
       np.pea = Object.assign({ general: {}, proyecto: {} }, p.pea || {});
       np.reitem = Object.assign({ rows: [], motivo: '' }, p.reitem || {});
+      np.needs = p.needs && typeof p.needs === 'object' ? p.needs : {}; np.show = p.show && typeof p.show === 'object' ? p.show : {};
+      ['needsAdded', 'needsCustom'].forEach(function (k) { if (!Array.isArray(np[k])) np[k] = []; });
       return np;
     });
     if (!out.projects.some(function (p) { return p.id === out.activeProjectId; })) {

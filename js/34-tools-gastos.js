@@ -296,7 +296,7 @@
       body.appendChild(UI.btn('Agregar observación', { icon: 'plus', cls: 'primary', onclick: function () { p.observations.push({ id: U.uid('o'), titulo: '', recibida: U.todayISO(), gastos: '', detalle: '', respuesta: '', respondida: false }); silent(); paint(); } }));
     }
     paint();
-    root.appendChild(UI.callout('info', 'Recuerda (Manual p. 10):', ' la aclaración se hace por única vez y en un máximo de 10 días hábiles desde la comunicación. Si no envías la aclaración a tiempo, los gastos observados se rechazan. SMI puede apoyarte.'));
+    root.appendChild(UI.callout('info', 'Recuerda (Manual p. 10):', ' la aclaración se hace por única vez y en un máximo de 10 días hábiles desde la comunicación. Si no envías la aclaración a tiempo, los gastos observados se rechazan. El Organismo Colaborador puede apoyarte.'));
     root.appendChild(UI.section('Tus observaciones', [body]));
     root.appendChild(UI.section('Sacar las respuestas', [UI.exportBar(function () { return { title: 'Respuesta a observaciones de CORFO', subtitle: (p.name || '') + (p.code ? ' · ' + p.code : ''), sheet: 'Observaciones', footer: 'Generado con Rinde Fácil.', blocks: p.observations.map(function (o, i) { return { t: 'kv', rows: [[(i + 1) + '. Observación', o.titulo], ['Comunicada el', o.recibida ? U.fmtDate(o.recibida) : ''], ['Gastos afectados', o.gastos], ['Qué pidió CORFO', o.detalle], ['Aclaración de la comunidad', o.respuesta]] }; }) }; }, 'observaciones')]));
     return page('Observaciones de CORFO', 'Cuenta tus días y ordena tu respuesta.', root);

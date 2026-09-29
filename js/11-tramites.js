@@ -18,16 +18,16 @@
       tools: ['proyecto'], img: [['flujograma_overview.jpg', 'Flujograma oficial, pasos 4 y 5']], src: ['Flujograma, pasos 4 y 5'] },
 
     /* ---------- Fase 2: PEA ---------- */
-    { id: 'TRM-027', fase: 'F2', title: 'Armar el PEA', why: 'El PEA (Programa de Ejecución de Actividades) explica qué proyectos harás, con qué plazos y presupuesto.', who: 'comunidad', when: '90 días corridos desde el primer pago (se puede prorrogar 30 días, una vez)', need: ['Primer pago recibido', 'Ideas de proyectos', 'Apoyo de SMI (opcional)'],
-      steps: ['Espera que CORFO active el plazo de 90 días.', 'Si necesitas ayuda, pídela a SMI antes de redactar (Componente 3).', 'Arma los 3 documentos: información general, un formulario por proyecto y el presupuesto con la Carta Gantt.', 'Envía el PEA a CORFO. Si lo observan, corrígelo y reenvíalo.', 'Si no alcanzas, pide la prórroga (una sola vez, hasta 30 días) antes de que venza.'],
-      tools: ['pea', 'gantt', 'presupuesto'], img: [['flujograma_overview.jpg', 'Flujograma oficial, pasos 6 a 14']], src: ['Flujograma, pasos 6 a 14', '«Introducción al Acuerdo», diapositiva 2'] },
+    { id: 'TRM-027', fase: 'F2', title: 'Armar el PEA', why: 'El PEA (Programa de Ejecución de Actividades) explica qué proyectos harás, con qué plazos y presupuesto.', who: 'comunidad', when: '90 días corridos desde el primer pago (se puede prorrogar 30 días, una vez)', need: ['Primer pago recibido', 'Ideas de proyectos', 'Apoyo del Organismo Colaborador (opcional)'],
+      steps: ['Espera que CORFO active el plazo de 90 días.', 'Si necesitas ayuda, pídela al Organismo Colaborador antes de redactar (Componente 3).', 'Arma los 3 documentos: información general, un formulario por proyecto y el presupuesto con la Carta Gantt.', 'Envía el PEA a CORFO. Si lo observan, corrígelo y reenvíalo.', 'Si no alcanzas, pide la prórroga (una sola vez, hasta 30 días) antes de que venza.'],
+      tools: ['necesidades', 'pea', 'gantt', 'presupuesto'], img: [['flujograma_overview.jpg', 'Flujograma oficial, pasos 6 a 14']], src: ['Flujograma, pasos 6 a 14', '«Introducción al Acuerdo», diapositiva 2'] },
     { id: 'TRM-028', fase: 'F2', title: 'Cambiar el PEA (reitemizar)', why: 'Si necesitas mover plata entre cuentas, agregar actividades o cambiar fechas, hay que pedirlo antes de gastar.', who: 'comunidad', when: 'Antes de ejecutar o rendir lo que no calce con el PEA', need: ['PEA vigente', 'Motivo del cambio'],
       steps: ['Define qué cambia: actividades o presupuesto (reitemización) o solo fechas (reprogramación).', 'Explica por escrito el motivo y qué monto o actividad se ve afectado.', 'Envía la solicitud a CORFO y espera su aprobación antes de gastar.'],
       tools: ['reitem'], img: [], src: ['«Introducción al Acuerdo», diapositiva 2'] },
 
     /* ---------- Fase 3: SGP ---------- */
     { id: 'TRM-002', fase: 'F3', title: 'Entrar a SGP y mantener tu usuario', why: 'SGP es la plataforma de CORFO donde se cargan proyectos y se rinde.', who: 'comunidad', when: 'Antes de cada rendición', need: ['RUT de la comunidad', 'Clave que entrega tu ejecutivo técnico'],
-      steps: ['Entra a SGP con tu RUT sin puntos ni guión (ej: 123456789) y tu clave.', 'Revisa que tu proyecto diga «VIGENTE». Si no, no puedes rendir.', 'Si perdiste la clave, escribe a tu ejecutivo técnico de CORFO con copia a la coordinadora de CORFO y a SMI.'],
+      steps: ['Entra a SGP con tu RUT sin puntos ni guión (ej: 123456789) y tu clave.', 'Revisa que tu proyecto diga «VIGENTE». Si no, no puedes rendir.', 'Si perdiste la clave, escribe a tu ejecutivo técnico de CORFO con copia a la coordinadora de CORFO y al Organismo Colaborador.'],
       img: [['doc-005-7690461ef7_p015.jpg', 'Presentación de rendición, diap. 15: ingreso a SGP'], ['doc-005-7690461ef7_p016.jpg', 'Diap. 16: proyecto VIGENTE']], src: ['Presentación de rendición, diap. 2, 15 y 16'],
       open: 'Hay dos direcciones de SGP en las presentaciones. Pregunta a tu ejecutivo técnico cuál usar.' },
     { id: 'TRM-001', fase: 'F3', title: 'Cargar el proyecto en SGP', why: 'CORFO revisa aquí tus etapas, actividades y presupuesto.', who: 'comunidad', when: 'Con el PEA aprobado y antes de rendir', need: ['PEA aprobado', 'Carta Gantt', 'Presupuesto por cuenta'],
@@ -104,7 +104,7 @@
       steps: ['Personas: una ficha por persona (nombre, RUT, meses, función).', 'Otras actividades: descripción, proveedor, montos y fechas.', 'Informa el avance.', 'Revisa que calce con lo rendido en gastos.'],
       tools: ['informeD', 'informeE'], img: [['doc-004-79b28f1aad_p036.jpg', 'Manual, p. 36: formato D']], src: ['Manual CORFO, Anexo 6-D y 6-E (p. 36-38)'] },
     { id: 'TRM-015', fase: 'F5', title: 'Responder las observaciones de CORFO', why: 'Si CORFO observa gastos, tienes 10 días hábiles y una sola oportunidad para aclarar.', who: 'comunidad', when: '10 días hábiles desde que CORFO comunica las observaciones', need: ['Observaciones de CORFO', 'Documentos que faltan'],
-      steps: ['CORFO revisa los gastos y puede pedir más antecedentes.', 'Aclara por única vez, en un máximo de 10 días hábiles. Si no respondes a tiempo, los gastos observados se rechazan.', 'Si necesitas ayuda, pídela a SMI.', 'Registra la aclaración en SGP y comenta la glosa del gasto.', 'CORFO revisa tus respuestas y cierra la revisión.'],
+      steps: ['CORFO revisa los gastos y puede pedir más antecedentes.', 'Aclara por única vez, en un máximo de 10 días hábiles. Si no respondes a tiempo, los gastos observados se rechazan.', 'Si necesitas ayuda, pídela al Organismo Colaborador.', 'Registra la aclaración en SGP y comenta la glosa del gasto.', 'CORFO revisa tus respuestas y cierra la revisión.'],
       tools: ['observaciones'], img: [['doc-004-79b28f1aad_p010.jpg', 'Manual, p. 10: revisión y aclaración']], src: ['Manual CORFO, sección VIII (p. 10-11)'] },
 
     /* ---------- Fase 6 ---------- */
@@ -114,7 +114,7 @@
 
     /* ---------- Ayuda ---------- */
     { id: 'TRM-026', fase: 'AY', title: 'Consultar una duda a CORFO', why: 'CORFO resuelve las dudas sobre el Manual. Mejor preguntar antes de gastar.', who: 'comunidad', when: 'Antes de ejecutar o rendir, si la duda importa', need: ['Tu pregunta', 'Los hechos', 'Qué parte del Manual'],
-      steps: ['Escribe la consulta: qué pasó, qué parte del Manual, y cuánto dinero o plazo está en juego.', 'Envíala a CORFO. SMI puede ayudar a comunicarse.', 'Guarda la respuesta en tu expediente antes de decidir.'],
+      steps: ['Escribe la consulta: qué pasó, qué parte del Manual, y cuánto dinero o plazo está en juego.', 'Envíala a CORFO. El Organismo Colaborador puede ayudar a comunicarse.', 'Guarda la respuesta en tu expediente antes de decidir.'],
       tools: ['consulta'], img: [['doc-004-79b28f1aad_p022.jpg', 'Manual, p. 22: interpretación']], src: ['Manual CORFO, sección XI (p. 22)'] }
   ];
 

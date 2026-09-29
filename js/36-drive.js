@@ -34,11 +34,11 @@
       if (entry.rootUrl) s.cloud.rootUrl = entry.rootUrl;
     }, { silent: true });
   }
-  function send(payload, label) {
+  function send(payload, label, quiet) {
     return RF.cloud.post('saveFile', payload, 90000).then(function (r) {
       if (!r || !r.ok) throw new Error(errText(r && r.error));
       remember({ at: new Date().toISOString(), name: r.fileName || payload.fileName, where: r.where, url: r.url, folderUrl: r.folderUrl, idempotent: !!r.idempotent });
-      RF.ui.toast((r.idempotent ? 'Ya estaba en el Drive: ' : 'Guardado en el Drive: ') + r.where, 'ok');
+      if (!quiet) RF.ui.toast((r.idempotent ? 'Ya estaba en el Drive: ' : 'Guardado en el Drive: ') + r.where, 'ok');
       return r;
     }).catch(function (e) { RF.ui.toast('No se pudo guardar «' + (label || payload.fileName) + '» en el Drive (' + (e.message || e) + '). Puedes reintentar con «Guardar en Drive».', 'bad'); throw e; });
   }
@@ -100,10 +100,10 @@
     return out.join('\n');
   }
   function baseName(e) { return String(e.proveedor || 'comprobante').replace(/[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 50) + '-' + (String(e.folio || 'sn').replace(/[^A-Za-z0-9]+/g, '')); }
-  function saveFicha(e, project, community) {
+  function saveFicha(e, project, community, quiet) {
     if (!enabled()) return Promise.reject(new Error('NO_CONFIGURADO'));
     if (!e.fecha) { RF.ui.toast('Primero anota la fecha del documento: se usa para la carpeta del mes.', 'bad'); return Promise.reject(new Error('SIN_FECHA')); }
-    return send({ project: (project && project.name) || projectName(), category: 'comprobante', fileName: baseName(e) + '.datos.txt', mimeType: 'text/plain', base64: textToB64('﻿' + fichaText(e, project, community)), issueDate: e.fecha }, 'ficha del gasto')
+    return send({ project: (project && project.name) || projectName(), category: 'comprobante', fileName: baseName(e) + '.datos.txt', mimeType: 'text/plain', base64: textToB64('﻿' + fichaText(e, project, community)), issueDate: e.fecha }, 'ficha del gasto', quiet)
       .then(function (r) { e.driveFichaAt = new Date().toISOString(); e.driveFichaUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); return r; });
   }
   /* copia de todos los datos de la app (5 versiones); se hace sola después de archivar un gasto */
@@ -117,7 +117,53 @@
   /* foto (si hay) + ficha con los datos + copia de seguridad */
   function archiveExpense(e, project, community) {
     var first = e.imgId && !e.driveId ? saveReceipt(e, project) : Promise.resolve(null);
-    return first.then(function () { return saveFicha(e, project, community); }).then(function (r) { backupState(); return r; });
+    return first.then(function (r0) { return saveFicha(e, project, community, !!r0); }).then(function (r) { backupState(); return r; });
+  }
+
+  /* ---------- documentos oficiales y actas (lo que llega de afuera) ---------- */
+  function extOf(name) { var m = String(name || '').match(/\.([A-Za-z0-9]{2,5})$/); return m ? '.' + m[1].toLowerCase() : ''; }
+  function yesNo(v) { return v ? 'sí' : 'no'; }
+  function docMeta(rec) {
+    var t = RF.repo.TYPE_BY_ID[rec.type] || { name: 'Documento' }, s = RF.store.get();
+    var proj = rec.projectId ? (s.projects.filter(function (p) { return p.id === rec.projectId; })[0] || {}).name : 'Todos los proyectos';
+    var changes = Object.keys(rec.changes || {}).filter(function (k) { return rec.changes[k]; });
+    return ['FICHA DEL DOCUMENTO · Rinde Fácil', '================================', '', 'Comunidad: ' + (s.community.name || '—'), 'Registrada: ' + new Date().toLocaleString('es-CL'), '',
+      'Tipo: ' + t.name, 'Título: ' + (rec.title || '—'), 'Fecha del documento: ' + (rec.date ? U.fmtDate(rec.date) : '—'), 'Lo envía: ' + (rec.from || '—'), 'Proyecto: ' + (proj || '—'), 'Archivo original: ' + (rec.fileName || '—'), '',
+      '¿Cambia algo del PEA?: ' + (rec.peaChange === 'si' ? 'SÍ' : rec.peaChange === 'nose' ? 'No está seguro' : 'No'), rec.peaChange === 'si' ? 'Qué cambia: ' + (changes.join(', ') || 'sin indicar') : '',
+      rec.peaChange === 'si' ? 'Configurado en SGP: ' + yesNo(rec.sgpDone) : '', rec.peaChange === 'si' ? 'Carta Gantt y presupuesto de la app al día: ' + yesNo(rec.appDone) : '', '', 'Nota: ' + (rec.note || '—')].filter(function (x, i, a) { return !(x === '' && a[i - 1] === ''); }).join('\n');
+  }
+  function actaMeta(a) {
+    var s = RF.store.get(), as = a.asistentes || {};
+    var out = ['FICHA DEL ACTA DE MESA DE TRABAJO · Rinde Fácil', '================================', '', 'Comunidad: ' + (s.community.name || '—'), 'Fecha de la reunión: ' + (a.date ? U.fmtDate(a.date) : '—'), 'Modalidad: ' + (a.mode || '—'), 'Lugar: ' + (a.place || '—'), 'Estado del acta: ' + (a.state || '—'), '',
+      'Asistentes: CORFO ' + (as.corfo || 0) + ' · Comunidad ' + (as.comunidad || 0) + ' · Organismo Colaborador ' + (as.oc || 0), 'Nombres: ' + (a.names || '—'), '', 'TEMAS TRATADOS', a.topics || '—', '', 'ACUERDOS Y COMPROMISOS'];
+    if (!(a.agreements || []).length) out.push('(sin acuerdos anotados)');
+    (a.agreements || []).forEach(function (x, i) { out.push((i + 1) + '. ' + (x.what || '—') + ' · responsable: ' + (x.who || '—') + ' · plazo: ' + (x.due ? U.fmtDate(x.due) : 'sin plazo') + ' · cumplido: ' + yesNo(x.done)); });
+    out.push('', 'Archivo del acta: ' + (a.fileName || '—'), 'Nota: ' + (a.note || '—'));
+    return out.join('\n');
+  }
+  /* guarda el archivo (si hay) y una ficha de texto con los datos; devuelve el resultado del archivo o, si no hay archivo, el de la ficha */
+  function saveWithFicha(category, subfolder, base, rec, blob, metaText, issueDate) {
+    var ext = extOf(rec.fileName), send1 = null;
+    if (blob) {
+      var mime = RF.repo.mimeOf(rec.fileName, blob.type);
+      if (!mime) return Promise.reject(new Error('Ese tipo de archivo no se puede guardar en el Drive (usa PDF, foto, Word o Excel)'));
+      send1 = RF.cloud.blobToBase64(blob).then(function (b64) { return send({ category: category, subfolder: subfolder, fileName: base + ext, mimeType: mime, base64: b64, issueDate: issueDate }, base + ext); });
+    }
+    return (send1 || Promise.resolve(null)).then(function (r1) {
+      return send({ category: category, subfolder: subfolder, fileName: base + '.datos.txt', mimeType: 'text/plain', base64: textToB64('﻿' + metaText), issueDate: issueDate }, 'ficha', !!r1).then(function (r2) { return r1 || r2; });
+    });
+  }
+  function saveExternal(rec, blob) {
+    if (!enabled()) return Promise.reject(new Error('NO_CONFIGURADO'));
+    var t = RF.repo.TYPE_BY_ID[rec.type] || { name: 'Documento', folder: 'Otros' }, s = RF.store.get();
+    var proj = rec.projectId ? (s.projects.filter(function (p) { return p.id === rec.projectId; })[0] || {}).name : '';
+    var base = (rec.date || U.todayISO()) + ' · ' + t.name + (proj ? ' · ' + proj : '') + (rec.title && rec.title !== t.name ? ' · ' + rec.title : '');
+    return saveWithFicha('oficial', t.folder, base.slice(0, 110), rec, blob, docMeta(rec), null);
+  }
+  function saveActa(rec, blob) {
+    if (!enabled()) return Promise.reject(new Error('NO_CONFIGURADO'));
+    if (!rec.date) return Promise.reject(new Error('SIN_FECHA'));
+    return saveWithFicha('acta', '', rec.date + ' · Acta de Mesa de Trabajo' + (rec.place ? ' · ' + rec.place : ''), rec, blob, actaMeta(rec), rec.date);
   }
 
   /* Deja armada la carpeta con su orden. */
@@ -129,5 +175,5 @@
     });
   }
 
-  RF.drive = { enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, saveFicha: saveFicha, archiveExpense: archiveExpense, fichaText: fichaText, backupState: backupState, setup: setup, categoryFor: categoryFor, errText: errText };
+  RF.drive = { enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, saveFicha: saveFicha, archiveExpense: archiveExpense, fichaText: fichaText, backupState: backupState, saveExternal: saveExternal, saveActa: saveActa, docMeta: docMeta, actaMeta: actaMeta, setup: setup, categoryFor: categoryFor, errText: errText };
 })(typeof window !== 'undefined' ? window : globalThis);

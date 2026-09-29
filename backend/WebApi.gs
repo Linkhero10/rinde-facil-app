@@ -12,6 +12,8 @@
  * Orden de la carpeta en el Drive de la comunidad:
  *   Rinde fácil/
  *     LEEME.txt
+ *     Documentos oficiales/<tipo>/       (PEA corregido, actas de no objeción, resoluciones, oficios…; lo que llega de afuera)
+ *     Actas de mesas de trabajo/AAAA-MM/ (CORFO, comunidad y Organismo Colaborador)
  *     Copias de seguridad/
  *     Proyectos/
  *       <Nombre del proyecto>/
@@ -34,7 +36,7 @@
  */
 
 const RF_WEB = {
-  version: '2.2.0',
+  version: '2.3.0',
   keyProp: 'RINDE_FACIL_ACCESS_KEY',
   rootProp: 'RINDE_FACIL_ROOT_FOLDER_ID',
   limitProp: 'RINDE_FACIL_OCR_DAILY_LIMIT',
@@ -45,9 +47,10 @@ const RF_WEB = {
   maxBytes: 8 * 1024 * 1024,
   maxStateChars: 4 * 1024 * 1024,
   keepBackups: 5,
+  rootCategories: { oficial: 'Documentos oficiales', acta: 'Actas de mesas de trabajo' },
   categories: { planificacion: '1 Planificación', anexos: '2 Anexos y formularios', rendicion: '3 Rendición', comprobante: '4 Comprobantes' },
   okMime: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/tiff', 'application/pdf'],
-  docMime: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/msword', 'text/plain', 'text/html', 'text/csv', 'application/json']
+  docMime: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/msword', 'text/plain', 'text/html', 'text/csv', 'application/json']
 };
 
 function doGet() {
@@ -163,6 +166,8 @@ function rfReadme_(root) {
   root.createFile('LEEME.txt', [
     'RINDE FÁCIL — cómo está ordenada esta carpeta',
     '',
+    'Documentos oficiales/ Lo que llega de afuera, por tipo: PEA corregido, actas de no objeción, resoluciones, oficios, observaciones.',
+    'Actas de mesas de trabajo/ Una carpeta por mes (CORFO, comunidad y Organismo Colaborador).',
     'Copias de seguridad/  Copia de todos los datos de la app (se guardan las últimas 5 versiones).',
     'Proyectos/            Una carpeta por proyecto. Adentro:',
     '   1 Planificación        Carta Gantt, presupuesto, reitemización, cotizaciones, PEA.',
@@ -187,6 +192,7 @@ function rfSetup_(p) {
   try {
     const root = rfRoot_();
     rfSub_(root, RF_WEB.backupsName);
+    Object.keys(RF_WEB.rootCategories).forEach(function (k) { rfSub_(root, RF_WEB.rootCategories[k]); });
     rfReadme_(root);
     const res = { ok: true, rootId: root.getId(), rootUrl: rfUrl_(root), rootName: root.getName ? root.getName() : RF_WEB.rootName };
     if (p && p.project) { const f = rfProjectFolders_(root, p.project); res.projectUrl = rfUrl_(f.project); res.projectName = rfCleanName_(p.project, 'Proyecto sin nombre'); }
@@ -235,32 +241,42 @@ function rfLoadState_() {
 function rfSaveFile_(p) {
   const mime = String(p.mimeType || '').toLowerCase();
   const category = String(p.category || 'comprobante');
-  if (!RF_WEB.categories[category]) return { ok: false, error: 'CATEGORIA_INVALIDA' };
+  const isRoot = !!RF_WEB.rootCategories[category];
+  if (!isRoot && !RF_WEB.categories[category]) return { ok: false, error: 'CATEGORIA_INVALIDA' };
   const allowed = category === 'comprobante' ? RF_WEB.okMime.concat(['text/plain']) : RF_WEB.okMime.concat(RF_WEB.docMime); // junto a la foto va la ficha con los datos (texto)
   if (allowed.indexOf(mime) < 0) return { ok: false, error: 'TIPO_NO_PERMITIDO' };
   if (!rfIsBase64_(p.base64)) return { ok: false, error: 'BASE64_INVALIDO' };
   if (rfBase64Bytes_(p.base64) > RF_WEB.maxBytes) return { ok: false, error: 'ARCHIVO_MUY_GRANDE' };
   let month = '';
-  if (category === 'comprobante') {
+  if (category === 'comprobante' || category === 'acta') {
     const m = String(p.issueDate || '').match(/^(\d{4})-(\d{2})/);
     if (!m || +m[2] < 1 || +m[2] > 12) return { ok: false, error: 'FECHA_INVALIDA' };
     month = m[1] + '-' + m[2];
   }
+  const sub = category === 'oficial' ? rfCleanName_(p.subfolder, 'Otros', 60) : '';
   const name = rfCleanName_(p.fileName, 'documento', 120);
-  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, p.base64 + '|' + name + '|' + category + '|' + month);
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, p.base64 + '|' + name + '|' + category + '|' + month + '|' + sub);
   const key = digest.map(function (b) { return ('0' + (b < 0 ? b + 256 : b).toString(16)).slice(-2); }).join('');
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) return { ok: false, error: 'OCUPADO' };
   try {
-    const folders = rfProjectFolders_(rfRoot_(), p.project);
-    let folder = folders[category];
-    if (month) folder = rfSub_(folder, month);
-    const where = [rfCleanName_(p.project, 'Proyecto sin nombre'), RF_WEB.categories[category]].concat(month ? [month] : []).join(' / ');
+    let folder, where;
+    if (isRoot) {
+      folder = rfSub_(rfRoot_(), RF_WEB.rootCategories[category]);
+      if (sub) folder = rfSub_(folder, sub);
+      if (month) folder = rfSub_(folder, month);
+      where = [RF_WEB.rootCategories[category]].concat(sub ? [sub] : []).concat(month ? [month] : []).join(' / ');
+    } else {
+      const folders = rfProjectFolders_(rfRoot_(), p.project);
+      folder = folders[category];
+      if (month) folder = rfSub_(folder, month);
+      where = [rfCleanName_(p.project, 'Proyecto sin nombre'), RF_WEB.categories[category]].concat(month ? [month] : []).join(' / ');
+    }
     let sameName = false;
     const files = folder.getFiles();
     while (files.hasNext()) {
       const f = files.next();
-      if (f.getDescription() === 'rinde-facil:' + key) return { ok: true, fileId: f.getId(), url: rfUrl_(f), folderUrl: rfUrl_(folder), where: where, folder: month || RF_WEB.categories[category], idempotent: true };
+      if (f.getDescription() === 'rinde-facil:' + key) return { ok: true, fileId: f.getId(), url: rfUrl_(f), folderUrl: rfUrl_(folder), where: where, folder: month || sub || RF_WEB.categories[category] || RF_WEB.rootCategories[category], idempotent: true };
       if (f.getName() === name) sameName = true;
     }
     let finalName = name;
@@ -272,6 +288,6 @@ function rfSaveFile_(p) {
     const blob = Utilities.newBlob(Utilities.base64Decode(p.base64), mime, finalName);
     const file = folder.createFile(blob);
     file.setDescription('rinde-facil:' + key);
-    return { ok: true, fileId: file.getId(), url: rfUrl_(file), folderUrl: rfUrl_(folder), where: where, folder: month || RF_WEB.categories[category], fileName: finalName, idempotent: false };
+    return { ok: true, fileId: file.getId(), url: rfUrl_(file), folderUrl: rfUrl_(folder), where: where, folder: month || sub || RF_WEB.categories[category] || RF_WEB.rootCategories[category], fileName: finalName, idempotent: false };
   } finally { lock.releaseLock(); }
 }

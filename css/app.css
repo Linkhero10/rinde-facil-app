@@ -386,3 +386,27 @@ mark.search-hit{scroll-margin:120px}
 .update-bar{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:96;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;width:min(94vw,560px);background:var(--ink);color:var(--paper);padding:10px 14px;border-radius:6px;box-shadow:var(--shadow);font-weight:600}
 .update-bar .btn{min-height:36px}
 @media print{.update-bar{display:none!important}}
+
+/* qué necesitará tu proyecto */
+.need{padding:8px 0;border-top:1px solid var(--line)}.need:first-child{border-top:0}
+.need-help{color:var(--muted);font-weight:400}
+.need-tr{margin:2px 0 0 30px;font:500 12.5px/1.4 var(--mono);color:var(--novandina)}
+.need.new{background:var(--warn-soft);border-radius:4px;padding-left:8px;padding-right:8px}
+.need-new{margin:2px 0 0 30px;font:700 12px var(--mono);color:var(--warn)}
+.need-custom{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px}.need-custom li{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.warn-card{border-left:5px solid var(--warn);background:var(--warn-soft)}
+.big-line{font-size:20px}.need-banner{border-left:5px solid var(--action)}
+.side-hidden{margin:4px 0 0;font-size:14px;color:var(--muted)}.side-hidden summary{cursor:pointer;padding:6px 10px}
+
+/* documentos y actas */
+.file-pick{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.file-name{font:600 13px var(--mono);color:var(--ink-2)}
+.timeline{list-style:none;margin:0;padding:0;display:grid;gap:12px}.timeline li{border-left:3px solid var(--action);padding:2px 0 2px 12px}.tl-h{font-weight:700}
+.ag-list{display:grid;gap:12px}.ag-row{display:grid;grid-template-columns:2fr 1fr 1fr auto auto;gap:10px;align-items:end;border:1px solid var(--line);border-radius:6px;padding:10px;background:var(--card-2)}
+@media (max-width:760px){.ag-row{grid-template-columns:1fr}}
+.muted.small{font-size:13px;color:var(--muted)}
+.checks{display:flex;gap:18px;flex-wrap:wrap;margin:6px 0}
+
+.step-docs{display:flex;flex-wrap:wrap;gap:8px 14px;margin:-2px 0 10px 44px}.step-docs .sd{display:inline-flex;gap:6px;align-items:center}
+.step-docs .btn{min-height:34px;font-size:14px}
+
+@media (max-width:900px){.step-docs{margin-left:0}.step-docs .btn{min-height:44px}}

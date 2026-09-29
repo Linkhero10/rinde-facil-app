@@ -13,9 +13,10 @@
 
   /* ---------- menú lateral ---------- */
   var TOOL_GROUPS = [
-    { id: 'G-plan', name: 'Planificar', tools: ['proyecto', 'gantt', 'presupuesto', 'pea', 'reitem', 'cotizaciones'] },
+    { id: 'G-plan', name: 'Planificar', tools: ['necesidades', 'proyecto', 'gantt', 'presupuesto', 'pea', 'reitem', 'cotizaciones'] },
     { id: 'G-rend', name: 'Rendir', tools: ['gastos', 'revision', 'resumen', 'observaciones'] },
     { id: 'G-form', name: 'Anexos y formularios', tools: ['anexo1', 'anexo2', 'anexo3', 'anexo4', 'anexo5', 'informe', 'consulta', 'solicitud'] },
+    { id: 'G-doc', name: 'Documentos y actas', tools: ['documentos', 'actas'] },
     { id: 'G-ayu', name: 'Ayudas', tools: ['plazos', 'verificador', 'cuentas', 'nofinanciable'] }
   ];
   function isOpen(key, dflt) { var o = RF.store.get().ui.open; return o[key] == null ? !!dflt : !!o[key]; }
@@ -44,12 +45,15 @@
     side.appendChild(h('a', { href: '#/', class: 'side-link' + (route.name === 'home' ? ' current' : '') }, UI.icon('route', 18), h('span', null, 'Mi ruta')));
     var curFase = route.name === 'tramite' ? faseOf[route.id] : route.name === 'fase' ? route.id : null;
     D.FASES.forEach(function (f) {
-      var pf = prog.porFase[f.id], kids = f.items.map(function (id) {
+      var pf = prog.porFase[f.id], hiddenKids = [], kids = [];
+      f.items.forEach(function (id) {
         var t = RF.tramites.byId[id], ip = L.itemProgress(p || { done: {} }, id), cur = route.name === 'tramite' && route.id === id;
-        return h('a', { href: '#/t/' + id, class: 'side-item' + (cur ? ' current' : '') + (ip.complete ? ' done' : ''), 'aria-current': cur ? 'page' : null },
-          h('span', { class: 'ck ' + (ip.complete ? 'on' : ip.done ? 'part' : '') }, ip.complete ? UI.icon('check', 14) : ''), h('span', { class: 'si-t' }, t.title), ip.na ? h('span', { class: 'na' }, 'no aplica') : null);
+        var a = h('a', { href: '#/t/' + id, class: 'side-item' + (cur ? ' current' : '') + (ip.complete ? ' done' : ''), 'aria-current': cur ? 'page' : null },
+          h('span', { class: 'ck ' + (ip.complete ? 'on' : ip.done ? 'part' : '') }, ip.complete ? UI.icon('check', 14) : ''), h('span', { class: 'si-t' }, t.title), ip.na ? h('span', { class: 'na' }, ip.auto ? 'no te toca' : 'no aplica') : null);
+        if (ip.auto && !cur) hiddenKids.push(a); else kids.push(a);
       });
-      side.appendChild(accordion('fase-' + f.id, f.name, pf.done + '/' + pf.total, kids, { open: curFase === f.id || (!curFase && prog.faseActual === f.id), badge: String(f.n), cls: pf.complete ? 'complete' : '' }));
+      if (hiddenKids.length) kids.push(h('details', { class: 'side-hidden' }, h('summary', null, 'No te tocan por ahora (' + hiddenKids.length + ')'), hiddenKids));
+      side.appendChild(accordion('fase-' + f.id, f.name, pf.tramDone + '/' + pf.tramTotal, kids, { open: curFase === f.id || (!curFase && prog.faseActual === f.id), badge: String(f.n), cls: pf.complete ? 'complete' : '' }));
     });
     var ay = D.AYUDA.map(function (id) { var t = RF.tramites.byId[id], cur = route.name === 'tramite' && route.id === id; return h('a', { href: '#/t/' + id, class: 'side-item' + (cur ? ' current' : '') }, h('span', { class: 'ck' }), h('span', { class: 'si-t' }, t.title)); });
     side.appendChild(accordion('ayuda', '¿Tienes una duda?', '', ay, { open: curFase === 'AY' }));
@@ -76,15 +80,16 @@
       h('p', { class: 'lead' }, nx ? f.blurb : 'Revisa el cuadre final y guarda tu copia.'),
       h('div', { class: 'hero-row' },
         nt ? h('a', { class: 'btn primary big', href: '#/t/' + nt.id }, 'Continuar: ' + nt.title, UI.icon('right', 20)) : h('a', { class: 'btn primary big', href: '#/h/revision' }, 'Ver la revisión final'),
-        h('div', { class: 'ring-wrap' }, UI.progressBar(prog.done, prog.total, 'Avance total'), h('span', { class: 'ring-t' }, prog.pct + ' % de los pasos'))),
+        h('div', { class: 'ring-wrap' }, UI.progressBar(prog.tramDone, prog.tramTotal, 'Avance total'), h('span', { class: 'ring-t' }, prog.tramDone + ' de ' + prog.tramTotal + ' trámites listos'))),
       nt ? h('p', { class: 'next-step' }, 'Siguiente paso: ', h('strong', null, nt.steps[nx.stepIdx])) : null));
+    if (!L.needsAnswered(p)) root.appendChild(h('section', { class: 'card need-banner' }, h('h3', { class: 'card-title' }, 'Cuéntanos qué necesitará tu proyecto'), h('p', null, 'Marca lo que vas a usar (viáticos, insumos, inmuebles…) y te mostramos solo los trámites que te tocan. Hoy ves todos.'), h('a', { class: 'btn primary', href: '#/h/necesidades' }, 'Marcar lo que necesito')));
     /* alertas */
     var flagged = res.groups.reduce(function (a, g) { return a.concat(g.items.filter(function (i) { return i.level === 'error' || i.level === 'warn'; })); }, []);
     root.appendChild(UI.section('¿Cuadra todo?', [flagged.length ? h('ul', { class: 'check-list' }, flagged.slice(0, 4).map(function (i) { return h('li', { class: 'lv-' + i.level }, h('span', { class: 'lv-ico' }, UI.icon('alert', 18)), h('span', { class: 'lv-msg' }, i.msg)); })) : UI.callout('ok', 'Nada por corregir por ahora.', ''), h('div', { class: 'row-actions' }, h('a', { class: 'btn', href: '#/h/revision' }, 'Ver la revisión completa' + (flagged.length > 4 ? ' (' + flagged.length + ' avisos)' : '')))], 'home-check'));
     /* fases */
     var cards = h('div', { class: 'phase-cards' }, D.FASES.map(function (fa) {
       var pf = prog.porFase[fa.id];
-      return h('a', { class: 'phase-card' + (fa.id === prog.faseActual ? ' now' : '') + (pf.complete ? ' done' : ''), href: '#/f/' + fa.id }, h('span', { class: 'pc-n' }, String(fa.n)), h('span', { class: 'pc-t' }, fa.name), h('span', { class: 'pc-b' }, fa.blurb), UI.progressBar(pf.done, pf.total, 'Avance de ' + fa.name), h('span', { class: 'pc-c' }, pf.done + ' de ' + pf.total + ' pasos'));
+      return h('a', { class: 'phase-card' + (fa.id === prog.faseActual ? ' now' : '') + (pf.complete ? ' done' : ''), href: '#/f/' + fa.id }, h('span', { class: 'pc-n' }, String(fa.n)), h('span', { class: 'pc-t' }, fa.name), h('span', { class: 'pc-b' }, fa.blurb), UI.progressBar(pf.tramDone, pf.tramTotal, 'Avance de ' + fa.name), h('span', { class: 'pc-c' }, pf.tramDone + ' de ' + pf.tramTotal + ' trámites'));
     }));
     root.appendChild(h('section', null, h('h2', { class: 'sec-title' }, 'Tu ruta en 6 fases'), cards));
     /* flujo */
@@ -114,15 +119,28 @@
     root.appendChild(h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'Mi ruta'), ' › ', 'Fase ' + f.n));
     root.appendChild(h('h1', { class: 'view-title' }, 'Fase ' + f.n + ': ' + f.name));
     root.appendChild(h('p', { class: 'lead' }, f.blurb));
-    root.appendChild(UI.section('Trámites de esta fase', [h('ul', { class: 'item-list' }, f.items.map(function (tid) {
+    root.appendChild(UI.section('Trámites de esta fase', [h('ul', { class: 'item-list' }, f.items.slice().sort(function (a, b) { return (L.itemProgress(p || { done: {} }, a).auto ? 1 : 0) - (L.itemProgress(p || { done: {} }, b).auto ? 1 : 0); }).map(function (tid) {
       var t = RF.tramites.byId[tid], ip = L.itemProgress(p || { done: {} }, tid);
-      return h('li', null, h('a', { href: '#/t/' + tid, class: 'item-row' + (ip.complete ? ' done' : '') }, h('span', { class: 'ck ' + (ip.complete ? 'on' : ip.done ? 'part' : '') }, ip.complete ? UI.icon('check', 14) : ''), h('span', { class: 'ir-t' }, t.title), h('span', { class: 'ir-c' }, ip.na ? 'no aplica' : ip.done + '/' + ip.total), UI.icon('right', 16)));
+      return h('li', null, h('a', { href: '#/t/' + tid, class: 'item-row' + (ip.complete ? ' done' : '') }, h('span', { class: 'ck ' + (ip.complete ? 'on' : ip.done ? 'part' : '') }, ip.complete ? UI.icon('check', 14) : ''), h('span', { class: 'ir-t' }, t.title), h('span', { class: 'ir-c' }, ip.na ? (ip.auto ? 'no te toca por ahora' : 'no aplica') : ip.done + '/' + ip.total), UI.icon('right', 16)));
     }))]));
     root.appendChild(h('section', null, h('h2', { class: 'sec-title' }, 'Quién hace qué en esta fase'), RF.flow.render({ fases: [f.id], here: f.id })));
     return root;
   }
 
   /* ---------- trámite ---------- */
+  /* botones bajo un paso que pide llenar un documento: «Rellenar» (por casillas) y «Ver formato» (cómo queda el documento) */
+  var FORMY = /^(anexo|informe|pea|gantt|presupuesto|cotizaciones|reitem|solicitud|consulta)/;
+  function stepDocs(tid, i) {
+    var ids = RF.needs.STEP_TOOLS[tid + ':' + i]; if (!ids) return null;
+    var kids = [];
+    ids.forEach(function (x) {
+      var tl = RF.tools[x]; if (!tl) return;
+      kids.push(h('span', { class: 'sd' },
+        h('a', { class: 'btn small', href: '#/h/' + x + '?from=' + encodeURIComponent(tid) }, UI.icon(tl.icon || 'file', 14), (FORMY.test(x) ? 'Rellenar · ' : 'Abrir · ') + tl.title),
+        RF.docs && RF.docs.hasPreview(x) ? UI.btn('Ver formato', { cls: 'ghost small', title: 'Mira cómo queda el documento', onclick: function () { RF.docs.preview(x); } }) : null));
+    });
+    return kids.length ? h('div', { class: 'step-docs' }, kids) : null;
+  }
   function tramiteView(id) {
     var t = RF.tramites.byId[id], p = project(), root = h('div', { class: 'view tramite' });
     if (!t) return h('div', { class: 'view' }, UI.callout('bad', 'No encontramos ese trámite.', ''));
@@ -134,6 +152,7 @@
     var who = ACTOR[t.who] || ACTOR.comunidad;
     root.appendChild(h('header', { class: 'tram-head', style: { '--c': 'var(--' + who.id + ')' } }, h('h1', { class: 'view-title' }, t.title), h('p', { class: 'lead' }, t.why),
       h('div', { class: 'chips-row' }, h('span', { class: 'tag', style: { '--c': 'var(--' + who.id + ')' } }, 'Le toca a: ' + who.name), t.when ? h('span', { class: 'tag plain' }, UI.icon('clock', 14), t.when) : null, t.kind === 'paso' ? h('span', { class: 'tag plain' }, 'Paso del proceso') : null)));
+    if (ip.auto) root.appendChild(h('div', { class: 'callout info' }, h('strong', null, 'Este trámite no te toca por ahora.'), h('span', null, ' Según lo que marcaste en «Qué necesitará tu proyecto», no lo vas a usar. Puedes leerlo igual.'), h('div', { class: 'row-actions' }, UI.btn('Me toca igual', { cls: 'ghost small', onclick: function () { RF.store.update(function () { p.show = p.show || {}; p.show[id] = true; }); } }), UI.btn('Cambiar lo que marqué', { cls: 'ghost small', onclick: function () { location.hash = '#/h/necesidades'; } }))));
     if (t.open) root.appendChild(UI.callout('warn', 'Duda abierta:', ' ' + t.open));
     /* plazo automático del PEA */
     if (id === 'TRM-027' && p) { var pd = L.peaDeadline(p, U.todayISO()); root.appendChild(pd ? UI.callout(pd.diasRestantes < 0 ? 'bad' : pd.diasRestantes <= 15 ? 'warn' : 'info', 'Tu plazo:', ' vence el ' + U.fmtDate(pd.fin) + (pd.diasRestantes >= 0 ? ' (faltan ' + pd.diasRestantes + ' días).' : ' (ya venció; con prórroga única, hasta el ' + U.fmtDate(pd.finProrroga) + ').')) : UI.callout('info', '', 'Anota la fecha del primer pago en «Mi comunidad y proyectos» para calcular tu plazo.')); }
@@ -147,6 +166,7 @@
       var cb = h('input', { type: 'checkbox', id: 'st-' + i, checked: !!(p && RF.store.isDone(p, id, i)), disabled: !p });
       var li = h('li', { class: 'step' + (cb.checked ? ' done' : '') }, h('label', { for: 'st-' + i }, cb, h('span', { class: 'st-n' }, String(i + 1)), h('span', { class: 'st-t' }, txt)));
       cb.addEventListener('change', function () { RF.store.setDone(id, i, cb.checked); li.classList.toggle('done', cb.checked); updCount(); refreshSide(); });
+      var sd = stepDocs(id, i); if (sd) li.appendChild(sd);
       stepsBox.appendChild(li);
     });
     updCount();
