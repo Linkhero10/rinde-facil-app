@@ -245,8 +245,21 @@ await step('12. Foto de un comprobante: OCR en la nube (servicio de prueba) rell
   await page.getByRole('button', { name: 'Probar conexión' }).click();
   await page.waitForFunction(() => /Conectado/.test(document.querySelector('.tool-page').textContent), null, { timeout: 8000 });
   await go('#/h/gastos');
+  stub.store.ocrDelay = 2200; /* el servicio de prueba se demora, como Google */
   await page.locator('input[type=file][multiple]').setInputFiles(FIXTURE);
+  await page.waitForSelector('.busy', { timeout: 5000 });
+  ok(/Leyendo el comprobante/.test(await page.textContent('.busy')), 'muestra qué está haciendo');
+  const p1 = +(await page.getAttribute('.busy [role=progressbar]', 'aria-valuenow'));
+  await page.waitForTimeout(1200);
+  const p2 = +(await page.getAttribute('.busy [role=progressbar]', 'aria-valuenow'));
+  ok(p2 > p1 && p2 < 100, 'la barra avanza mientras espera (' + p1 + ' → ' + p2 + ')');
+  ok(/[0-9]+ s/.test(await page.textContent('.busy')), 'muestra los segundos');
+  await shot('12-progreso');
   await page.waitForSelector('.editor-split', { timeout: 15000 });
+  await page.waitForSelector('.busy.ok', { timeout: 5000 });
+  ok(/Listo/.test(await page.textContent('.busy.ok')), 'avisa cuando termina');
+  stub.store.ocrDelay = 0;
+  await page.waitForFunction(() => !document.querySelector('.busy'), null, { timeout: 5000 });
   eq(await page.inputValue('input[data-key="folio"]'), '1042');
   eq(await page.inputValue('input[data-key="rutProveedor"]'), '76.123.456-0');
   eq(await page.inputValue('input[data-key="total"]'), '1.487.500');

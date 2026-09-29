@@ -56,12 +56,25 @@
         return RF.blobs.put(e.imgId, file).then(function () {
           p.expenses.push(e); made.push(e.id); silent();
           if (!RF.cloud.configured()) { e._ocrNote = 'Anota los datos mirando la foto. Para leerla automáticamente, conecta el servicio en la nube.'; return null; }
-          UI.toast('Leyendo «' + file.name + '»…');
-          return RF.ocr.recognize(file).then(function (res) { applyOcr(e, res); }).catch(function (err) { e._ocrNote = 'No se pudo leer automáticamente (' + (err.message || err) + '). Anota los datos mirando la foto.'; });
+          return ocrJob(file, e, files.length > 1 ? 'Leyendo el comprobante ' + i + ' de ' + files.length : 'Leyendo el comprobante');
         }).then(next);
       }
       UI.toast('Agregando ' + files.length + ' archivo(s)…');
       next();
+    }
+    /* lectura en la nube con barra de progreso: preparar → enviar y leer → ordenar */
+    var STAGES = [{ id: 'prep', label: 'Preparando la foto…', from: 0, to: 12, tau: 1.5 }, { id: 'read', label: 'Enviando la foto y leyéndola con Google…', from: 12, to: 88, tau: 9 }, { id: 'parse', label: 'Ordenando los datos…', from: 88, to: 98, tau: 1 }];
+    function ocrJob(file, e, title) {
+      var b = UI.busy(title, STAGES);
+      return RF.ocr.recognize(file, b.stage).then(function (res) {
+        b.stage('parse', 'Ordenando los datos…');
+        applyOcr(e, res);
+        if (res && res.ok) b.done('Listo. Compara los datos con la foto.'); else b.fail('Google no pudo leer esta foto (' + ((res && res.error) || 'error') + '). Anota los datos a mano.');
+        return res;
+      }).catch(function (err) {
+        e._ocrNote = 'No se pudo leer automáticamente (' + (err.message || err) + '). Anota los datos mirando la foto.';
+        b.fail('No se pudo leer (' + (err.message || err) + '). Anota los datos mirando la foto.');
+      });
     }
     function applyOcr(e, res) {
       if (!res || !res.ok) { e._ocrNote = 'El servicio respondió con un error: ' + ((res && res.error) || 'desconocido') + '. Anota los datos mirando la foto.'; return; }
@@ -167,7 +180,7 @@
           if (/pdf/.test(blob.type)) photo.appendChild(h('a', { class: 'btn', href: url, target: '_blank', rel: 'noopener' }, 'Abrir el PDF'));
           else { photo.appendChild(zoomBox(url)); photo.appendChild(h('p', { class: 'hint' }, 'Pasa el cursor sobre la foto para acercarla (en el celular, tócala y arrastra).')); }
           var acts = h('div', { class: 'row-actions' });
-          if (RF.cloud.configured()) acts.appendChild(UI.btn(e.ocr ? 'Leer de nuevo' : 'Leer con la nube', { icon: 'cloud', cls: 'ghost', onclick: function () { UI.toast('Leyendo…'); RF.ocr.recognize(new File([blob], 'comprobante', { type: blob.type })).then(function (res) { applyOcr(e, res); paint(); }).catch(function (er) { UI.toast('No se pudo leer: ' + (er.message || er), 'bad'); }); } }));
+          if (RF.cloud.configured()) acts.appendChild(UI.btn(e.ocr ? 'Leer de nuevo' : 'Leer con la nube', { icon: 'cloud', cls: 'ghost', onclick: function (ev) { var bt = ev.currentTarget; bt.disabled = true; bt.querySelector('span').textContent = 'Leyendo…'; ocrJob(new File([blob], 'comprobante', { type: blob.type }), e, 'Leyendo el comprobante de nuevo').then(function () { paint(); }); } }));
           if (RF.cloud.configured()) acts.appendChild(UI.btn(e.driveId ? 'Ya está en el Drive' : 'Guardar en el Drive', { icon: 'cloud', cls: 'ghost', disabled: !!e.driveId, onclick: function () {
             RF.drive.archiveExpense(e, p, c.community).then(function () { paintPhoto(); }).catch(function () { });
           } }));
@@ -184,7 +197,7 @@
       var form = h('div', null,
         e._ocrNote ? UI.callout('info', '', e._ocrNote) : null,
         h('h4', { class: 'grp' }, '1. El documento'),
-        h('div', { class: 'form-grid' }, fld('Tipo de documento', 'docType', { type: 'select', options: docOpts, noEmpty: true }), fld('Número (folio)', 'folio', { type: 'text' }), fld('Fecha del documento', 'fecha', { type: 'date' }), fld('Nombre del proveedor', 'proveedor', { type: 'text', cls: 'wide' }), fld('Nombre comercial o local (opcional)', 'nombreComercial', { type: 'text', cls: 'wide', hint: 'Solo para reconocerlo; el proveedor es quien tiene el RUT.' }), fld('RUT del proveedor', 'rutProveedor', { type: 'rut' })),
+        h('div', { class: 'form-grid' }, fld('Tipo de documento', 'docType', { type: 'select', options: docOpts, noEmpty: true, cls: 'span2' }), fld('Número (folio)', 'folio', { type: 'text' }), fld('Fecha del documento', 'fecha', { type: 'date' }), fld('Nombre del proveedor', 'proveedor', { type: 'text', cls: 'wide' }), fld('Nombre comercial o local (opcional)', 'nombreComercial', { type: 'text', cls: 'wide', hint: 'Solo para reconocerlo; el proveedor es quien tiene el RUT.' }), fld('RUT del proveedor', 'rutProveedor', { type: 'rut' })),
         h('h4', { class: 'grp' }, '2. Los montos'),
         h('div', { class: 'form-grid' }, fld('Monto neto ($)', 'neto', { type: 'money' }), fld('IVA ($)', 'iva', { type: 'money' }), fld('Total del documento ($)', 'total', { type: 'money' }),
           h('div', { class: 'field wide' }, h('div', { class: 'row-actions' },

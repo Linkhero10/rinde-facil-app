@@ -64,20 +64,24 @@
       .catch(function (e) { if (to) clearTimeout(to); if (e && e.name === 'AbortError') throw new Error('TIMEOUT'); throw e; });
   }
   /* Apps Script falla de vez en cuando (probado: 1 de 9 lecturas devolvió una página de error); leer y consultar se pueden repetir sin riesgo. */
-  function postRetry(action, payload, timeoutMs, valid) {
+  function postRetry(action, payload, timeoutMs, valid, onRetry) {
     /* valid: comprueba que la respuesta trae lo esperado (en las pruebas llegó una vez la respuesta de «ping» a una lectura) */
     return post(action, payload, timeoutMs).then(function (r) { if (valid && !valid(r)) throw new Error('RESPUESTA_INVALIDA'); return r; }).catch(function (e) {
       if (e && (e.message === 'NO_CONFIGURADO')) throw e;
+      if (onRetry) onRetry(e);
       return new Promise(function (res) { setTimeout(res, 1500); }).then(function () { return post(action, payload, timeoutMs); });
     });
   }
   function ping() { return post('ping', {}, 20000); }
 
   /* Lee un comprobante con Google Cloud Vision a través del servicio de la comunidad. */
-  function recognize(file) {
+  function recognize(file, onStage) {
+    var say = function (id, label) { if (onStage) onStage(id, label); };
+    say('prep', 'Preparando la foto…');
     return downscale(file).then(function (blob) {
       return blobToBase64(blob).then(function (b64) {
-        return postRetry('ocr', { fileName: file.name || 'comprobante', mimeType: blob.type || file.type || 'image/jpeg', base64: b64 }, 120000, function (r) { return !!(r && (r.ok === false || r.engine)); }).then(function (res) { res._blob = blob; return res; });
+        say('read', 'Enviando la foto y leyéndola con Google…');
+        return postRetry('ocr', { fileName: file.name || 'comprobante', mimeType: blob.type || file.type || 'image/jpeg', base64: b64 }, 120000, function (r) { return !!(r && (r.ok === false || r.engine)); }, function () { say('read', 'Google no respondió bien. Reintentando…'); }).then(function (res) { res._blob = blob; return res; });
       });
     });
   }

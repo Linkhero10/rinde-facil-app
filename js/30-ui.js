@@ -165,5 +165,37 @@
     return h('div', { class: 'pbar', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': pct, 'aria-label': label || 'Avance' }, h('span', { style: { width: pct + '%' } }));
   }
 
-  RF.ui = { icon: icon, ICONS: ICONS, toast: toast, confirmBox: confirmBox, bind: bind, field: field, labelWrap: labelWrap, btn: btn, exportBar: exportBar, badge: badge, callout: callout, empty: empty, section: section, progressBar: progressBar };
+  /* ---------- tarea larga con barra de progreso (para que nadie piense que se colgó) ----------
+     stages: [{ id, label, from, to, tau }]  ·  el tramo avanza rápido al principio y se frena cerca de «to» mientras se espera. */
+  function busy(title, stages) {
+    var bar = h('span'), pbar = h('div', { class: 'pbar busy-bar', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': 0, 'aria-label': title }, bar);
+    var stepEl = h('div', { class: 'busy-step' }), timeEl = h('div', { class: 'busy-time' }), noteEl = h('div', { class: 'busy-note' });
+    var card = h('div', { class: 'busy', role: 'status', 'aria-live': 'polite' }, h('div', { class: 'busy-title' }, title), stepEl, pbar, h('div', { class: 'busy-foot' }, timeEl, noteEl));
+    document.body.appendChild(card);
+    var t0 = Date.now(), tStage = t0, cur = stages[0], pct = 0, finished = false;
+    function draw() {
+      if (finished) return;
+      var now = Date.now(), el = (now - t0) / 1000, ts = (now - tStage) / 1000;
+      var target = cur.from + (cur.to - cur.from) * (1 - Math.exp(-ts / (cur.tau || 4)));
+      pct = Math.max(pct, target);
+      bar.style.width = pct.toFixed(1) + '%'; pbar.setAttribute('aria-valuenow', String(Math.round(pct)));
+      timeEl.textContent = Math.floor(el) + ' s';
+      noteEl.textContent = el > 40 ? 'Está tardando más de lo normal. Google a veces se demora; puede tomar hasta un minuto y medio.' : el > 15 ? 'Sigue trabajando, no se ha colgado. Las fotos grandes demoran un poco más.' : '';
+    }
+    stepEl.textContent = cur.label; draw();
+    var timer = setInterval(draw, 250);
+    function end(cls, text, ms) {
+      finished = true; clearInterval(timer); card.classList.add(cls); stepEl.textContent = text; timeEl.textContent = ''; noteEl.textContent = '';
+      if (cls === 'ok') { bar.style.width = '100%'; pbar.setAttribute('aria-valuenow', '100'); }
+      setTimeout(function () { card.classList.add('out'); setTimeout(function () { if (card.parentNode) card.parentNode.removeChild(card); }, 400); }, ms);
+    }
+    return {
+      stage: function (id, label) { for (var i = 0; i < stages.length; i++) if (stages[i].id === id) { cur = stages[i]; tStage = Date.now(); stepEl.textContent = label || cur.label; draw(); return; } if (label) stepEl.textContent = label; },
+      label: function (text) { stepEl.textContent = text; },
+      done: function (text) { end('ok', text || 'Listo', 1300); },
+      fail: function (text) { end('bad', text || 'No se pudo', 6000); }
+    };
+  }
+
+  RF.ui = { busy: busy, icon: icon, ICONS: ICONS, toast: toast, confirmBox: confirmBox, bind: bind, field: field, labelWrap: labelWrap, btn: btn, exportBar: exportBar, badge: badge, callout: callout, empty: empty, section: section, progressBar: progressBar };
 })(typeof window !== 'undefined' ? window : globalThis);

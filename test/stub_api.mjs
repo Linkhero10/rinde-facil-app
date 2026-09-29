@@ -29,7 +29,7 @@ Total $1.487.500`;
       else if (p.action === 'saveState') { store.state = p.state; out = { ok: true, savedAt: 'now' }; }
       else if (p.action === 'loadState') out = store.state ? { ok: true, state: store.state } : { ok: false, error: 'SIN_COPIA' };
       else out = { ok: false, error: 'ACCION_DESCONOCIDA' };
-      res.writeHead(200, cors); res.end(JSON.stringify(out));
+      setTimeout(() => { res.writeHead(200, cors); res.end(JSON.stringify(out)); }, p.action === 'ocr' ? (store.ocrDelay || 0) : 0);
     });
   });
   return new Promise(resolve => server.listen(port, '127.0.0.1', () => resolve({ server, store, url: 'http://127.0.0.1:' + port + '/exec' })));
