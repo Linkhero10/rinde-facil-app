@@ -11,11 +11,10 @@
     return UI.callout('warn', 'Primero crea tu proyecto.', ' Ve a «Mi comunidad y proyectos» y agrega el primero.');
   }
   function ctx() { return RF.forms.ctxNow(); }
-  function redraw() { if (RF.app && RF.app.render) RF.app.render(); }
 
   /* ================= Proyecto y comunidad ================= */
   TOOLS.proyecto = { title: 'Mi comunidad y proyectos', icon: 'user', desc: 'Datos de tu comunidad, tus proyectos y fechas clave.', render: function () {
-    var s = RF.store.get(), p = RF.store.project(), c = ctx();
+    var s = RF.store.get(), p = RF.store.project();
     var root = h('div');
     var com = s.community;
     var comFields = h('div', { class: 'form-grid' },
@@ -30,6 +29,7 @@
         { id: 'no_usa', name: 'Soy contribuyente y NO uso el IVA (rindo el total con Anexo 1)' }],
         hint: 'Manual p. 7. Si dudas, pregunta a tu contador o al Organismo Colaborador.' }));
     root.appendChild(UI.section('Tu comunidad', [comFields]));
+    if (p) { var cv = RF.data.convenioDe(p); root.appendChild(UI.section('Reglas que se aplican', [h('p', { class: 'hint' }, h('strong', null, cv.nombre), ' · ' + cv.vigencia + '. ' + cv.fuente + '. Si CORFO cambia el Manual o tu comunidad rinde otro fondo, las reglas se actualizan aparte: tus datos no se tocan.')])); }
 
     /* lista de proyectos */
     var list = h('div', { class: 'chips' });

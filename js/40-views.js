@@ -16,7 +16,7 @@
     { id: 'G-plan', name: 'Planificar', tools: ['necesidades', 'proyecto', 'gantt', 'presupuesto', 'pea', 'reitem', 'cotizaciones'] },
     { id: 'G-rend', name: 'Rendir', tools: ['gastos', 'revision', 'resumen', 'observaciones'] },
     { id: 'G-form', name: 'Anexos y formularios', tools: ['anexo1', 'anexo2', 'anexo3', 'anexo4', 'anexo5', 'informe', 'consulta', 'solicitud'] },
-    { id: 'G-doc', name: 'Documentos y actas', tools: ['documentos', 'actas'] },
+    { id: 'G-doc', name: 'Documentos y actas', tools: ['documentos', 'actas', 'compartir'] },
     { id: 'G-ayu', name: 'Ayudas', tools: ['plazos', 'verificador', 'cuentas', 'nofinanciable'] }
   ];
   function isOpen(key, dflt) { var o = RF.store.get().ui.open; return o[key] == null ? !!dflt : !!o[key]; }
@@ -62,8 +62,13 @@
       var open = route.name === 'tool' && g.tools.indexOf(route.id) >= 0;
       side.appendChild(accordion(g.id, g.name, '', g.tools.map(function (tid) { return h('a', { href: '#/h/' + tid, class: 'side-item tool' + (route.name === 'tool' && route.id === tid ? ' current' : '') }, h('span', { class: 'ck tool' }, UI.icon(RF.tools[tid].icon || 'file', 14)), h('span', { class: 'si-t' }, toolTitle(tid))); }), { open: open, cls: 'tools' }));
     });
+    var cvi = RF.data.convenioDe(RF.store.project());
     side.appendChild(h('div', { class: 'side-foot' },
+      h('p', { class: 'side-rules' }, 'Reglas: ' + cvi.vigencia),
       h('a', { href: '#/h/nube', class: 'side-link' + (route.name === 'tool' && route.id === 'nube' ? ' current' : '') }, UI.icon('cloud', 18), h('span', null, 'Nube y copias')),
+      h('a', { href: '#/h/seguridad', class: 'side-link' + (route.name === 'tool' && route.id === 'seguridad' ? ' current' : '') }, UI.icon('shield', 18), h('span', null, 'Seguridad')),
+      h('button', { type: 'button', class: 'side-link', id: 'lockBtn', onclick: function () { RF.auth.lock('manual'); } }, UI.icon('shield', 18), h('span', null, 'Bloquear')),
+      h('button', { type: 'button', class: 'side-link', id: 'textBtn', onclick: function () { RF.app.cycleText(); } }, UI.icon('search', 18), h('span', { id: 'textLbl' }, 'Letra')),
       h('button', { type: 'button', class: 'side-link', id: 'themeBtn', onclick: function () { RF.app.cycleTheme(); } }, UI.icon('sun', 18), h('span', { id: 'themeLbl' }, 'Tema'))));
     return side;
   }

@@ -2,7 +2,6 @@
 (function (root) {
   'use strict';
   var RF = root.RF = root.RF || {};
-  var D = 'assets/docs/';
 
   /* img: [archivo, leyenda]  ·  tools: ids de herramientas  ·  who: actor principal */
   var T = [

@@ -17,21 +17,30 @@
 
   /* ---------- tema ---------- */
   function applyTheme() {
-    var t = RF.store.get().ui.theme || 'system', el = document.documentElement;
+    var t = RF.auth.phase() === 'open' ? (RF.store.get().ui.theme || 'system') : 'system', el = document.documentElement;
     if (t === 'system') el.removeAttribute('data-theme'); else el.setAttribute('data-theme', t);
+    var sz = RF.auth.phase() === 'open' ? (RF.store.get().ui.textSize || 'normal') : 'normal';
+    if (sz === 'normal') el.removeAttribute('data-text'); else el.setAttribute('data-text', sz);
     applyThemeLabel();
   }
   function applyThemeLabel() {
-    var t = RF.store.get().ui.theme || 'system', lbl = document.getElementById('themeLbl');
+    var t = RF.auth.phase() === 'open' ? (RF.store.get().ui.theme || 'system') : 'system', lbl = document.getElementById('themeLbl');
     if (lbl) lbl.textContent = 'Tema: ' + (t === 'system' ? 'del dispositivo' : t === 'light' ? 'claro' : 'oscuro');
+    var tl = document.getElementById('textLbl'), sz = RF.auth.phase() === 'open' ? (RF.store.get().ui.textSize || 'normal') : 'normal';
+    if (tl) tl.textContent = 'Letra: ' + (sz === 'normal' ? 'normal' : sz === 'grande' ? 'grande' : 'muy grande');
   }
   app.cycleTheme = function () { var order = ['system', 'light', 'dark'], cur = RF.store.get().ui.theme || 'system'; RF.store.update(function (s) { s.ui.theme = order[(order.indexOf(cur) + 1) % 3]; }, { silent: true }); applyTheme(); };
+  app.cycleText = function () { var order = ['normal', 'grande', 'muy-grande'], cur = RF.store.get().ui.textSize || 'normal'; RF.store.update(function (s) { s.ui.textSize = order[(order.indexOf(cur) + 1) % 3]; }, { silent: true }); applyTheme(); };
   app.applyThemeLabel = applyThemeLabel;
 
   /* ---------- dibujo ---------- */
   var lastKey = null;
   function render() {
     var r = route(), host = document.getElementById('app'); if (!host) return;
+    /* sin contraseña no se muestra nada de la comunidad: primero la pantalla de acceso */
+    var ph = RF.auth.phase();
+    if (ph === 'open') RF.data.useConvenio(RF.store.project()); /* las reglas son las del convenio del proyecto activo */
+    if (ph !== 'open' || (RF.authui && RF.authui.pending())) { U.clear(host); host.appendChild(RF.authui.screen(ph)); document.body.classList.remove('menu-open'); return; }
     var side = document.getElementById('side'), sideScroll = side ? side.scrollTop : 0;
     var main = h('main', { id: 'main', class: 'main', tabindex: '-1' });
     var view;
@@ -80,7 +89,12 @@
   app.showUpdate = showUpdate;
 
   function boot() {
-    RF.store.load();
+    RF.auth.init().then(function () {
+      RF.auth.onChange(function () { applyTheme(); render(); });
+      start();
+    });
+  }
+  function start() {
     applyTheme();
     var pending = null;
     RF.store.subscribe(function () { clearTimeout(pending); pending = setTimeout(render, 0); });

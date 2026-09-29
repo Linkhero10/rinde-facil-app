@@ -1,0 +1,27 @@
+name: Pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar herramientas de revisión
+        run: npm install --no-audit --no-fund
+      - name: Sintaxis de la app y del servicio
+        run: npm run check
+      - name: Revisión de código (ESLint)
+        run: npm run lint
+      - name: Pruebas unitarias y del servicio
+        run: npm test

@@ -1,0 +1,162 @@
+/* Rinde Fácil — sesión de la comunidad: contraseña al iniciar, bloqueo por inactividad y sesión con el servicio (token que vence).
+ *
+ * Una sola contraseña abre dos cosas: los datos de este equipo (bóveda cifrada) y, si hay servicio conectado, la sesión con él.
+ * El token del servicio vive solo en memoria: al recargar la página se pide la contraseña otra vez. */
+(function (root) {
+  'use strict';
+  var RF = root.RF = root.RF || {};
+  var C = RF.crypto, V = RF.vault;
+  var S = { token: null, exp: 0, inflight: null, timer: null, last: Date.now(), listeners: [], started: false, insecure: false };
+  var PUBLIC = { ping: 1, challenge: 1, setup: 1, login: 1, resetPassword: 1 };
+
+  function emit() { S.listeners.slice().forEach(function (f) { try { f(phase()); } catch (e) { /* un aviso que falla no debe frenar a los demás */ } }); }
+  /* un servicio falso podría pedir pocas vueltas de PBKDF2 para adivinar la contraseña sin conexión: se exige el mínimo de la app */
+  function checkChallenge(ch) {
+    if (!ch || !ch.exists) return;
+    if (!(Number(ch.it) >= C.ITERATIONS) || typeof ch.saltP !== 'string' || ch.saltP.length < 16) throw Object.assign(new Error('El servicio propone una protección más débil de la permitida. No se envió nada.'), { code: 'SERVICIO_DEBIL' });
+  }
+  function phase() { if (S.insecure) return 'insecure'; return V.status(); } /* none | legacy | locked | open */
+  function onChange(f) { S.listeners.push(f); }
+  function cfg() { return RF.store.get().cloud || {}; }
+  function idleMs() { var m = Number((RF.store.get().ui || {}).idleMinutes); return (isFinite(m) && m >= 1 ? m : 15) * 60000; }
+
+  function init() {
+    RF.store.useVault();
+    if (!C.available()) S.insecure = true;
+    return Promise.resolve(phase());
+  }
+
+  /* ---------- abrir, crear, cerrar ---------- */
+  function afterOpen(state, quiet) {
+    S.reason = '';
+    RF.store.attach(state, V.save);
+    touch(); startIdle();
+    if (RF.blobs && RF.blobs.encryptAll) RF.blobs.encryptAll().catch(function () { /* las fotos se cifran de a poco */ });
+    if (!quiet) emit();
+  }
+  /* primera vez: crea la cuenta; si había datos sin cifrar de la versión anterior, los protege con la contraseña nueva */
+  function createAccount(user, password, opts) {
+    var legacy = V.legacyState(), initial = legacy || RF.store.defaults();
+    initial.community = Object.assign({}, initial.community || {}, { name: (initial.community && initial.community.name) || user });
+    return V.create(user, password, initial, opts).then(function (r) {
+      var next = legacy ? V.verifyReadable().then(function (ok) { if (!ok) throw new Error('No se pudo comprobar la copia cifrada; no se borró nada.'); V.dropLegacy(); }) : Promise.resolve();
+      return next.then(function () { afterOpen(r.state, true); return { recoveryCode: r.recoveryCode, migrated: !!legacy }; });
+    });
+  }
+  function unlock(user, password) { return V.unlock(user, password).then(function (r) { afterOpen(r.state); return r; }); }
+  function recover(code, newPassword) {
+    return V.recover(code, newPassword).then(function (r) {
+      afterOpen(r.state, true);
+      /* si hay servicio con cuenta, se le entrega la contraseña nueva usando el código de recuperación (así también se recupera la cuenta del servicio) */
+      var serverDone = cfg().apiUrl ? RF.cloud.postRaw('resetPassword', { user: V.user(), authKeyR: r.authKeyR, saltP: r.saltP, authKey: r.authKey, recSalt: r.recSalt2, authKeyR2: r.authKeyR2 })
+        .then(function (x) { if (x && x.ok) { setToken(x); return true; } return false; }).catch(function () { return false; }) : Promise.resolve(false);
+      return serverDone.then(function (serverReset) { r.serverReset = serverReset; return r; });
+    });
+  }
+  /* al bloquear no debe quedar nada de la comunidad a la vista: avisos, diálogos abiertos (además dejarían inerte la pantalla de acceso) ni fotos ampliadas */
+  function scrub() {
+    var d = root.document; if (!d) return;
+    Array.prototype.slice.call(d.querySelectorAll('dialog')).forEach(function (x) { try { if (x.close) x.close(); } catch (e) { /* ya cerrado */ } if (x.parentNode) x.parentNode.removeChild(x); });
+    var t = d.getElementById('toasts'); if (t) t.textContent = '';
+    Array.prototype.slice.call(d.querySelectorAll('.busy')).forEach(function (x) { if (x.parentNode) x.parentNode.removeChild(x); });
+    Array.prototype.slice.call(d.querySelectorAll('img[src^="blob:"]')).forEach(function (i) { try { root.URL.revokeObjectURL(i.src); } catch (e) { /* nada */ } i.removeAttribute('src'); });
+  }
+  function lock(reason) {
+    if (!V.isOpen()) return Promise.resolve();
+    stopIdle();
+    return RF.store.flush().then(function () { V.lock(); RF.store.detach(); S.token = null; S.exp = 0; S.reason = reason || ''; scrub(); emit(); });
+  }
+  function wipeDevice() { stopIdle(); V.wipe(); RF.store.detach(); S.token = null; scrub(); return (RF.blobs && RF.blobs.clearAll ? RF.blobs.clearAll() : Promise.resolve()).then(function () { emit(); }); }
+
+  /* ---------- inactividad ---------- */
+  function touch() { S.last = Date.now(); }
+  function startIdle() {
+    if (S.timer) return;
+    if (!S.started && root.document) {
+      ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(function (ev) { root.document.addEventListener(ev, touch, { passive: true, capture: true }); });
+      S.started = true;
+    }
+    S.timer = setInterval(function () { if (V.isOpen() && Date.now() - S.last > idleMs()) lock('inactividad'); }, 10000);
+  }
+  function stopIdle() { if (S.timer) { clearInterval(S.timer); S.timer = null; } }
+
+  /* ---------- sesión con el servicio ---------- */
+  function token() { return S.token && S.exp > Date.now() + 30000 ? S.token : null; }
+  function setToken(r) { S.token = r.token; S.exp = r.exp || (Date.now() + 11 * 3600000); }
+  function needsSession(action) { return !PUBLIC[action]; }
+
+  /* inicia sesión con el servicio usando la contraseña que ya se escribió al abrir la app */
+  function serverLogin(passwordOverride) {
+    var pw = passwordOverride || V.password(), user = V.user();
+    if (!pw) return Promise.reject(Object.assign(new Error('Bloqueada'), { code: 'BLOQUEADA' }));
+    return RF.cloud.postRaw('challenge', {}).then(function (ch) {
+      if (!ch || !ch.ok) throw Object.assign(new Error('El servicio no respondió bien.'), { code: 'SERVICIO' });
+      if (!ch.exists) throw Object.assign(new Error('El servicio todavía no tiene cuenta.'), { code: 'SIN_CUENTA' });
+      checkChallenge(ch);
+      return C.deriveKeys(pw, ch.saltP, ch.it).then(function (k) { return RF.cloud.postRaw('login', { user: user, authKey: k.authKey }); });
+    }).then(function (r) {
+      if (r && r.ok) { setToken(r); return r.token; }
+      var code = (r && r.error) || 'ERROR';
+      throw Object.assign(new Error(code === 'BLOQUEADO' ? 'Demasiados intentos. Espera ' + Math.ceil((r.retryAfter || 900) / 60) + ' minutos.' : code === 'CREDENCIALES_INVALIDAS' ? 'La contraseña del servicio es distinta a la de este equipo.' : 'No se pudo iniciar sesión (' + code + ').'), { code: code === 'CREDENCIALES_INVALIDAS' ? 'CLAVE_DISTINTA' : code, retryAfter: r && r.retryAfter });
+    });
+  }
+  function ensureSession() {
+    var t = token(); if (t) return Promise.resolve(t);
+    if (!S.inflight) S.inflight = serverLogin().then(function (x) { S.inflight = null; return x; }, function (e) { S.inflight = null; throw e; });
+    return S.inflight;
+  }
+  function dropToken() { S.token = null; S.exp = 0; }
+
+  /* crear la cuenta en el servicio (una vez): pide el código de instalación que puso quien lo desplegó */
+  function serverSetup(setupCode) {
+    var m = V.meta(), pw = V.password(); if (!pw || !m) return Promise.reject(Object.assign(new Error('Bloqueada'), { code: 'BLOQUEADA' }));
+    return Promise.all([V.secrets(), RF.cloud.postRaw('challenge', {})]).then(function (r) {
+      var sec = r[0] || {}, ch = r[1];
+      if (ch && ch.exists) throw Object.assign(new Error('El servicio ya tiene una cuenta. Inicia sesión con su contraseña.'), { code: 'CUENTA_EXISTENTE' });
+      if (!sec.authKeyR) throw Object.assign(new Error('Este equipo no tiene código de recuperación para crear la cuenta del servicio.'), { code: 'SIN_RECUPERACION' });
+      return C.deriveKeys(pw, m.saltP, m.it).then(function (k) {
+        return RF.cloud.postRaw('setup', { setupCode: setupCode, user: m.user, saltP: m.saltP, authKey: k.authKey, recSalt: sec.recSalt, authKeyR: sec.authKeyR });
+      });
+    }).then(function (r) {
+      if (r && r.ok) { setToken(r); return true; }
+      throw Object.assign(new Error(r && r.error === 'CODIGO_INVALIDO' ? 'El código de instalación no es correcto.' : r && r.error === 'BLOQUEADO' ? 'Demasiados intentos. Espera un rato.' : 'No se pudo crear la cuenta (' + ((r && r.error) || 'error') + ').'), { code: r && r.error });
+    });
+  }
+  /* equipo nuevo: entra con la dirección del servicio y la contraseña, trae los datos y crea la bóveda de este equipo */
+  function connectDevice(url, user, password) {
+    var problems = C.passwordProblems(password, user);
+    return RF.cloud.postRawTo(url, 'challenge', {}).then(function (ch) {
+      if (!ch || !ch.exists) throw Object.assign(new Error('Ese servicio todavía no tiene una cuenta creada.'), { code: 'SIN_CUENTA' });
+      checkChallenge(ch);
+      return C.deriveKeys(password, ch.saltP, ch.it).then(function (k) { return RF.cloud.postRawTo(url, 'login', { user: user, authKey: k.authKey }); });
+    }).then(function (r) {
+      if (!r || !r.ok) throw Object.assign(new Error(r && r.error === 'BLOQUEADO' ? 'Demasiados intentos. Espera un rato.' : 'La comunidad o la contraseña no coinciden con las del servicio.'), { code: r && r.error });
+      setToken(r);
+      return RF.cloud.postRawTo(url, 'loadState', { t: r.token }).then(function (st) {
+        var state = st && st.ok ? JSON.parse(st.state) : RF.store.defaults();
+        state.cloud = Object.assign({}, state.cloud || {}, { apiUrl: url }); state.community = Object.assign({}, state.community || {}, { name: (state.community && state.community.name) || user });
+        return V.create(user, password, state, { noRecovery: true, skipPolicy: !problems.length ? false : true }).then(function () { afterOpen(state); return { rev: st && st.rev }; });
+      });
+    });
+  }
+  function serverChangePassword(oldPw, newPw) {
+    return RF.cloud.postRaw('challenge', {}).then(function (ch) {
+      if (!ch || !ch.exists) return null;
+      checkChallenge(ch);
+      return C.deriveKeys(oldPw, ch.saltP, ch.it).then(function (ko) {
+        var saltP = C.b64(C.rand(16));
+        return C.deriveKeys(newPw, saltP, C.ITERATIONS).then(function (kn) {
+          return ensureSession().then(function (t) { return RF.cloud.postRaw('changePassword', { t: t, authKeyOld: ko.authKey, saltP: saltP, authKey: kn.authKey }); });
+        });
+      });
+    }).then(function (r) { if (r && !r.ok) throw Object.assign(new Error('El servicio no aceptó el cambio (' + r.error + ').'), { code: r.error }); return r; });
+  }
+  function logoutServer(all) {
+    var t = token(); if (!t) return Promise.resolve();
+    return RF.cloud.postRaw(all ? 'logoutAll' : 'logout', { t: t }).then(function () { if (all) dropToken(); }).catch(function () { /* sin conexión: la sesión vence sola */ });
+  }
+
+  RF.auth = { reason: function () { return S.reason || ''; }, init: init, phase: phase, onChange: onChange, createAccount: createAccount, unlock: unlock, recover: recover, lock: lock, wipeDevice: wipeDevice, touch: touch,
+    token: token, needsSession: needsSession, ensureSession: ensureSession, dropToken: dropToken, serverLogin: serverLogin, serverSetup: serverSetup, connectDevice: connectDevice,
+    serverChangePassword: serverChangePassword, logoutServer: logoutServer, setToken: setToken };
+})(typeof window !== 'undefined' ? window : globalThis);

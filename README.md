@@ -1,4 +1,4 @@
-# Rinde Fácil (app v2)
+# Rinde Fácil (app v3)
 
 Guía paso a paso para que las comunidades del Salar de Atacama rindan el convenio CORFO, con formularios listos, cuadre entre trámites y lectura de comprobantes en la nube. Reemplaza a la demo anterior (`../demo`, que se conserva sin cambios).
 
@@ -32,20 +32,22 @@ Abre `http://127.0.0.1:8790/index.html`. En celular funciona igual y se puede «
 
 `backend/WebApi.gs` va en el proyecto de Apps Script de **cada comunidad** (junto a `CloudOcrAdapter.gs` del bundle de Rinde fácil). Decisión vigente (25-sep-2026): cada comunidad tiene su propio Google Workspace; nada pasa por un servidor central.
 
-1. Copiar `WebApi.gs` al proyecto (el bundle ya trae `CloudOcrAdapter.gs` y los permisos de Drive y Cloud Vision).
-2. Propiedades de la secuencia de comandos: `RINDE_FACIL_ACCESS_KEY` (una clave larga), `RINDE_FACIL_GCP_PROJECT_ID`, `RINDE_FACIL_OCR_PROVIDER=cloud_vision`; opcionales `RINDE_FACIL_ROOT_FOLDER_ID` y `RINDE_FACIL_OCR_DAILY_LIMIT`.
-3. Implementar → Nueva implementación → Aplicación web → **Ejecutar como: yo** · **Quién tiene acceso: cualquier persona**. La clave protege el servicio.
-4. Pegar la dirección `/exec` y la clave en la app: «Nube y copias» → «Probar conexión».
+Instalación y actualización paso a paso: [docs/INSTALAR_SERVICIO.md](docs/INSTALAR_SERVICIO.md). En corto: pegar `WebApi.gs`, crear la propiedad `RINDE_FACIL_SETUP_CODE` (código de un solo uso), implementar como aplicación web (**ejecutar como yo**, acceso **cualquier persona**), pegar la dirección `/exec` en la app y crear la cuenta del servicio con ese código.
 
-Seguridad: sin clave configurada el servicio no atiende a nadie; el OCR no guarda ni la imagen ni el texto; hay límite diario de lecturas; el estado guardado se valida y se conservan 5 respaldos.
+**Acceso (versión 3):** al abrir la app se pide el **nombre de la comunidad** (usuario) y una **contraseña** que elige la comunidad. Ya no existe la clave compartida. La contraseña no sale del equipo; los datos locales van cifrados (AES‑256‑GCM) y hay un código de recuperación de 26 caracteres. Modelo de amenazas, controles, pruebas y riesgos que quedan: [docs/SEGURIDAD.md](docs/SEGURIDAD.md). Privacidad y retención: [docs/PRIVACIDAD_Y_RETENCION.md](docs/PRIVACIDAD_Y_RETENCION.md). Cambio de administradores: [docs/TRASPASO_ADMINISTRACION.md](docs/TRASPASO_ADMINISTRACION.md).
 
 ## Pruebas
 
 ```
-node --test test/logic.test.mjs test/export.test.mjs test/backend.test.mjs   # reglas, exportación (Excel abierto con openpyxl), servicio simulado
-node test/e2e.mjs                                                            # recorrido completo con Playwright (18 pasos, escritorio y celular)
-node test/e2e-crawl.mjs                                                      # las 69 pantallas en 2 tamaños: errores, desborde, imágenes, accesibilidad
+npm install                  # una vez: instala ESLint
+npm run check                # sintaxis de la app y del servicio
+npm run lint                 # ESLint (errores reales: variables sin declarar, claves duplicadas…)
+npm test                     # unitarias y del servicio (WebApi.gs real con Apps Script simulado): reglas, exportación, cuentas, bloqueo, sesiones
+node test/e2e.mjs            # recorrido completo con Playwright (crear cuenta, bloqueo, recuperación, sin conexión, celular…)
+node test/e2e-crawl.mjs      # todas las pantallas en 2 tamaños, con migración de datos antiguos
 ```
+
+En GitHub, `.github/workflows/ci.yml` corre check, lint y test en cada cambio. Los recorridos con navegador se corren en el equipo de desarrollo.
 
 Las pruebas de OCR usan `test/stub_api.mjs`, un servicio **de prueba** que devuelve un texto fijo; prueban el flujo de la app, no la exactitud de Google.
 
@@ -57,14 +59,15 @@ Las pruebas de OCR usan `test/stub_api.mjs`, un servicio **de prueba** que devue
 - **Feriados:** los días hábiles cuentan de lunes a viernes y la app no trae feriados; se agregan a mano.
 - **Plazos de revisión de CORFO y de la transferencia final:** las fuentes no los fijan; la app no los inventa.
 - **Tope y reglas numéricas** (10 M netos, 3 M mensuales, 200 caracteres de glosa, tolerancia de $1) vienen del Manual y del piloto; si CORFO las cambia hay que actualizar `js/10-data.js`.
-- **Datos personales:** viven en el dispositivo y, si se conecta, en el Drive de la comunidad. Falta definir consentimiento, retención y responsables antes del uso real (Ley 21.719, vigente desde el 1-dic-2026).
+- **Datos personales:** viven cifrados en el dispositivo y, si se conecta, en el Drive de la comunidad. Hay un borrador de consentimiento y retención ([docs/PRIVACIDAD_Y_RETENCION.md](docs/PRIVACIDAD_Y_RETENCION.md)) que **falta revisar con una persona abogada** antes del uso real (Ley 21.719: verificar la fecha de vigencia).
+- **Sin auditoría externa.** La seguridad se probó con pruebas propias; falta la prueba de penetración y desplegar la versión 3 del servicio en Apps Script real.
 - La foto de los comprobantes se guarda solo en el dispositivo (IndexedDB); la copia en JSON no las incluye.
 
 ## Estructura
 
 ```
 index.html · css/app.css · sw.js · manifest.webmanifest
-js/01-util · 02-store · 10-data · 11-tramites · 20-logic · 21-export · 30-ui · 31-forms · 32-tools-plan · 33-cloud · 34-tools-gastos · 35-flow · 40-views · 60-app
+js/01-util · 02-store · 03-crypto · 04-vault · 05-auth · 10-data · 11-tramites · 12-needs · 20-logic · 21-export · 26-receipt · 27-search · 30-ui · 31-forms · 32-tools-plan · 33-cloud · 34-tools-gastos · 35-flow · 36-drive · 37-repo · 38-tools-needs · 39-auth-ui · 41-tools-share · 40-views · 50-search · 60-app
 vendor/parser.js          analizador de comprobantes del piloto (copiado sin cambios; SHA-256 en su cabecera)
 assets/docs/*.jpg         capturas reales de los documentos (optimizadas por tools/optimize_images.py)
 backend/WebApi.gs         servicio de la comunidad
@@ -82,7 +85,7 @@ Manual de presentación de informes y rendición (CORFO), Flujograma proceso com
 - **Documentos oficiales y actas de mesas de trabajo** (`js/37-repo.js`): registro de lo que llega de CORFO (PEA corregido, acta de no objeción, resoluciones…) con la marca «¿cambia el PEA?», y de las actas de las mesas (asistencia mínima, acuerdos y plazos). Se guardan en el dispositivo y en el Drive de la comunidad.
 - En toda la app se habla del **Organismo Colaborador** (no de la institución que hoy cumple ese rol).
 
-Carpeta que arma `backend/WebApi.gs` (versión 2.3.0) en el Drive de la comunidad:
+Carpeta que arma `backend/WebApi.gs` (versión 3.0.0) en el Drive de la comunidad:
 
 ```
 Rinde fácil/
@@ -92,3 +95,12 @@ Rinde fácil/
   Copias de seguridad/
   Proyectos/<proyecto>/{1 Planificación, 2 Anexos y formularios, 3 Rendición, 4 Comprobantes/AAAA-MM}
 ```
+
+## Novedades de la versión 3
+
+- **Cuenta por comunidad** (`js/03-crypto.js`, `04-vault.js`, `05-auth.js`, `39-auth-ui.js`): usuario = nombre de la comunidad; contraseña propia; código de recuperación; bloqueo por inactividad; pantalla «Seguridad» con cambio de contraseña, cierre de sesiones y registro de accesos.
+- **Servicio con sesiones** (`backend/WebApi.gs` 3.0.0): claves derivadas (el servidor no conoce la contraseña), bloqueo por intentos, sesiones que vencen, control de versiones de la copia (`CONFLICTO`).
+- **Cola sin conexión:** lo que no se pudo subir al Drive queda cifrado en el equipo y se reintenta solo.
+- **Resumen para el Organismo Colaborador** (`js/41-tools-share.js`): la comunidad elige qué incluye, revisa el texto y autoriza; sin nombres de proveedores ni RUT; queda registro de lo compartido.
+- **Reglas por convenio** (`RF.data.CONVENIOS`): las reglas numéricas son un juego versionado («Manual vigente a septiembre de 2026»); un cambio de Manual o un fondo nuevo no toca los datos.
+- **Tamaño de letra** (normal, grande, muy grande) y extracto del texto del OCR en las copias.

@@ -95,13 +95,15 @@ test('texto sin datos: no devuelve valores y avisa', () => {
   assert.equal(r.level, 'revisar'); assert.deepEqual(Object.keys(r.fields), []);
   assert.ok(r.notes.length >= 3);
 });
-test('la copia de datos no lleva la clave de acceso y no pisa la conexión del dispositivo', () => {
+test('la copia de datos no lleva claves, no pisa la conexión del dispositivo y descarta claves de copias viejas', () => {
   RF.store.reset();
-  RF.store.update(s => { s.cloud.apiUrl = 'https://script.google.com/macros/s/X/exec'; s.cloud.key = 'clave-secreta'; s.projects.push(RF.store.newProject('P')); });
+  RF.store.update(s => { s.cloud.apiUrl = 'https://script.google.com/macros/s/X/exec'; s.projects.push(RF.store.newProject('P')); });
   const copia = RF.store.exportJSON();
-  assert.ok(!copia.includes('clave-secreta'));
-  RF.store.importJSON(copia);
-  assert.equal(RF.store.get().cloud.key, 'clave-secreta', 'la clave local se conserva al importar');
+  assert.ok(!/"key"/.test(JSON.stringify(JSON.parse(copia).cloud)), 'la copia no tiene campo de clave');
+  const vieja = JSON.parse(copia); vieja.cloud.key = 'clave-secreta'; vieja.cloud.apiUrl = 'https://otro.example/exec';
+  RF.store.importJSON(JSON.stringify(vieja));
+  assert.equal(RF.store.get().cloud.key, undefined, 'una clave que venga en una copia vieja no se conserva');
+  assert.equal(RF.store.get().cloud.apiUrl, 'https://script.google.com/macros/s/X/exec', 'la conexión del dispositivo no se pisa');
   assert.equal(RF.store.get().projects[0].name, 'P');
 });
 
@@ -143,4 +145,12 @@ test('las formas de pago incluyen débito y prepago, y un voucher sin número so
   assert.equal(res.issues.find(i => i.id === 'sin_folio').level, 'warn');
   const bol = RF.logic.evaluateExpense(Object.assign({}, e, { docType: 'boleta' }), RF.store.newProject('P'), RF.store.get().community, []);
   assert.equal(bol.issues.find(i => i.id === 'sin_folio').level, 'error');
+});
+test('la copia lleva solo un extracto del texto del OCR y no toca el original', () => {
+  RF.store.reset();
+  const largo = 'LINEA DEL COMPROBANTE 123456\n'.repeat(200);
+  RF.store.update(s => { const p = RF.store.newProject('P'); p.expenses.push({ id: 'g1', ocr: { raw: largo, engine: 'cloud_vision' } }); s.projects.push(p); });
+  const copia = JSON.parse(RF.store.exportJSON()).projects[0].expenses[0].ocr;
+  assert.equal(copia.raw.length, 2000); assert.equal(copia.cortado, true);
+  assert.equal(RF.store.get().projects[0].expenses[0].ocr.raw.length, largo.length, 'en el equipo queda completo');
 });

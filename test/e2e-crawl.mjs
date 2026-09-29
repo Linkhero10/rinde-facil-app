@@ -32,7 +32,18 @@ for (const vp of [{ name: 'escritorio', width: 1280, height: 900 }, { name: 'cel
   page.on('response', r => { if (r.status() >= 400) errs.push('HTTP ' + r.status() + ' ' + r.url()); });
   await page.goto(BASE);
   await page.evaluate(s => localStorage.setItem('rinde_facil_v2', JSON.stringify(s)), seed);
-  await page.reload(); await page.waitForSelector('#main');
+  await page.reload();
+  /* datos de la versión anterior (sin cifrar): la app ofrece protegerlos con una contraseña y luego los abre */
+  await page.waitForSelector('.auth-card');
+  if (!/Protege los datos/i.test(await page.textContent('h1'))) bad('debía ofrecer proteger los datos antiguos: ' + await page.textContent('h1'));
+  await page.locator('input[type=password]').nth(0).fill('frase larga de prueba 2026');
+  await page.locator('input[type=password]').nth(1).fill('frase larga de prueba 2026');
+  await page.getByRole('button', { name: 'Proteger mis datos' }).click();
+  await page.waitForSelector('.recovery-code', { timeout: 20000 });
+  await page.locator('#recok').check(); await page.getByRole('button', { name: 'Continuar' }).click();
+  await page.waitForSelector('#main .hero, #main h1', { timeout: 10000 });
+  const mig = await page.evaluate(() => ({ old: localStorage.getItem('rinde_facil_v2'), vault: !!localStorage.getItem('rinde_facil_vault_v3'), proj: RF.store.get().projects.map(p => p.name) }));
+  if (mig.old) bad('quedó la copia sin cifrar'); if (!mig.vault) bad('no se creó la bóveda'); if (mig.proj[0] !== 'Sede comunitaria') bad('se perdieron los datos al migrar');
   const ids = await page.evaluate(() => ({ tram: RF.tramites.list.map(t => t.id), tools: Object.keys(RF.tools), fases: RF.data.FASES.map(f => f.id) }));
   const routes = ['#/'].concat(ids.fases.map(f => '#/f/' + f), ids.tram.map(t => '#/t/' + t), ids.tools.map(t => '#/h/' + t));
   console.log(`\n[${vp.name}] ${routes.length} pantallas`);

@@ -180,11 +180,12 @@
         if (v === null || v === undefined || v === false) continue;
         if (k === 'class') el.className = v;
         else if (k === 'text') el.textContent = v;
-        else if (k === 'html') el.innerHTML = v;
+        else if (k === 'html') el.textContent = v; /* nunca se interpreta como HTML: lo que llega del servicio o de un archivo no puede inyectar nada */
         else if (k === 'style' && typeof v === 'object') { for (var s in v) { if (s.indexOf('-') >= 0) el.style.setProperty(s, v[s]); else el.style[s] = v[s]; } }
         else if (k.slice(0, 2) === 'on' && typeof v === 'function') el.addEventListener(k.slice(2), v);
         else if (k === 'dataset') { for (var d in v) el.dataset[d] = v[d]; }
         else if (v === true) el.setAttribute(k, '');
+        else if ((k === 'href' || k === 'src' || k === 'action' || k === 'formaction') && /^\s*(javascript|vbscript|data)\s*:/i.test(String(v))) continue; /* enlaces que ejecutan código: se descartan */
         else el.setAttribute(k, v);
       }
     }

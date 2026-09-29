@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { startStub } from './stub_api.mjs';
+import { startStub, SETUP_CODE } from './stub_api.mjs';
 const { chromium } = createRequire('D:/SMI/_FARO/runtime/package.json')('playwright');
 
 const BASE = process.env.RF_URL || 'http://127.0.0.1:8790/index.html';
@@ -27,7 +27,7 @@ wb=openpyxl.load_workbook(sys.argv[1]);ws=wb.worksheets[0]
 cells=[c.value for r in ws.iter_rows() for c in r if c.value is not None]
 print(json.dumps({'sheets':wb.sheetnames,'cells':cells},ensure_ascii=False,default=str))`;
   const r = spawnSync(PY, ['-c', py, file], { encoding: 'utf8' });
-  if (r.status !== 0) throw new Error('openpyxl no pudo abrir el Excel: ' + r.stderr.slice(0, 200));
+  if (r.status !== 0) throw new Error('openpyxl no pudo abrir el Excel: ' + r.stderr.slice(0, 700));
   return JSON.parse(r.stdout);
 }
 
@@ -40,6 +40,8 @@ page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', e => errors.push('PAGEERROR ' + e.message));
 const shot = n => page.screenshot({ path: path.join(SHOTS, n + '.png'), fullPage: false });
 const go = async hash => { await page.evaluate(h => { location.hash = h; }, hash); await page.waitForTimeout(150); };
+const PW = 'frase larga de prueba 2026', PW2 = 'otra frase larga de prueba 2027';
+const passwords = () => page.locator('input[type=password]');
 const tmp = name => path.join(os.tmpdir(), 'rf-e2e-' + Date.now() + '-' + name);
 
 await page.goto(BASE);
@@ -47,14 +49,37 @@ await page.evaluate(() => localStorage.clear());
 await page.reload();
 await page.waitForSelector('#main');
 
+let recoveryCode = '';
+await step('0. Primera vez: crea la cuenta con la contraseña y muestra el código de recuperación', async () => {
+  ok(/Crea la cuenta de tu comunidad/i.test(await page.textContent('h1')), 'lo primero es crear la cuenta');
+  ok(!(await page.locator('.side').count()), 'antes de la contraseña no se ve nada de la app');
+  await page.getByLabel('Nombre de la comunidad').fill('Comunidad de Prueba');
+  await passwords().nth(0).fill('corta');
+  await passwords().nth(1).fill('corta');
+  await page.getByRole('button', { name: 'Crear cuenta' }).click();
+  await page.waitForFunction(() => /al menos|corta|caracteres/i.test(document.querySelector('.auth-err')?.textContent || ''), null, { timeout: 5000 });
+  await passwords().nth(0).fill(PW); await passwords().nth(1).fill(PW);
+  await page.getByRole('button', { name: 'Crear cuenta' }).click();
+  await page.waitForSelector('.recovery-code', { timeout: 15000 });
+  recoveryCode = (await page.textContent('.recovery-code')).trim();
+  ok(/^[0-9A-Z]{5}(-[0-9A-Z]{5}){4}-[0-9A-Z]$/.test(recoveryCode), 'código de 26 caracteres: ' + recoveryCode);
+  ok(await page.getByRole('button', { name: 'Continuar' }).isDisabled(), 'no se puede seguir sin confirmar que lo guardó');
+  await page.locator('#recok').check();
+  await page.getByRole('button', { name: 'Continuar' }).click();
+  await page.waitForSelector('main h1');
+  const raw = await page.evaluate(() => Object.keys(localStorage).map(k => k + '=' + localStorage.getItem(k)).join(String.fromCharCode(10)));
+  ok(!raw.includes(PW) && !raw.includes(recoveryCode), 'ni la contraseña ni el código quedan en el almacenamiento');
+  ok(!/rinde_facil_v2=/.test(raw), 'no queda una copia sin cifrar');
+});
+
 await step('1. Al inicio pide los datos de la comunidad y crea el proyecto', async () => {
   eq(await page.textContent('h1'), 'Rinde Fácil te guía en tu rendición');
   await page.getByLabel('Nombre de tu comunidad').fill('Comunidad de Prueba');
   await page.getByLabel('RUT de la comunidad').fill('11111111-1');
   await page.getByLabel('Nombre de tu proyecto').fill('Sede comunitaria');
   await page.getByRole('button', { name: 'Empezar' }).click();
-  await page.waitForSelector('.hero');
-  ok(/Vas en la fase 1/.test(await page.textContent('.hero h1')), 'debe partir en la fase 1');
+  await page.waitForFunction(() => /Vas en la fase 1/.test(document.querySelector('.hero h1')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+  { const hh = await page.textContent('.hero h1'); ok(/Vas en la fase 1/.test(hh), 'debe partir en la fase 1, dice: ' + hh); }
   eq(await page.inputValue('#projsel option:checked >> nth=0').catch(() => 'x'), 'x');
   await shot('02-home');
 });
@@ -95,7 +120,7 @@ await step('4. Los datos del proyecto y del presupuesto aprobado se guardan', as
   await page.getByLabel('Gastos de administración').fill('5000000');
   await page.getByLabel('¿Cómo tratas el IVA?').selectOption('no_contribuyente');
   await page.waitForTimeout(400);
-  const st = await page.evaluate(() => JSON.parse(localStorage.getItem('rinde_facil_v2')));
+  const st = await page.evaluate(() => JSON.parse(JSON.stringify(RF.store.get())));
   const p = st.projects[0];
   eq(p.start, '2026-01-01'); eq(p.budgetApproved.operacion, 20000000); eq(p.budgetApproved.administracion, 5000000);
   eq(st.community.name, 'Comunidad de Prueba');
@@ -159,7 +184,7 @@ await step('7. Gastos a mano: faltan cosas -> errores claros; se corrigen -> que
   await page.locator('label.check', { hasText: 'Comprobante de pago' }).locator('input').check();
   await page.waitForTimeout(200);
   t = await page.textContent('.issues');
-  ok(/Todo en orden/.test(t), 'queda sin problemas: ' + t.slice(0, 200));
+  ok(/Todo en orden/.test(t), 'queda sin problemas: ' + t.slice(0, 700));
   await shot('07-gasto');
   await page.getByRole('button', { name: /Volver a la lista/ }).click();
   ok(/Listo/.test(await page.textContent('.list-grid')), 'aparece como Listo en la lista');
@@ -241,9 +266,15 @@ await step('11. Revisión cruza gastos, anexos y presupuesto y ofrece "Arreglar"
 await step('12. Foto de un comprobante: OCR en la nube (servicio de prueba) rellena y exige revisión humana', async () => {
   await go('#/h/nube');
   await page.getByLabel('Dirección del servicio (termina en /exec)').fill(stub.url);
-  await page.getByLabel('Clave de acceso').fill('clave-de-prueba');
+  ok(!(await page.getByLabel('Clave de acceso').count()), 'ya no existe la clave compartida');
   await page.getByRole('button', { name: 'Probar conexión' }).click();
   await page.waitForFunction(() => /Conectado/.test(document.querySelector('.tool-page').textContent), null, { timeout: 8000 });
+  await page.getByLabel('Código de instalación').fill('codigo-equivocado');
+  await page.getByRole('button', { name: 'Crear la cuenta del servicio' }).click();
+  await page.waitForFunction(() => /no es correcto/.test(document.querySelector('.tool-page').textContent), null, { timeout: 15000 });
+  await page.getByLabel('Código de instalación').fill(SETUP_CODE);
+  await page.getByRole('button', { name: 'Crear la cuenta del servicio' }).click();
+  await page.waitForFunction(() => /Cuenta creada/.test(document.querySelector('.tool-page').textContent), null, { timeout: 15000 });
   await go('#/h/gastos');
   stub.store.ocrDelay = 2200; /* el servicio de prueba se demora, como Google */
   await page.locator('input[type=file][multiple]').setInputFiles(FIXTURE);
@@ -310,10 +341,27 @@ await step('12d. Lo que se saca (Excel de la Carta Gantt) queda también en el D
   await page.getByRole('button', { name: /Preparar mi carpeta/ }).click();
   await page.waitForFunction(() => /La carpeta «Rinde fácil» está en tu Drive/.test(document.querySelector('.tool-page').textContent), null, { timeout: 8000 });
   const t = await page.textContent('.tool-page');
-  ok(/carta-gantt/.test(t) && /Planificacion|planificacion/.test(t), 'lista lo guardado con su ubicación');
+  ok(/carta-gantt/.test(t) && /Planificaci[oó]n/i.test(t), 'lista lo guardado con su ubicación');
   const exp = await page.evaluate(() => window.RF.store.exportJSON());
-  ok(!exp.includes('clave-de-prueba'), 'la copia no incluye la clave');
+  ok(!/"key"/.test(JSON.stringify(JSON.parse(exp).cloud)), 'la copia no incluye claves');
   await shot('12d-drive');
+});
+
+await step('12e. Sin conexión: el archivo queda en una cola cifrada y se sube solo al volver', async () => {
+  await go('#/h/gantt');
+  const before = stub.store.calls.filter(x => x.action === 'saveFile').length;
+  await ctx.setOffline(true);
+  try {
+  await page.getByRole('button', { name: 'Excel' }).first().click();
+  await page.waitForFunction(() => /quedó en la cola/.test(document.getElementById('toasts').textContent), null, { timeout: 10000 });
+  eq(await page.evaluate(() => RF.outbox.count()), 1, 'un archivo en la cola');
+  const raw = await page.evaluate(async () => JSON.stringify(await RF.outbox.list()));
+  ok(!raw.includes('Sede comunitaria') && !raw.includes('UEsD'), 'la cola no guarda nada legible: ' + raw.slice(0, 300));
+  eq(stub.store.calls.filter(x => x.action === 'saveFile').length, before, 'sin conexión no llegó nada');
+  } finally { await ctx.setOffline(false); errors.splice(0, errors.length, ...errors.filter(x => !/ERR_INTERNET_DISCONNECTED/.test(x))); }
+  const r = await page.evaluate(() => RF.drive.flushOutbox());
+  eq(r.sent, 1, 'se subió'); eq(r.left, 0, 'la cola quedó vacía');
+  eq(stub.store.calls.filter(x => x.action === 'saveFile').length, before + 1, 'llegó al servicio al volver la conexión');
 });
 
 await step('12c. Varios proyectos: crear otro, cambiar entre ellos y que no se mezclen los datos', async () => {
@@ -327,7 +375,7 @@ await step('12c. Varios proyectos: crear otro, cambiar entre ellos y que no se m
   await page.waitForTimeout(200);
   ok(!/Aún no anotas gastos/.test(await page.textContent('.tool-page')), 'el primer proyecto conserva sus gastos');
   await page.waitForTimeout(400);
-  const st = await page.evaluate(() => JSON.parse(localStorage.getItem('rinde_facil_v2')));
+  const st = await page.evaluate(() => JSON.parse(JSON.stringify(RF.store.get())));
   eq(st.projects.length, 2); eq(st.projects[1].expenses.length, 0); ok(st.projects[0].expenses.length >= 2);
 });
 
@@ -336,6 +384,54 @@ await step('13. Guardar y traer la copia de la nube', async () => {
   await page.getByRole('button', { name: 'Guardar copia en la nube' }).click();
   await page.waitForFunction(() => /Copia guardada/.test(document.querySelector('.tool-page').textContent), null, { timeout: 8000 });
   ok(stub.store.state && JSON.parse(stub.store.state).projects.length === 2, 'la nube guardó el estado con los dos proyectos');
+});
+
+await step('13b. Toda llamada al servicio lleva sesión y ninguna lleva la contraseña', async () => {
+  const sin = stub.store.calls.filter(c => !['ping', 'challenge', 'setup', 'login'].includes(c.action) && !c.hadToken);
+  ok(sin.length === 0, 'llamadas sin sesión: ' + sin.map(c => c.action).join(','));
+  ok(stub.store.calls.some(c => (c.action === 'login' || c.action === 'setup') && c.ok), 'la sesión se inició sola con la misma contraseña');
+});
+
+await step('13c. Bloquear: sin contraseña no se ve nada; contraseña mala no entra; la buena sí', async () => {
+  await go('#/h/seguridad');
+  await page.getByRole('button', { name: 'Bloquear ahora' }).click();
+  await page.waitForSelector('.auth-card');
+  ok(/Entra a Rinde Fácil/i.test(await page.textContent('h1')));
+  ok((await page.locator('.side').count()) === 0, 'sin contraseña no hay menú ni proyectos');
+  const vis = await page.evaluate(() => document.body.innerText); ok(!/Sede comunitaria|Invernadero/.test(vis), 'nada de la comunidad a la vista: ' + vis.replace(/\s+/g, ' ').slice(0, 700));
+  await passwords().nth(0).fill('contraseña equivocada larga');
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.waitForFunction(() => /no coinciden/.test(document.querySelector('.auth-err')?.textContent || ''), null, { timeout: 15000 });
+  await passwords().nth(0).fill(PW);
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.waitForSelector('.side', { timeout: 15000 });
+  eq((await page.evaluate(() => RF.store.get().projects.length)), 2, 'los datos siguen ahí');
+});
+
+await step('13d. Olvidé la contraseña: el código de recuperación abre y entrega uno nuevo', async () => {
+  await page.evaluate(() => RF.auth.lock('manual'));
+  await page.waitForSelector('.auth-card');
+  await page.getByRole('button', { name: 'Olvidé mi contraseña' }).click();
+  await page.getByLabel('Código de recuperación').fill(recoveryCode.toLowerCase());
+  await passwords().nth(0).fill(PW2); await passwords().nth(1).fill(PW2);
+  await page.getByRole('button', { name: 'Cambiar contraseña' }).click();
+  await page.waitForSelector('.recovery-code', { timeout: 20000 });
+  const nuevo = (await page.textContent('.recovery-code')).trim();
+  ok(nuevo !== recoveryCode && /^[0-9A-Z]{5}(-[0-9A-Z]{5}){4}-[0-9A-Z]$/.test(nuevo), 'entrega un código nuevo');
+  recoveryCode = nuevo;
+  await page.locator('#recok').check();
+  await page.getByRole('button', { name: 'Continuar' }).click();
+  await page.waitForSelector('.side');
+  eq((await page.evaluate(() => RF.store.get().projects.length)), 2, 'sin perder datos');
+  ok(stub.store.calls.some(c => c.action === 'resetPassword' && c.ok), 'el servicio también aceptó la contraseña nueva');
+  await page.evaluate(() => RF.auth.lock('manual'));
+  await page.waitForSelector('.auth-card');
+  await passwords().nth(0).fill(PW);
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.waitForFunction(() => /no coinciden/.test(document.querySelector('.auth-err')?.textContent || ''), null, { timeout: 15000 });
+  await passwords().nth(0).fill(PW2);
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.waitForSelector('.side', { timeout: 15000 });
 });
 
 await step('14. Observaciones: 10 días hábiles desde la comunicación', async () => {
@@ -483,6 +579,27 @@ await step('15e. Actas de mesas de trabajo: aviso de asistencia mínima, comprom
   await shot('15e-actas');
 });
 
+await step('15f. Resumen para el Organismo Colaborador: elige qué incluye, exige autorización y no lleva datos de terceros', async () => {
+  await go('#/h/compartir');
+  await page.waitForSelector('#part-avance');
+  ok(/Elige qué quieres incluir/.test(await page.textContent('.tool-page')), 'sin elegir nada no muestra nada');
+  for (const id of ['avance', 'rendicion', 'revision', 'observaciones', 'compromisos']) await page.locator('#part-' + id).check();
+  await page.waitForSelector('.share-preview');
+  const prev = await page.textContent('.share-preview');
+  ok(/Avance de los trámites/.test(prev) && /Montos por cuenta/.test(prev), 'muestra lo elegido');
+  ok(!/Fantas[ií]a|76.123.456|1042|Proveedora/.test(prev), 'no lleva proveedores, RUT ni folios');
+  ok(await page.getByRole('button', { name: 'Excel' }).count() === 0, 'sin autorización no hay botones para sacarlo');
+  ok(/Falta tu autorización/.test(await page.textContent('.tool-page')));
+  await page.locator('#consent-oc').check();
+  await page.getByRole('button', { name: 'Excel' }).waitFor({ timeout: 5000 });
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Excel' }).click()]);
+  ok(/resumen-organismo-colaborador/.test(dl.suggestedFilename()), dl.suggestedFilename());
+  const sh = await page.evaluate(() => RF.store.get().shares || []);
+  eq(sh.length, 1); eq(sh[0].parts.length, 5, 'queda anotado qué se compartió y cuándo');
+  await page.locator('#part-rendicion').uncheck();
+  ok(!/Montos por cuenta/.test(await page.textContent('.share-preview')), 'lo desmarcado desaparece');
+});
+
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });
 
 /* ---- celular ---- */
@@ -490,8 +607,13 @@ const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, i
 const m = await mctx.newPage();
 const merr = []; m.on('pageerror', e => merr.push(e.message));
 await m.goto(BASE);
-await m.evaluate(json => localStorage.setItem('rinde_facil_v2', json), await page.evaluate(() => localStorage.getItem('rinde_facil_v2')));
-await m.reload(); await m.waitForSelector('#main');
+await m.waitForSelector('.auth-card');
+await m.getByRole('button', { name: 'Ya tengo un servicio de mi comunidad y este equipo es nuevo' }).click();
+await m.getByLabel('Dirección del servicio (termina en /exec)').fill(stub.url);
+await m.getByLabel('Nombre de la comunidad').fill('comunidad DE prueba');
+await m.locator('input[type=password]').fill(PW2);
+await m.getByRole('button', { name: 'Conectar este equipo' }).click();
+await m.waitForSelector('.side, .menu-btn', { timeout: 30000 });
 await step('17. Celular: menú en cajón, sin desborde horizontal, botones grandes', async () => {
   const sw = await m.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
   ok(sw[0] <= sw[1] + 1, 'sin scroll horizontal: ' + sw);

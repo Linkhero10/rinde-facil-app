@@ -123,7 +123,6 @@
     }
 
     /* foto con zoom al pasar el cursor (o al tocar en el celular), dentro del mismo marco */
-    function canHover() { return !!(root.matchMedia && root.matchMedia('(hover: hover)').matches); }
     function zoomBox(src) {
       var img = h('img', { src: src, alt: 'Foto del comprobante', class: 'receipt-img', draggable: 'false' });
       var box = h('div', { class: 'zoom-wrap', 'aria-label': 'Foto del comprobante con zoom' }, img);
@@ -306,15 +305,36 @@
   TOOLS.nube = { title: 'Nube y copias', icon: 'cloud', desc: 'Conecta el servicio de tu comunidad, guarda en la nube y haz copias.', render: function () {
     var s = RF.store.get(), root = h('div'), out = h('div');
     function msg(kind, t) { U.clear(out); out.appendChild(UI.callout(kind, '', t)); }
-    root.appendChild(UI.callout('info', 'Cómo funciona:', ' tus datos se guardan en este dispositivo. Si conectas el servicio de tu comunidad (un Apps Script en su propia cuenta de Google), la app puede leer fotos con Google Cloud Vision y guardar una copia en el Drive de la comunidad. Nada se manda a la nube sin que tú lo pidas.'));
+    root.appendChild(UI.callout('info', 'Cómo funciona:', ' tus datos se guardan en este dispositivo. Si conectas el servicio de tu comunidad (un Apps Script en su propia cuenta de Google) y entras con la contraseña de tu comunidad, la app puede leer fotos con Google Cloud Vision y guardar una copia en el Drive de la comunidad. Nada se manda a la nube sin que tú lo pidas.'));
+    var pendBox = h('div');
+    function paintPend() {
+      U.clear(pendBox);
+      RF.outbox.list().then(function (items) {
+        if (!items.length) return;
+        pendBox.appendChild(UI.callout('warn', items.length + (items.length === 1 ? ' archivo espera para subirse al Drive.' : ' archivos esperan para subirse al Drive.'), ' Se subirán solos cuando haya conexión.'));
+        pendBox.appendChild(UI.btn('Reintentar ahora', { icon: 'cloud', cls: 'ghost', onclick: function () { msg('info', 'Subiendo lo pendiente…'); RF.drive.flushOutbox().then(function (r) { msg(r.left ? 'info' : 'ok', r.left ? 'Todavía quedan ' + r.left + ' pendientes.' : 'No queda nada pendiente.'); paintPend(); }); } }));
+      });
+    }
+    paintPend();
+    var setupBox = h('div');
+    function paintSetup(info) {
+      U.clear(setupBox);
+      if (!info) return;
+      if (/^[12]\./.test(String(info.version || ''))) { setupBox.appendChild(UI.callout('warn', 'El servicio es de una versión anterior (' + info.version + ').', ' Pide a quien lo instaló que ponga la versión 3, que agrega la cuenta con contraseña. Mientras tanto la app funciona sin nube.')); return; }
+      if (info.account === false) {
+        var code = h('input', { type: 'password', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Código de instalación' });
+        setupBox.appendChild(h('div', { class: 'callout info' }, h('strong', null, 'El servicio todavía no tiene cuenta.'), h('span', null, ' Escribe el código de instalación que puso quien lo instaló (se usa una sola vez). La cuenta se crea con el nombre de tu comunidad y la contraseña que ya elegiste.'),
+          h('div', { class: 'inline-add' }, code, UI.btn('Crear la cuenta del servicio', { icon: 'shield', cls: 'primary', onclick: function () { msg('info', 'Creando la cuenta…'); RF.auth.serverSetup(code.value.trim()).then(function () { code.value = ''; msg('ok', 'Cuenta creada. Desde ahora entras al servicio con la misma contraseña.'); paintSetup({ account: true, version: info.version }); }).catch(function (e) { msg('bad', e.message); }); } }))));
+      } else setupBox.appendChild(UI.callout('ok', 'El servicio tiene cuenta.', ' Se inicia sesión sola con tu contraseña cada vez que abres la app.'));
+    }
     root.appendChild(UI.section('Servicio de la comunidad', [h('div', { class: 'form-grid' },
-      UI.field('Dirección del servicio (termina en /exec)', s.cloud, 'apiUrl', { type: 'text', cls: 'wide', ph: 'https://script.google.com/macros/s/…/exec' }),
-      UI.field('Clave de acceso', s.cloud, 'key', { type: 'text', hint: 'La define quien instaló el servicio.' })),
+      UI.field('Dirección del servicio (termina en /exec)', s.cloud, 'apiUrl', { type: 'text', cls: 'wide', ph: 'https://script.google.com/macros/s/…/exec' })),
       h('div', { class: 'row-actions' },
-        UI.btn('Probar conexión', { icon: 'link', cls: 'primary', onclick: function () { msg('info', 'Probando…'); RF.cloud.ping().then(function (r) { msg(r && r.ok ? 'ok' : 'bad', r && r.ok ? 'Conectado. Lectura de fotos: ' + (r.ocr ? 'lista' : 'no configurada') + ' · versión ' + (r.version || '?') : 'El servicio respondió con un error: ' + ((r && r.error) || 'desconocido')); }).catch(function (e) { msg('bad', e.message === 'NO_CONFIGURADO' ? 'Pega primero la dirección del servicio.' : 'No se pudo conectar (' + e.message + ').'); }); } }),
-        UI.btn('Guardar copia en la nube', { icon: 'cloud', onclick: function () { msg('info', 'Guardando…'); RF.cloud.post('saveState', { state: RF.store.exportJSON() }).then(function (r) { if (r && r.ok) { RF.store.update(function (st) { st.cloud.lastSync = new Date().toISOString(); }, { silent: true }); msg('ok', 'Copia guardada en el Drive de la comunidad.'); } else msg('bad', 'No se pudo guardar: ' + ((r && r.error) || 'error')); }).catch(function (e) { msg('bad', 'No se pudo guardar (' + e.message + ').'); }); } }),
-        UI.btn('Traer la copia de la nube', { icon: 'download', onclick: function () { UI.confirmBox('Esto reemplaza lo que hay en este dispositivo por la última copia de la nube. ¿Seguir?', 'Reemplazar').then(function (ok) { if (!ok) return; msg('info', 'Trayendo…'); RF.cloud.post('loadState', {}).then(function (r) { if (r && r.ok && r.state) { RF.store.importJSON(r.state); UI.toast('Copia cargada.', 'ok'); } else msg('bad', (r && r.error) || 'No hay copia guardada.'); }).catch(function (e) { msg('bad', 'No se pudo traer (' + e.message + ').'); }); }); } })),
-      s.cloud.lastSync ? h('p', { class: 'hint' }, 'Última copia en la nube: ' + new Date(s.cloud.lastSync).toLocaleString('es-CL')) : null, out]));
+        UI.btn('Probar conexión', { icon: 'link', cls: 'primary', onclick: function () { msg('info', 'Probando…'); RF.cloud.ping().then(function (r) { if (r && r.ok) { msg('ok', 'Conectado · versión ' + (r.version || '?') + ' · lectura de fotos: ' + (r.ocr ? 'lista' : 'no configurada')); paintSetup(r); } else msg('bad', 'El servicio respondió con un error: ' + ((r && r.error) || 'desconocido')); }).catch(function (e) { msg('bad', e.message === 'NO_CONFIGURADO' ? 'Pega primero la dirección del servicio (empieza con https://).' : 'No se pudo conectar (' + e.message + ').'); }); } }),
+        UI.btn('Guardar copia en la nube', { icon: 'cloud', onclick: function () { msg('info', 'Guardando…'); RF.drive.pushState().then(function (r) { if (r.ok) msg('ok', 'Copia guardada en el Drive de la comunidad.'); else if (r.conflict) RF.drive.resolveConflict().then(function (res) { msg(res.ok ? 'ok' : 'info', res.text); }); else msg('bad', 'No se pudo guardar: ' + (r.error || 'error')); }).catch(function (e) { msg('bad', 'No se pudo guardar (' + e.message + ').'); }); } }),
+        UI.btn('Traer la copia de la nube', { icon: 'download', onclick: function () { msg('info', 'Trayendo…'); RF.drive.resolveConflict({ pullOnly: true }).then(function (res) { msg(res.ok ? 'ok' : 'info', res.text); }).catch(function (e) { msg('bad', 'No se pudo traer (' + e.message + ').'); }); } })),
+      s.cloud.conflict ? UI.callout('warn', 'Hay una copia más nueva en la nube.', ' Otro equipo guardó cambios. Pulsa «Guardar copia en la nube» para combinarlas sin perder nada.') : null,
+      s.cloud.lastSync ? h('p', { class: 'hint' }, 'Última copia en la nube: ' + new Date(s.cloud.lastSync).toLocaleString('es-CL')) : null, setupBox, pendBox, out]));
     /* carpeta «Rinde fácil» en el Drive de la comunidad */
     var driveOut = h('div'), savesBox = h('div');
     function paintSaves() {
@@ -340,7 +360,7 @@
     root.appendChild(UI.section('Copia en tu dispositivo', [fi, h('div', { class: 'row-actions' },
       UI.btn('Descargar copia', { icon: 'download', onclick: function () { U.download(new Blob([RF.store.exportJSON()], { type: 'application/json' }), 'rinde-facil-copia-' + U.todayISO() + '.json'); } }),
       UI.btn('Cargar una copia', { icon: 'file', onclick: function () { fi.click(); } }),
-      UI.btn('Borrar todo en este dispositivo', { icon: 'trash', cls: 'ghost danger', onclick: function () { UI.confirmBox('Se borrarán proyectos, gastos y ajustes de este dispositivo. Las fotos también. ¿Seguro?', 'Borrar todo').then(function (ok) { if (ok) { RF.store.reset(); UI.toast('Datos borrados.', 'ok'); location.hash = '#/'; } }); } })),
+      UI.btn('Borrar todo en este dispositivo', { icon: 'trash', cls: 'ghost danger', onclick: function () { UI.confirmBox('Se borrarán proyectos, gastos, fotos y la cuenta de ESTE dispositivo. Lo que esté en el Drive de la comunidad no se toca. ¿Seguro?', 'Borrar todo').then(function (ok) { if (ok) RF.auth.wipeDevice().then(function () { location.hash = '#/'; location.reload(); }); }); } })),
       h('p', { class: 'hint' }, 'La copia no incluye las fotos de los comprobantes: quedan en este dispositivo.')]));
     return page('Nube y copias', 'Lo que quede en este dispositivo puedes respaldarlo y llevarlo a otro.', root);
   } };

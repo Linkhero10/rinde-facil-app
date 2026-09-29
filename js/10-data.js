@@ -96,6 +96,15 @@
     IVA: 0.19
   };
 
+  /* ---------- convenios y fondos: cada uno con SUS reglas, para que un cambio de Manual o un fondo nuevo no toque los datos de nadie ----------
+     REGLAS (arriba) es el juego vigente; useConvenio() copia en él las reglas del convenio del proyecto. Hoy hay uno solo. */
+  var CONVENIOS = {
+    'corfo-2026-09': { id: 'corfo-2026-09', nombre: 'Convenio CORFO – Novandina (ex SQM)', vigencia: 'Manual de rendición vigente a septiembre de 2026', fuente: 'Manual de rendición y flujograma del convenio, con la página citada en cada aviso', reglas: Object.assign({}, REGLAS) }
+  };
+  var CONVENIO_DEFECTO = 'corfo-2026-09';
+  function convenioDe(project) { return CONVENIOS[(project && project.convenio) || CONVENIO_DEFECTO] || CONVENIOS[CONVENIO_DEFECTO]; }
+  function useConvenio(project) { var c = convenioDe(project); Object.keys(REGLAS).forEach(function (k) { delete REGLAS[k]; }); Object.assign(REGLAS, c.reglas); return c; }
+
   /* ---------- flujo oficial (28 pasos), con las correcciones del Manual p.10 ---------- */
   /* [actor, título corto, detalle fiel al flujograma, plazo, retorno, salida, trámite relacionado] */
   var FLOW = {
@@ -144,6 +153,6 @@
   RF.data = {
     ACTORS: ACTORS, FASES: FASES, AYUDA: AYUDA, CUENTAS: CUENTAS, CUENTA_BY_ID: CUENTA_BY_ID,
     TIPOS_PROYECTO: TIPOS_PROYECTO, DOC_TYPES: DOC_TYPES, DOC_BY_ID: DOC_BY_ID, RESPALDOS: RESPALDOS,
-    FORMAS_PAGO: FORMAS_PAGO, REGLAS: REGLAS, FLOW: FLOW, FLOW_BLOCKS: FLOW_BLOCKS
+    FORMAS_PAGO: FORMAS_PAGO, REGLAS: REGLAS, CONVENIOS: CONVENIOS, CONVENIO_DEFECTO: CONVENIO_DEFECTO, convenioDe: convenioDe, useConvenio: useConvenio, FLOW: FLOW, FLOW_BLOCKS: FLOW_BLOCKS
   };
 })(typeof window !== 'undefined' ? window : globalThis);

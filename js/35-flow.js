@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var RF = root.RF = root.RF || {};
-  var U = RF.util, UI = RF.ui, D = RF.data, h = U.h;
+  var U = RF.util, D = RF.data, h = U.h;
   var LANES = ['corfo', 'comunidad', 'novandina', 'smi']; /* orden del flujograma original */
   var NAME = {}; D.ACTORS.forEach(function (a) { NAME[a.id] = a.name; });
   var NS = 'http://www.w3.org/2000/svg';

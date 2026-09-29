@@ -3,7 +3,7 @@
 (function (root) {
   'use strict';
   var RF = root.RF = root.RF || {};
-  var U = RF.util, UI = RF.ui, D = RF.data, h = U.h;
+  var U = RF.util, UI = RF.ui, h = U.h;
   var TOOLS = RF.tools = RF.tools || {};
 
   /* ---------- catálogo ---------- */
@@ -135,7 +135,7 @@
           }))]));
       }
       var chips = h('div', { class: 'chips' }, [['todos', 'Todos'], ['pea', 'PEA y cambios'], ['actas', 'Actas'], ['corfo', 'De CORFO'], ['comunidad', 'De la comunidad']].map(function (f) { return h('button', { type: 'button', class: 'chip' + (st.filter === f[0] ? ' on' : ''), onclick: function () { st.filter = f[0]; paint(); } }, f[1]); }));
-      var shown = docs.filter(function (d) { var t = TYPE_BY_ID[d.type] || {}; return st.filter === 'todos' || (st.filter === 'pea' && /^pea_|reitem/.test(d.type)) || (st.filter === 'actas' && /^acta_/.test(d.type)) || (st.filter === 'corfo' && d.from === 'corfo') || (st.filter === 'comunidad' && d.from === 'comunidad'); }).sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+      var shown = docs.filter(function (d) { return st.filter === 'todos' || (st.filter === 'pea' && /^pea_|reitem/.test(d.type)) || (st.filter === 'actas' && /^acta_/.test(d.type)) || (st.filter === 'corfo' && d.from === 'corfo') || (st.filter === 'comunidad' && d.from === 'comunidad'); }).sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
       var rows = shown.map(function (d) {
         var t = TYPE_BY_ID[d.type] || { name: 'Documento' };
         return h('tr', null,

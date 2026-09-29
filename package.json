@@ -1,0 +1,16 @@
+{
+  "name": "rinde-facil-app",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Rinde Fácil: guía para rendir el convenio CORFO. App estática (sin build) y servicio de Apps Script.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "node tools/check-syntax.mjs",
+    "lint": "eslint js sw.js backend test tools"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0"
+  }
+}

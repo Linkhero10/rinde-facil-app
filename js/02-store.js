@@ -10,7 +10,7 @@
 
   function newProject(name) {
     return {
-      id: U.uid('p'), name: name || 'Mi proyecto', code: '', tipo: 'inversion',
+      id: U.uid('p'), name: name || 'Mi proyecto', code: '', convenio: 'corfo-2026-09', tipo: 'inversion',
       start: '', end: '', desembolso1: '', periodoInicio: '', periodoFin: '',
       budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: 0 },
       done: {}, gantt: { stages: [] }, budgetLines: [], expenses: [], forms: {}, pea: { general: {}, proyecto: {} },
@@ -22,9 +22,9 @@
     return {
       v: 2,
       community: { name: '', rut: '', address: '', legalRep: '', repRut: '', email: '', phone: '', ivaModo: 'no_contribuyente', oc: '' },
-      cloud: { apiUrl: '', key: '', lastSync: null, autoSave: true, rootUrl: '', saves: [] },
+      cloud: { apiUrl: '', lastSync: null, rev: 0, autoSave: true, rootUrl: '', saves: [] },
       holidays: [], projects: [], activeProjectId: null, repo: { docs: [], actas: [] },
-      ui: { theme: 'system', open: {} }
+      ui: { theme: 'system', open: {}, idleMinutes: 15 }
     };
   }
   function migrate(s) {
@@ -56,7 +56,14 @@
     out.v = 2;
     return out;
   }
+  /* con la bóveda de la comunidad, el estado solo existe en memoria mientras la app está abierta con la contraseña */
+  var vaultMode = false, persistHook = null, pending = Promise.resolve();
+  function useVault() { vaultMode = true; state = null; persistHook = null; dirty = false; }
+  function attach(obj, hook) { state = migrate(obj); persistHook = hook || null; dirty = false; listeners.slice().forEach(function (l) { l(state); }); return state; }
+  function detach() { state = null; persistHook = null; dirty = false; }
+  function flush() { persistNow(); return pending; }
   function load() {
+    if (vaultMode) { state = migrate(null); return state; }
     var raw = null;
     try { raw = root.localStorage.getItem(KEY); } catch (e) { storageOk = false; }
     var parsed = null;
@@ -68,6 +75,7 @@
   /* solo se escribe si hubo cambios: una pestaña vieja y sin tocar nunca pisa lo que guardó otra */
   function persistNow() {
     if (!dirty) return true;
+    if (vaultMode) { if (!persistHook) return true; dirty = false; var st = state, hook = persistHook; pending = pending.then(function () { return hook(st); }).catch(function () { storageOk = false; dirty = true; }); return true; }
     try { root.localStorage.setItem(KEY, JSON.stringify(state)); storageOk = true; dirty = false; return true; }
     catch (e) { storageOk = false; return false; }
   }
@@ -110,9 +118,13 @@
     });
   }
   /* la clave de acceso al servicio nunca va dentro de una copia: la copia puede compartirse o quedar en un Drive con más gente */
+  var OCR_EXTRACT = 2000;
   function exportJSON() {
     var copy = JSON.parse(JSON.stringify(get()));
-    copy.cloud = Object.assign({}, copy.cloud, { key: '', saves: [] });
+    copy.cloud = Object.assign({}, copy.cloud, { saves: [] });
+    delete copy.cloud.key; /* la clave compartida de las versiones anteriores ya no existe; por si quedara una copia vieja */
+    /* del texto que leyó el OCR la copia lleva solo un extracto: pesa mucho y trae datos de terceros (RUT, direcciones); el original queda en el equipo */
+    (copy.projects || []).forEach(function (p) { (p.expenses || []).forEach(function (e) { if (e.ocr && typeof e.ocr.raw === 'string' && e.ocr.raw.length > OCR_EXTRACT) { e.ocr.raw = e.ocr.raw.slice(0, OCR_EXTRACT); e.ocr.cortado = true; } }); });
     return JSON.stringify(copy, null, 2);
   }
   function importJSON(text) {
@@ -121,7 +133,8 @@
     var mine = get().cloud;
     state = migrate(parsed);
     /* la conexión con el servicio es de este dispositivo: una copia no la reemplaza */
-    if (mine && (mine.apiUrl || mine.key)) state.cloud = Object.assign({}, state.cloud, { apiUrl: mine.apiUrl || state.cloud.apiUrl, key: mine.key || state.cloud.key, saves: mine.saves || [] });
+    if (mine && mine.apiUrl) state.cloud = Object.assign({}, state.cloud, { apiUrl: mine.apiUrl || state.cloud.apiUrl, saves: mine.saves || [] });
+    if (state.cloud) delete state.cloud.key;
     dirty = true; persistNow();
     listeners.slice().forEach(function (l) { l(state); });
     return state;
@@ -130,9 +143,35 @@
   /* si otra pestaña (u otra ventana de la app) guarda cambios, esta se pone al día en vez de pisarlos */
   if (typeof root.addEventListener === 'function') {
     root.addEventListener('storage', function (e) {
+      if (vaultMode) { /* otra pestaña guardó en la bóveda: se descifra y se pone al día esta */
+        if (root.RF.vault && e.key === root.RF.vault.KEY && persistHook && root.RF.vault.readState) root.RF.vault.readState().then(function (obj) { if (obj) { state = migrate(obj); dirty = false; listeners.slice().forEach(function (l) { l(state); }); } }).catch(function () { /* cambió la contraseña o se bloqueó */ });
+        return;
+      }
       if (e.key !== KEY || !e.newValue) return;
       try { state = migrate(JSON.parse(e.newValue)); dirty = false; listeners.slice().forEach(function (l) { l(state); }); } catch (err) { /* copia dañada: se ignora */ }
     });
+  }
+  /* Combina una copia que viene de afuera con lo de este equipo: se unen proyectos, gastos, cotizaciones, observaciones, líneas de presupuesto,
+     documentos y actas por su id. Si algo está en las dos, gana lo de este equipo. Los valores sueltos (nombre, fechas, marcas) no se tocan. */
+  function unionById(local, remote) {
+    var have = {}; (local || []).forEach(function (x) { if (x && x.id) have[x.id] = true; });
+    var add = (remote || []).filter(function (x) { return x && x.id && !have[x.id]; });
+    return { list: (local || []).concat(add), added: add.length };
+  }
+  function mergeRemote(remote) {
+    var added = 0, r = migrate(remote);
+    update(function (s) {
+      var haveP = {}; s.projects.forEach(function (p) { haveP[p.id] = p; });
+      r.projects.forEach(function (rp) {
+        var lp = haveP[rp.id];
+        if (!lp) { s.projects.push(rp); added++; return; }
+        ['expenses', 'cotizaciones', 'observations', 'budgetLines', 'needsCustom'].forEach(function (k) { var u = unionById(lp[k], rp[k]); lp[k] = u.list; added += u.added; });
+        Object.keys(rp.done || {}).forEach(function (k) { if (!lp.done[k]) lp.done[k] = rp.done[k]; });
+      });
+      var d = unionById(s.repo.docs, r.repo.docs), a = unionById(s.repo.actas, r.repo.actas);
+      s.repo.docs = d.list; s.repo.actas = a.list; added += d.added + a.added;
+    });
+    return added;
   }
   function isDone(p, tid, i) { return !!(p && p.done[tid + ':' + i]); }
   function setDone(tid, i, val) { /* en silencio: quien llama actualiza la pantalla que corresponde */
@@ -146,6 +185,7 @@
     KEY: KEY, load: load, get: get, project: project, update: update, subscribe: subscribe,
     addProject: addProject, removeProject: removeProject, newProject: newProject, defaults: defaults,
     exportJSON: exportJSON, importJSON: importJSON, reset: reset, migrate: migrate,
-    isDone: isDone, setDone: setDone, persistNow: persistNow, storageOk: function () { return storageOk; }
+    isDone: isDone, setDone: setDone, persistNow: persistNow, storageOk: function () { return storageOk; },
+    mergeRemote: mergeRemote, useVault: useVault, attach: attach, detach: detach, flush: flush
   };
 })(typeof window !== 'undefined' ? window : globalThis);

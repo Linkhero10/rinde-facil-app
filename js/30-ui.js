@@ -13,7 +13,7 @@
     down: 'M6 9l6 6 6-6', right: 'M9 6l6 6-6 6', left: 'M15 6l-6 6 6 6', up: 'M6 15l6-6 6 6',
     menu: 'M4 6h16M4 12h16M4 18h16', close: 'M6 6l12 12M18 6L6 18', plus: 'M12 5v14M5 12h14', trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
     camera: 'M4 8h3l2-3h6l2 3h3v11H4V8zM12 17a4 4 0 100-8 4 4 0 000 8z', file: 'M6 3h8l4 4v14H6V3zM14 3v4h4', download: 'M12 4v11M7 11l5 5 5-5M5 20h14',
-    excel: 'M4 4h16v16H4V4zM4 10h16M4 15h16M10 4v16', word: 'M4 4h16v16H4V4zM8 9l1.5 7L12 10l2.5 6L16 9', pdf: 'M6 3h8l4 4v14H6V3zM14 3v4h4M9 15h6M9 18h4', copy: 'M8 8h11v13H8V8zM5 16V3h11', cloud: 'M7 18a4 4 0 01-.5-8 6 6 0 0111.5 1.5A3.5 3.5 0 0117 18H7z', folder: 'M3 6h6l2 2h10v11H3V6z', search: 'M10.5 4a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM15.5 15.5L20 20',
+    excel: 'M4 4h16v16H4V4zM4 10h16M4 15h16M10 4v16', word: 'M4 4h16v16H4V4zM8 9l1.5 7L12 10l2.5 6L16 9', pdf: 'M6 3h8l4 4v14H6V3zM14 3v4h4M9 15h6M9 18h4', copy: 'M8 8h11v13H8V8zM5 16V3h11', cloud: 'M7 18a4 4 0 01-.5-8 6 6 0 0111.5 1.5A3.5 3.5 0 0117 18H7z', folder: 'M3 6h6l2 2h10v11H3V6z', eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 100 6 3 3 0 000-6z',
     link: 'M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1', sun: 'M12 16a4 4 0 100-8 4 4 0 000 8zM12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5', moon: 'M20 14A8 8 0 0110 4a8 8 0 1010 10z',
     help: 'M12 22a10 10 0 100-20 10 10 0 000 20zM9.5 9a2.5 2.5 0 115 0c0 1.7-2.5 2-2.5 4M12 17v.5', route: 'M6 3v12a3 3 0 003 3h6a3 3 0 003-3V9M6 3l-2 2M6 3l2 2M18 9l-2-2M18 9l2-2',
     gantt: 'M4 6h8M8 12h10M6 18h9', money: 'M3 7h18v10H3V7zM12 14a2 2 0 100-4 2 2 0 000 4z', form: 'M6 3h12v18H6V3zM9 8h6M9 12h6M9 16h4', list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
@@ -33,7 +33,6 @@
   }
 
   /* ---------- avisos ---------- */
-  var toastTimer = null;
   function toast(msg, kind) {
     var host = document.getElementById('toasts');
     if (!host) return;
@@ -52,6 +51,31 @@
       dlg.addEventListener('close', function () { if (dlg.parentNode) dlg.parentNode.removeChild(dlg); });
       document.body.appendChild(dlg);
       if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+    });
+  }
+
+  /* varias opciones: devuelve el id de la elegida o null si se cancela. choices: [{ id, label, primary }] */
+  function choiceBox(msg, choices) {
+    return new Promise(function (resolve) {
+      var dlg = h('dialog', { class: 'dlg' }, h('p', { class: 'dlg-msg' }, msg),
+        h('div', { class: 'dlg-actions dlg-col' }, choices.map(function (c) { return h('button', { class: 'btn' + (c.primary ? ' primary' : ''), type: 'button', onclick: function () { dlg.close(); resolve(c.id); } }, c.label); }).concat([h('button', { class: 'btn ghost', type: 'button', onclick: function () { dlg.close(); resolve(null); } }, 'Cancelar')])));
+      dlg.addEventListener('close', function () { if (dlg.parentNode) dlg.parentNode.removeChild(dlg); resolve(null); });
+      document.body.appendChild(dlg);
+      if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+    });
+  }
+  /* pide un texto secreto (contraseña): devuelve el texto o null */
+  function promptSecret(msg, label, okLabel) {
+    return new Promise(function (resolve) {
+      var input = h('input', { type: 'password', autocomplete: 'current-password', spellcheck: 'false', 'aria-label': label || 'Contraseña' });
+      var done = false;
+      var dlg = h('dialog', { class: 'dlg' }, h('p', { class: 'dlg-msg' }, msg), h('label', { class: 'field' }, h('span', { class: 'lbl' }, label || 'Contraseña'), input),
+        h('div', { class: 'dlg-actions' }, h('button', { class: 'btn', type: 'button', onclick: function () { dlg.close(); } }, 'Cancelar'), h('button', { class: 'btn primary', type: 'button', onclick: function () { done = true; var v = input.value; dlg.close(); resolve(v || null); } }, okLabel || 'Aceptar')));
+      dlg.addEventListener('close', function () { if (dlg.parentNode) dlg.parentNode.removeChild(dlg); if (!done) resolve(null); });
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); done = true; var v = input.value; dlg.close(); resolve(v || null); } });
+      document.body.appendChild(dlg);
+      if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+      setTimeout(function () { input.focus(); }, 30);
     });
   }
 
@@ -197,5 +221,5 @@
     };
   }
 
-  RF.ui = { busy: busy, icon: icon, ICONS: ICONS, toast: toast, confirmBox: confirmBox, bind: bind, field: field, labelWrap: labelWrap, btn: btn, exportBar: exportBar, badge: badge, callout: callout, empty: empty, section: section, progressBar: progressBar };
+  RF.ui = { choiceBox: choiceBox, promptSecret: promptSecret, busy: busy, icon: icon, ICONS: ICONS, toast: toast, confirmBox: confirmBox, bind: bind, field: field, labelWrap: labelWrap, btn: btn, exportBar: exportBar, badge: badge, callout: callout, empty: empty, section: section, progressBar: progressBar };
 })(typeof window !== 'undefined' ? window : globalThis);

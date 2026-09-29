@@ -333,7 +333,6 @@
       if (x.aprobado > 0 && x.presupuestado > x.aprobado) add(g3, 'error', c.name + ': tu presupuesto (' + U.fmtCLP(x.presupuestado) + ') supera lo aprobado (' + U.fmtCLP(x.aprobado) + ').', { tool: 'presupuesto' });
       else if (x.aprobado > 0 && x.presupuestado > 0 && Math.abs(x.presupuestado - x.aprobado) > R.TOLERANCIA_IVA) add(g3, 'warn', c.name + ': presupuestaste ' + U.fmtCLP(x.presupuestado) + ' de ' + U.fmtCLP(x.aprobado) + ' aprobados.', { tool: 'presupuesto' });
     });
-    var byAct = budgetByActivity(project);
     var sinAct = (project.budgetLines || []).filter(function (l) { return !l.actId; }).length;
     if (sinAct) add(g3, 'info', sinAct + ' línea(s) de presupuesto sin actividad asociada.', { tool: 'presupuesto' });
     if (!g3.items.length) add(g3, 'ok', 'Carta Gantt y presupuesto sin problemas.');

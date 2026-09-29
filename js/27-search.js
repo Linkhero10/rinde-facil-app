@@ -110,7 +110,8 @@
     necesidades: ['Qué necesitará tu proyecto', 'Sueldos', 'Honorarios', 'Insumos', 'Viáticos', 'Inmuebles', 'Pagos en efectivo', 'Mi PEA ya está aprobado', 'Agregar algo que no estaba en el PEA', 'Trámites que te tocan'],
     documentos: ['Subir un documento', 'PEA corregido por CORFO', 'Acta de No Objeción', 'Acta de asamblea', 'Resolución u oficio', 'Observaciones de CORFO', '¿Cambia el PEA?', 'Cambios al PEA: qué falta hacer', 'Trazabilidad', 'Registro de documentos'],
     actas: ['Mesa de Trabajo', 'Acta firmada', 'Asistentes de CORFO, la comunidad y el Organismo Colaborador', 'Acuerdos y compromisos', 'Compromisos pendientes', 'Estado del acta', 'Revisada por CORFO'],
-    nube: ['Dirección del servicio', 'Clave de acceso', 'Probar conexión', 'Guardar copia en la nube', 'Traer la copia de la nube', 'Carpeta Rinde fácil en tu Drive', 'Descargar copia', 'Cargar una copia', 'Borrar todo', 'Google Drive', 'Google Cloud Vision', 'Lectura automática de fotos']
+    seguridad: ['Contraseña', 'Cambiar la contraseña', 'Código de recuperación', 'Bloquear', 'Cerrar sesión', 'Quién entró al servicio', 'Registro de accesos', 'Cifrado', 'Inactividad', 'Borrar los datos de este equipo'],
+    nube: ['Dirección del servicio', 'Código de instalación', 'Crear la cuenta del servicio', 'Combinar las copias', 'Probar conexión', 'Guardar copia en la nube', 'Traer la copia de la nube', 'Carpeta Rinde fácil en tu Drive', 'Descargar copia', 'Cargar una copia', 'Borrar todo', 'Google Drive', 'Google Cloud Vision', 'Lectura automática de fotos']
   };
   var REGLAS = [
     { t: 'Cotizaciones: sobre $10.000.000 netos se piden 2 cotizaciones de proveedores distintos', d: 'Manual, p. 8. Salvo servicios técnico-profesionales; requiere autorización previa de CORFO.', tool: 'cotizaciones' },
