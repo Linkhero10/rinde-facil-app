@@ -240,6 +240,11 @@
       else notes.push('Un voucher no trae número de boleta del SII: puedes dejar el número vacío.');
     }
     var prov = findProveedor(lines, rut, opts.communityName); if (prov) f.proveedor = prov;
+    if (prov && dt === 'voucher') { /* en un voucher la línea siguiente suele ser el nombre del local (nombre comercial) */
+      for (var ci = 0; ci < lines.length - 1; ci++) {
+        if (cleanName(lines[ci]) === prov) { var nx = cleanName(lines[ci + 1]); if (nx && nx !== prov && nameLike(nx, opts.communityName) && !LEGAL.test(norm(nx)) && !/d/.test(nx)) { f.nombreComercial = nx; notes.push('El comprobante indica el local «' + nx + '»; el proveedor es quien tiene el RUT (' + prov + ').'); } break; }
+      }
+    }
     var fp = formaPagoOf(lines, dt); if (fp) f.formaPago = fp;
     var fecha = findDate(lines); if (fecha) { f.fecha = fecha.iso; checks.fecha = true; } else notes.push('No se pudo leer la fecha.');
 

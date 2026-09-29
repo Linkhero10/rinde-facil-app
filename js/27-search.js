@@ -204,7 +204,7 @@
       items.push({ kind: 'Tus datos', title: p.name || 'Proyecto sin nombre', path: ['Tus datos', 'Proyectos'], fields: [{ text: strings({ code: p.code, notes: p.notes }) }], href: '#/h/proyecto', open: open });
       (p.expenses || []).forEach(function (e) {
         var t = (e.proveedor || 'Gasto sin proveedor') + (e.folio ? ' N° ' + e.folio : '');
-        var fields = [{ text: e.glosa || '', label: 'Glosa' }, { text: e.item || '', label: 'Ítem' }, { text: e.rutProveedor || '', label: 'RUT' }, { text: e.fecha || '', label: 'Fecha' }, { text: String(e.total || '') + ' ' + (e.total ? U.fmtCLP(e.total) : ''), label: 'Total' }, { text: (RF.data.DOC_BY_ID[e.docType] || {}).name || '', label: 'Documento' }];
+        var fields = [{ text: e.glosa || '', label: 'Glosa' }, { text: e.nombreComercial || '', label: 'Local' }, { text: e.item || '', label: 'Ítem' }, { text: e.rutProveedor || '', label: 'RUT' }, { text: e.fecha || '', label: 'Fecha' }, { text: String(e.total || '') + ' ' + (e.total ? U.fmtCLP(e.total) : ''), label: 'Total' }, { text: (RF.data.DOC_BY_ID[e.docType] || {}).name || '', label: 'Documento' }];
         items.push({ kind: 'Tu gasto', title: t, path: base.concat(['Gastos y rendición']), fields: fields, href: '#/h/gastos', open: function () { open(); if (RF.app) RF.app.pendingEdit = e.id; } });
       });
       var acts = []; try { acts = RF.logic.allActivities(p) || []; } catch (er) { acts = []; }

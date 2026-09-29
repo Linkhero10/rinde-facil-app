@@ -120,7 +120,7 @@ Total : $ 19.990
 Iva incluido en este pago: $ 3.192
 Aprobación: 956505 Comprobante: 000009`);
   assert.equal(r.fields.proveedor, 'EMPRESA DE EJEMPLO LIMITADA'); assert.equal(r.fields.docType, 'voucher'); assert.equal(r.fields.formaPago, 'prepago');
-  assert.equal(r.fields.folio, '000009'); assert.match(r.notes.join(' '), /no trae número de boleta del SII/);
+  assert.equal(r.fields.folio, '000009'); assert.match(r.notes.join(' '), /no trae número de boleta del SII/); assert.equal(r.fields.nombreComercial, 'RESTAURANTE EL LUGAR');
   assert.equal(JSON.stringify([r.fields.neto, r.fields.iva, r.fields.total]), JSON.stringify([16798, 3192, 19990]));
 });
 test('una factura con «Forma de pago: Crédito» no se toma por tarjeta; con «Medio de pago: tarjeta de débito» sí', () => {

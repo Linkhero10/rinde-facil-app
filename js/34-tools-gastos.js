@@ -12,7 +12,7 @@
   var STATUS_LABEL = { ok: 'Listo', warn: 'Revisar', error: 'Falta algo' };
 
   function newExpense() {
-    return { id: U.uid('g'), cuenta: 'operacion', item: '', docType: 'boleta', folio: '', fecha: '', fechaPago: '', rutProveedor: '', proveedor: '', neto: '', iva: '', total: '', montoRendir: '', pctUso: '', formaPago: 'transferencia', glosa: '', actId: '', has: {}, esViatico: false, servicioTecnico: false, esInmueble: false, verified: false, ocr: null, imgId: null, createdAt: new Date().toISOString() };
+    return { id: U.uid('g'), cuenta: 'operacion', item: '', docType: 'boleta', folio: '', fecha: '', fechaPago: '', rutProveedor: '', proveedor: '', nombreComercial: '', neto: '', iva: '', total: '', montoRendir: '', pctUso: '', formaPago: 'transferencia', glosa: '', actId: '', has: {}, esViatico: false, servicioTecnico: false, esInmueble: false, verified: false, ocr: null, imgId: null, createdAt: new Date().toISOString() };
   }
   function syncRendir(e, community) { if (!e._manualRendir && num(e.total) > 0) e.montoRendir = L.expectedMontoRendir(e, community); }
 
@@ -69,6 +69,7 @@
       Object.keys(f).forEach(function (k) { e[k] = f[k]; });
       if (!f.docType && f.total != null) e.docType = e.docType || 'boleta';
       e.ocr = { engine: res.engine || 'cloud_vision', at: new Date().toISOString(), raw: String(res.raw_text || '').slice(0, 6000), confidence: res.confidence == null ? null : res.confidence, ms: res.duration_ms || null, note: out.note, auto: JSON.parse(JSON.stringify(f)) };
+      if (!e.fechaPago && e.fecha && /^(debito|tarjeta|prepago)$/.test(e.formaPago || '')) e.fechaPago = e.fecha; /* pago con tarjeta: se paga al comprar */
       e.verified = false; e._manualRendir = false; syncRendir(e, c.community);
       e._ocrNote = 'Leído con Google Cloud Vision. Compara cada dato con la foto antes de seguir.' + (out.note ? ' ' + out.note : '');
       silent();
@@ -183,7 +184,7 @@
       var form = h('div', null,
         e._ocrNote ? UI.callout('info', '', e._ocrNote) : null,
         h('h4', { class: 'grp' }, '1. El documento'),
-        h('div', { class: 'form-grid' }, fld('Tipo de documento', 'docType', { type: 'select', options: docOpts, noEmpty: true }), fld('Número (folio)', 'folio', { type: 'text' }), fld('Fecha del documento', 'fecha', { type: 'date' }), fld('Nombre del proveedor', 'proveedor', { type: 'text', cls: 'wide' }), fld('RUT del proveedor', 'rutProveedor', { type: 'rut' })),
+        h('div', { class: 'form-grid' }, fld('Tipo de documento', 'docType', { type: 'select', options: docOpts, noEmpty: true }), fld('Número (folio)', 'folio', { type: 'text' }), fld('Fecha del documento', 'fecha', { type: 'date' }), fld('Nombre del proveedor', 'proveedor', { type: 'text', cls: 'wide' }), fld('Nombre comercial o local (opcional)', 'nombreComercial', { type: 'text', cls: 'wide', hint: 'Solo para reconocerlo; el proveedor es quien tiene el RUT.' }), fld('RUT del proveedor', 'rutProveedor', { type: 'rut' })),
         h('h4', { class: 'grp' }, '2. Los montos'),
         h('div', { class: 'form-grid' }, fld('Monto neto ($)', 'neto', { type: 'money' }), fld('IVA ($)', 'iva', { type: 'money' }), fld('Total del documento ($)', 'total', { type: 'money' }),
           h('div', { class: 'field wide' }, h('div', { class: 'row-actions' },

@@ -361,6 +361,7 @@ await step('15b. Buscador: «/» lo abre, «gasto» muestra la ruta Herramientas
   await shot('15b-buscador');
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => location.hash === '#/h/gastos');
+  await page.waitForSelector('.side-item.current');
   ok(!(await page.locator('.sr-overlay').count()), 'se cierra al abrir');
   ok(await page.locator('.side-item.current', { hasText: 'Gastos y rendición' }).count() > 0, 'el menú lateral marca dónde estás');
   await page.waitForTimeout(300);
