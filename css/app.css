@@ -382,3 +382,7 @@ mark.search-hit{scroll-margin:120px}
 @media (prefers-reduced-motion:reduce){.busy-bar span{animation:none}}
 @media (min-width:640px){.field.span2{grid-column:span 2}}
 @media print{.busy{display:none!important}}
+
+.update-bar{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:96;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;width:min(94vw,560px);background:var(--ink);color:var(--paper);padding:10px 14px;border-radius:6px;box-shadow:var(--shadow);font-weight:600}
+.update-bar .btn{min-height:36px}
+@media print{.update-bar{display:none!important}}

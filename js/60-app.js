@@ -72,6 +72,13 @@
   function closeMenu() { document.body.classList.remove('menu-open'); var b = document.querySelector('.menu-btn'); if (b) b.setAttribute('aria-expanded', 'false'); }
   app.render = render;
 
+  /* aviso cuando hay una versión nueva de la app: no se recarga sola para no cortar lo que estás escribiendo */
+  function showUpdate() {
+    if (document.getElementById('updateBar')) return;
+    document.body.appendChild(h('div', { class: 'update-bar', id: 'updateBar', role: 'status' }, h('span', null, 'Hay una versión nueva de Rinde Fácil.'), h('button', { type: 'button', class: 'btn primary small', onclick: function () { location.reload(); } }, 'Actualizar ahora'), h('button', { type: 'button', class: 'btn ghost small', onclick: function () { var b = document.getElementById('updateBar'); if (b) b.parentNode.removeChild(b); } }, 'Después')));
+  }
+  app.showUpdate = showUpdate;
+
   function boot() {
     RF.store.load();
     applyTheme();
@@ -81,7 +88,14 @@
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
     if (!RF.store.storageOk()) { /* aviso si el navegador no deja guardar */ }
     render();
-    if ('serviceWorker' in navigator && /^(https:|http:\/\/localhost|http:\/\/127\.0\.0\.1)/.test(location.protocol + '//' + location.host) ) { try { navigator.serviceWorker.register('sw.js').catch(function () { }); } catch (e) { } }
+    if ('serviceWorker' in navigator && /^(https:|http:\/\/localhost|http:\/\/127\.0\.0\.1)/.test(location.protocol + '//' + location.host) ) { try {
+      var hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.register('sw.js').then(function (reg) {
+        /* al volver a la pestaña, busca una versión nueva de la app */
+        document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { try { reg.update(); } catch (e) { } } });
+      }).catch(function () { });
+      navigator.serviceWorker.addEventListener('controllerchange', function () { if (hadController) showUpdate(); });
+    } catch (e) { } }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })(typeof window !== 'undefined' ? window : globalThis);
