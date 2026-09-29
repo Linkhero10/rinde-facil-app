@@ -56,13 +56,15 @@
     var top = h('header', { class: 'topbar' },
       h('button', { type: 'button', class: 'icon-btn menu-btn', 'aria-label': 'Abrir el menú', 'aria-controls': 'side', 'aria-expanded': 'false', onclick: toggleMenu }, UI.icon('menu', 24)),
       h('a', { href: '#/', class: 'brand' }, 'Rinde Fácil'),
-      h('span', { class: 'top-proj' }, (RF.store.project() || {}).name || ''));
+      h('span', { class: 'top-proj' }, (RF.store.project() || {}).name || ''),
+      h('button', { type: 'button', class: 'icon-btn top-search', 'aria-label': 'Buscar en toda la app', onclick: function () { if (RF.searchui) RF.searchui.open(); } }, UI.icon('search', 22)));
     var scrim = h('div', { class: 'scrim', onclick: closeMenu });
     var sideEl = RF.views.sidebar(r);
     host.appendChild(h('div', { class: 'shell' }, top, sideEl, scrim, main));
     sideEl.scrollTop = sideScroll;
     U.$$('a', sideEl).forEach(function (a) { a.addEventListener('click', closeMenu); });
     applyThemeLabel();
+    if (app.pendingHighlight && RF.searchui) { var toks = app.pendingHighlight; app.pendingHighlight = null; RF.searchui.highlight(main, toks); } /* viene del buscador: marca lo encontrado */
     var key = location.hash;
     if (key !== lastKey) { window.scrollTo(0, 0); lastKey = key; main.focus({ preventScroll: true }); }
   }

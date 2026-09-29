@@ -329,6 +329,42 @@ await step('15. Inicio con avance, siguiente paso y diagrama por actor', async (
   await shot('15-home-flow');
 });
 
+await step('15b. Buscador: «/» lo abre, «gasto» muestra la ruta Herramientas → Rendir → Gastos y rendición, al abrir lleva y marca', async () => {
+  await go('#/');
+  await page.keyboard.press('/');
+  await page.waitForSelector('.sr-overlay .sr-input');
+  await page.keyboard.type('gasto');
+  await page.waitForSelector('.sr-row');
+  const rows = await page.$$eval('.sr-row', els => els.map(e => ({ kind: e.querySelector('.sr-kind').textContent, title: e.querySelector('.sr-title').textContent, path: (e.querySelector('.sr-path') || {}).textContent || '' })));
+  const tool = rows.find(r => r.kind === 'Herramienta' && r.title === 'Gastos y rendición');
+  ok(tool, 'aparece la herramienta entre los resultados');
+  eq(tool.path.replace(/\s+/g, ' ').trim(), 'Herramientas → Rendir → Gastos y rendición', 'muestra dónde está');
+  ok(rows.length >= 6, 'muchos resultados de «gasto»');
+  ok(await page.locator('.sr-row mark').first().isVisible(), 'marca la coincidencia');
+  await shot('15b-buscador');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => location.hash === '#/h/gastos');
+  ok(!(await page.locator('.sr-overlay').count()), 'se cierra al abrir');
+  ok(await page.locator('.side-item.current', { hasText: 'Gastos y rendición' }).count() > 0, 'el menú lateral marca dónde estás');
+  await page.waitForTimeout(300);
+  ok(await page.locator('main mark.search-hit').count() > 0, 'marca lo buscado en la pantalla');
+  /* lo que la persona anotó */
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('sede comunitaria');
+  await page.waitForSelector('.sr-row');
+  ok(await page.locator('.sr-row .sr-kind', { hasText: 'Tus datos' }).count() > 0, 'encuentra el nombre del proyecto');
+  await page.keyboard.press('Escape');
+  ok(!(await page.locator('.sr-overlay').count()), 'Esc cierra');
+  /* buscar dentro de los pasos de un trámite y llegar a él */
+  await page.locator('.side-search').click();
+  await page.keyboard.type('llego el dinero');
+  await page.waitForSelector('.sr-row');
+  await page.locator('.sr-row').first().click();
+  await page.waitForFunction(() => /^#\/t\//.test(location.hash));
+  await page.waitForTimeout(300);
+  ok(await page.locator('main mark.search-hit').count() > 0, 'marca el paso encontrado');
+});
+
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });
 
 /* ---- celular ---- */

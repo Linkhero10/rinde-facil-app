@@ -40,7 +40,7 @@
   /* ================= Gastos ================= */
   TOOLS.gastos = { title: 'Gastos y rendición', icon: 'money', desc: 'Anota cada gasto a mano o con foto del comprobante. Te avisa qué falta.', render: function () {
     var c = ctx(), p = c.project; if (!p) return page('Gastos y rendición', '', needProject());
-    var st = { editing: null, filter: (RF.app && RF.app.pendingFilter) || 'all' }; if (RF.app) RF.app.pendingFilter = null;
+    var st = { editing: (RF.app && RF.app.pendingEdit) || null, filter: (RF.app && RF.app.pendingFilter) || 'all' }; if (RF.app) { RF.app.pendingFilter = null; RF.app.pendingEdit = null; }
     var root = h('div');
     var fileInput = h('input', { type: 'file', accept: 'image/*,application/pdf', multiple: true, class: 'sr-only', 'aria-label': 'Elegir fotos o PDF de comprobantes' });
     var camInput = h('input', { type: 'file', accept: 'image/*', capture: 'environment', class: 'sr-only', 'aria-label': 'Sacar foto al comprobante' });

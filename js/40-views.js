@@ -40,6 +40,7 @@
     sel.addEventListener('change', function () { if (sel.value === '__new') { location.hash = '#/h/proyecto'; } else RF.store.update(function (st) { st.activeProjectId = sel.value; }); });
     side.appendChild(h('div', { class: 'side-brand' }, h('a', { href: '#/', class: 'brand', 'aria-label': 'Rinde Fácil, inicio' }, 'Rinde Fácil'), h('span', { class: 'brand-sub' }, s.community.name || 'Tu comunidad')));
     side.appendChild(h('div', { class: 'proj-pick' }, h('label', { class: 'lbl-sm', for: 'projsel' }, 'Proyecto'), (sel.id = 'projsel', sel)));
+    side.appendChild(h('button', { type: 'button', class: 'side-search', 'aria-label': 'Buscar en toda la app', onclick: function () { if (RF.searchui) RF.searchui.open(); } }, UI.icon('search', 18), h('span', { class: 'ss-t' }, 'Buscar en toda la app'), h('kbd', null, '/')));
     side.appendChild(h('a', { href: '#/', class: 'side-link' + (route.name === 'home' ? ' current' : '') }, UI.icon('route', 18), h('span', null, 'Mi ruta')));
     var curFase = route.name === 'tramite' ? faseOf[route.id] : route.name === 'fase' ? route.id : null;
     D.FASES.forEach(function (f) {
@@ -160,5 +161,5 @@
   }
   function refreshSide() { var old = document.getElementById('side'); if (!old) return; var neu = sidebar(RF.app.route()); old.parentNode.replaceChild(neu, old); if (document.body.classList.contains('menu-open')) { /* mantener */ } RF.app.applyThemeLabel(); }
 
-  RF.views = { sidebar: sidebar, home: homeView, fase: faseView, tramite: tramiteView, ORDER: ORDER, faseOf: faseOf, refreshSide: refreshSide };
+  RF.views = { TOOL_GROUPS: TOOL_GROUPS, sidebar: sidebar, home: homeView, fase: faseView, tramite: tramiteView, ORDER: ORDER, faseOf: faseOf, refreshSide: refreshSide };
 })(typeof window !== 'undefined' ? window : globalThis);
