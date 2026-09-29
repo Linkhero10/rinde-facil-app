@@ -1,6 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=JetBrains+Mono:wght@500;600&display=swap');
 /* Rinde Fácil · identidad "salar": color = quién actúa (CORFO, comunidad, Novandina, Organismo Colaborador).
-   Modo claro: blanco con morado (el color del Organismo Colaborador); el modo oscuro conserva el turquesa. */
+   Modo claro: blanco con morado (el color del Organismo Colaborador); el modo oscuro: fondos casi negros con matiz morado y acento lila. */
 :root{
   --ink:#1d1630; --ink-2:#463d5c; --muted:#645b7a;
   --paper:#ffffff; --canvas:#f7f4fb; --line:#e3dbef; --card:#ffffff; --card-2:#faf7fd;
@@ -13,15 +13,15 @@
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --ink:#e9f0ee; --ink-2:#c3d0ce; --muted:#93a6a4; --paper:#131b1f; --canvas:#0d1315; --line:#28353a; --card:#182229; --card-2:#1c2830;
-  --corfo:#7ea3e0; --corfo-soft:#1c2c46; --novandina:#5fd3c7; --novandina-soft:#123330; --comunidad:#e3a860; --comunidad-soft:#3a2c15; --smi:#b79bdd; --smi-soft:#2c2340;
+  --ink:#f0ebf8; --ink-2:#d0c7e2; --muted:#a99fc3; --paper:#160f24; --canvas:#0f0a19; --line:#33294c; --card:#1c1530; --card-2:#221a38;
+  --corfo:#7ea3e0; --corfo-soft:#1c2c46; --novandina:#5fd3c7; --novandina-soft:#123330; --comunidad:#e3a860; --comunidad-soft:#3a2c15; --smi:#c9b1f5; --smi-soft:#2f2450;
   --ok:#5fd3c7; --ok-soft:#123330; --warn:#f0c66a; --warn-soft:#3a3115; --bad:#ff9d94; --bad-soft:#3d1c19; --info:#7ea3e0; --info-soft:#1c2c46;
-  --action:#5fd3c7; --action-ink:#0d1315; --shadow:0 10px 28px rgba(0,0,0,.45); color-scheme:dark;}}
+  --action:#b99df0; --action-ink:#150b26; --action-soft:#2c2247; --shadow:0 10px 28px rgba(0,0,0,.5); color-scheme:dark;}}
 :root[data-theme="dark"]{
-  --ink:#e9f0ee; --ink-2:#c3d0ce; --muted:#93a6a4; --paper:#131b1f; --canvas:#0d1315; --line:#28353a; --card:#182229; --card-2:#1c2830;
-  --corfo:#7ea3e0; --corfo-soft:#1c2c46; --novandina:#5fd3c7; --novandina-soft:#123330; --comunidad:#e3a860; --comunidad-soft:#3a2c15; --smi:#b79bdd; --smi-soft:#2c2340;
+  --ink:#f0ebf8; --ink-2:#d0c7e2; --muted:#a99fc3; --paper:#160f24; --canvas:#0f0a19; --line:#33294c; --card:#1c1530; --card-2:#221a38;
+  --corfo:#7ea3e0; --corfo-soft:#1c2c46; --novandina:#5fd3c7; --novandina-soft:#123330; --comunidad:#e3a860; --comunidad-soft:#3a2c15; --smi:#c9b1f5; --smi-soft:#2f2450;
   --ok:#5fd3c7; --ok-soft:#123330; --warn:#f0c66a; --warn-soft:#3a3115; --bad:#ff9d94; --bad-soft:#3d1c19; --info:#7ea3e0; --info-soft:#1c2c46;
-  --action:#5fd3c7; --action-ink:#0d1315; --shadow:0 10px 28px rgba(0,0,0,.45); color-scheme:dark;}
+  --action:#b99df0; --action-ink:#150b26; --action-soft:#2c2247; --shadow:0 10px 28px rgba(0,0,0,.5); color-scheme:dark;}
 
 *{box-sizing:border-box}
 html{background:var(--canvas)}
