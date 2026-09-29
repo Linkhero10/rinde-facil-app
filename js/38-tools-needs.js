@@ -39,7 +39,7 @@
 
   TOOLS.necesidades = { title: 'Qué necesitará tu proyecto', icon: 'list', desc: 'Marca lo que vas a necesitar (viáticos, insumos, inmuebles…) y te mostramos solo los trámites que te tocan.', render: function () {
     var p = RF.store.project();
-    var root = h('div', { class: 'tool-page' }, h('h2', { class: 'tool-title' }, 'Qué necesitará tu proyecto'));
+    var root = h('div', { class: 'tool-page' }, h('h1', { class: 'tool-title' }, 'Qué necesitará tu proyecto'));
     if (!p) { root.appendChild(UI.callout('warn', 'Primero crea tu proyecto.', ' Ve a «Mi comunidad y proyectos» y agrega el primero.')); return root; }
     var body = h('div');
     function silent() { RF.store.update(function () { }, { silent: true }); if (RF.views && RF.views.refreshSide) RF.views.refreshSide(); }
@@ -103,7 +103,7 @@
       var changed = (p.needsAdded || []).length || (p.needsCustom || []).some(function (c) { return c.afterPea; });
       if (changed) {
         body.appendChild(h('section', { class: 'card warn-card' },
-          h('h3', { class: 'card-title' }, 'Esto no estaba en tu PEA aprobado'),
+          h('h2', { class: 'card-title' }, 'Esto no estaba en tu PEA aprobado'),
           h('ul', null, (p.needsAdded || []).map(function (a) { return h('li', null, (RF.needs.BY_ID[a.id] || { name: a.id }).name); }).concat((p.needsCustom || []).filter(function (c) { return c.afterPea; }).map(function (c) { return h('li', null, c.name); }))),
           h('p', null, 'Antes de gastar en algo que tu PEA no contempla, conviene modificar el PEA. Según los documentos del convenio, un proyecto puede cambiar en tiempo, actividades y presupuesto si la comunidad lo pide: la reitemización agrega actividades o cambia fechas y presupuesto; la reprogramación cambia solo los plazos.'),
           h('p', null, 'En los informes del Organismo Colaborador, los cambios al PEA se aprueban en asamblea y se envían a CORFO con el acta; después se configuran en SGP (a veces con un Acta de No Objeción de CORFO). Confirma el paso exacto con tu ejecutivo técnico.'),

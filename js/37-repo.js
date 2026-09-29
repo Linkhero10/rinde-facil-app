@@ -35,7 +35,7 @@
 
   function repo() { var s = RF.store.get(); s.repo = s.repo || { docs: [], actas: [] }; s.repo.docs = s.repo.docs || []; s.repo.actas = s.repo.actas || []; return s.repo; }
   function silent() { RF.store.update(function () { }, { silent: true }); }
-  function page(title, lead, kids) { return h('div', { class: 'tool-page' }, h('h2', { class: 'tool-title' }, title), lead ? h('p', { class: 'lead' }, lead) : null, kids); }
+  function page(title, lead, kids) { return h('div', { class: 'tool-page' }, h('h1', { class: 'tool-title' }, title), lead ? h('p', { class: 'lead' }, lead) : null, kids); }
   function projectName(id) { var s = RF.store.get(), p = s.projects.filter(function (x) { return x.id === id; })[0]; return p ? (p.name || 'Proyecto') : 'Todos los proyectos'; }
   function fromName(id) { return (FROM.filter(function (f) { return f.id === id; })[0] || {}).name || ''; }
   function openBlob(blobId, name) {
@@ -113,7 +113,7 @@
           UI.field('¿Quién lo envía?', rec, 'from', { type: 'select', noEmpty: true, options: FROM }),
           UI.field('¿A qué proyecto se refiere?', rec, 'projectId', { type: 'select', noEmpty: true, options: projOpts })),
         h('div', { class: 'field wide' }, h('span', { class: 'lbl' }, 'El archivo'), fileButton(st, paint)),
-        h('h4', { class: 'grp' }, '¿Cambia algo del PEA?'),
+        h('h3', { class: 'grp' }, '¿Cambia algo del PEA?'),
         UI.field('Este documento…', rec, 'peaChange', { type: 'select', noEmpty: true, cls: 'wide', options: PEA_OPTS, onChange: function () { paintAdvice(); } }), advice,
         UI.field('Nota (opcional)', rec, 'note', { type: 'textarea', rows: 2, cls: 'wide', ph: 'Ej: CORFO pide agregar una actividad de capacitación.' }),
         h('div', { class: 'row-actions' }, saveBtn, UI.btn('Cancelar', { cls: 'ghost', onclick: function () { st.editing = null; st.file = null; paint(); } }))]));
@@ -164,7 +164,7 @@
       { t: 'h', text: 'Temas tratados' }, { t: 'p', text: a.topics || '' },
       { t: 'h', text: 'Acuerdos y compromisos' },
       { t: 'table', head: ['Acuerdo', 'Responsable', 'Plazo', 'Cumplido'], types: ['text', 'text', 'date', 'text'], rows: (a.agreements || []).map(function (x) { return [x.what || '', fromName(x.who), x.due || '', x.done ? 'Sí' : 'No']; }) },
-      { t: 'sign', names: ['CORFO', s.community.name || 'Comunidad', 'Organismo Colaborador'] }] };
+      { t: 'sign', labels: ['Firma · CORFO', 'Firma · ' + (s.community.name || 'Comunidad'), 'Firma · Organismo Colaborador'] }] };
   }
   function actasDoc() {
     var rows = repo().actas.slice().sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); }).map(function (a) { return [a.date || '', (ACTA_STATES.filter(function (x) { return x.id === a.state; })[0] || {}).name || '', (MODES.filter(function (m) { return m.id === a.mode; })[0] || {}).name || '', a.place || '', (a.asistentes || {}).corfo || '', (a.asistentes || {}).comunidad || '', (a.asistentes || {}).oc || '', (a.agreements || []).length, (a.agreements || []).filter(function (x) { return !x.done; }).length, a.fileName || '']; });
@@ -213,12 +213,12 @@
       box.appendChild(UI.section(isNew ? 'Agregar un acta' : 'Editar el acta', [
         h('div', { class: 'form-grid' }, UI.field('Fecha de la reunión', a, 'date', { type: 'date' }), UI.field('Modalidad', a, 'mode', { type: 'select', noEmpty: true, options: MODES }), UI.field('Lugar', a, 'place', { type: 'text', ph: 'Ej: Sede de la comunidad' }),
           UI.field('Estado del acta', a, 'state', { type: 'select', noEmpty: true, options: ACTA_STATES })),
-        h('h4', { class: 'grp' }, 'Quiénes asistieron'),
+        h('h3', { class: 'grp' }, 'Quiénes asistieron'),
         h('div', { class: 'form-grid' }, UI.field('Representantes de CORFO', a.asistentes, 'corfo', { type: 'number', min: 0, onChange: paintWarn }), UI.field('Representantes de la comunidad', a.asistentes, 'comunidad', { type: 'number', min: 0, onChange: paintWarn }), UI.field('Representantes del Organismo Colaborador', a.asistentes, 'oc', { type: 'number', min: 0, onChange: paintWarn }),
           UI.field('Nombres (opcional)', a, 'names', { type: 'textarea', rows: 2, cls: 'wide' })), warn,
-        h('h4', { class: 'grp' }, 'Lo que se conversó'), UI.field('Temas tratados', a, 'topics', { type: 'textarea', rows: 4, cls: 'wide' }),
-        h('h4', { class: 'grp' }, 'Acuerdos y compromisos'), agBox,
-        h('h4', { class: 'grp' }, 'El acta firmada'), h('div', { class: 'field wide' }, fileButton(st, paint, 'Subir el acta (PDF o foto)')),
+        h('h3', { class: 'grp' }, 'Lo que se conversó'), UI.field('Temas tratados', a, 'topics', { type: 'textarea', rows: 4, cls: 'wide' }),
+        h('h3', { class: 'grp' }, 'Acuerdos y compromisos'), agBox,
+        h('h3', { class: 'grp' }, 'El acta firmada'), h('div', { class: 'field wide' }, fileButton(st, paint, 'Subir el acta (PDF o foto)')),
         UI.field('Nota (opcional)', a, 'note', { type: 'textarea', rows: 2, cls: 'wide' }),
         h('div', { class: 'row-actions' }, saveBtn, UI.btn('Cancelar', { cls: 'ghost', onclick: function () { st.editing = null; st.file = null; paint(); } }))]));
       return box;

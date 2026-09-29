@@ -5,7 +5,7 @@
   var U = RF.util, UI = RF.ui, D = RF.data, L = RF.logic, h = U.h, num = U.parseCLP;
   var TOOLS = RF.tools = RF.tools || {};
 
-  function page(title, lead, kids) { return h('div', { class: 'tool-page' }, h('h2', { class: 'tool-title' }, title), lead ? h('p', { class: 'lead' }, lead) : null, kids); }
+  function page(title, lead, kids) { return h('div', { class: 'tool-page' }, h('h1', { class: 'tool-title' }, title), lead ? h('p', { class: 'lead' }, lead) : null, kids); }
   function needProject(ctx) {
     if (ctx.project) return null;
     return UI.callout('warn', 'Primero crea tu proyecto.', ' Ve a «Mi comunidad y proyectos» y agrega el primero.');
@@ -203,9 +203,9 @@
     var pd = L.peaDeadline(p, U.todayISO());
     root.appendChild(UI.callout('info', 'Ojo:', ' estos documentos son un borrador para reunir y copiar tu información. No tenemos el formulario oficial del PEA, así que confirma el formato vigente con tu ejecutivo técnico o con el Organismo Colaborador (Componente 3).'));
     if (pd) root.appendChild(UI.callout(pd.diasRestantes < 0 ? 'bad' : pd.diasRestantes <= 15 ? 'warn' : 'ok', 'Plazo:', ' vence el ' + U.fmtDate(pd.fin) + (pd.diasRestantes >= 0 ? ' (faltan ' + pd.diasRestantes + ' días)' : ' (ya pasó; con prórroga hasta ' + U.fmtDate(pd.finProrroga) + ')') + '.'));
-    root.appendChild(h('h3', { class: 'sub-title' }, '1 · Información general del plan')); root.appendChild(RF.forms.renderSingle('peaGeneral', c));
-    root.appendChild(h('h3', { class: 'sub-title' }, '2 · Un formulario por proyecto')); root.appendChild(RF.forms.renderRepeat('peaProyecto', c));
-    root.appendChild(h('h3', { class: 'sub-title' }, '3 · Presupuesto y Carta Gantt'));
+    root.appendChild(h('h2', { class: 'sub-title' }, '1 · Información general del plan')); root.appendChild(RF.forms.renderSingle('peaGeneral', c));
+    root.appendChild(h('h2', { class: 'sub-title' }, '2 · Un formulario por proyecto')); root.appendChild(RF.forms.renderRepeat('peaProyecto', c));
+    root.appendChild(h('h2', { class: 'sub-title' }, '3 · Presupuesto y Carta Gantt'));
     root.appendChild(UI.section('Estos dos documentos ya los armas en sus propias herramientas', [h('div', { class: 'row-actions' }, UI.btn('Abrir Carta Gantt', { icon: 'gantt', onclick: function () { location.hash = '#/h/gantt'; } }), UI.btn('Abrir Presupuesto', { icon: 'money', onclick: function () { location.hash = '#/h/presupuesto'; } }))]));
     root.appendChild(UI.section('Todo el PEA en un solo documento', [UI.exportBar(function () { return peaDoc(p, c); }, 'pea-completo')]));
     return page('PEA: los 3 documentos', 'El PEA se compone de información general, un formulario por proyecto y el presupuesto con la Carta Gantt.', root);

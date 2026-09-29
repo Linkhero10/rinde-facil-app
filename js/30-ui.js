@@ -159,7 +159,7 @@
   function badge(text, kind) { return h('span', { class: 'badge ' + (kind || '') }, text); }
   function callout(kind, title, body) { return h('div', { class: 'callout ' + kind, role: kind === 'bad' ? 'alert' : null }, title ? h('strong', null, title) : null, body ? h('span', null, ' ' + body) : null); }
   function empty(text) { return h('p', { class: 'empty-note' }, text); }
-  function section(title, kids, cls) { return h('section', { class: 'card ' + (cls || '') }, title ? h('h3', { class: 'card-title' }, title) : null, kids); }
+  function section(title, kids, cls) { return h('section', { class: 'card ' + (cls || '') }, title ? h('h2', { class: 'card-title' }, title) : null, kids); }
   function progressBar(done, total, label) {
     var pct = total ? Math.round(done * 100 / total) : 0;
     return h('div', { class: 'pbar', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': pct, 'aria-label': label || 'Avance' }, h('span', { style: { width: pct + '%' } }));

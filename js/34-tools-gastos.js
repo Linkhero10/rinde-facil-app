@@ -5,7 +5,7 @@
   var U = RF.util, UI = RF.ui, D = RF.data, L = RF.logic, h = U.h, num = U.parseCLP;
   var TOOLS = RF.tools = RF.tools || {};
 
-  function page(title, lead, kids) { return h('div', { class: 'tool-page' }, h('h2', { class: 'tool-title' }, title), lead ? h('p', { class: 'lead' }, lead) : null, kids); }
+  function page(title, lead, kids) { return h('div', { class: 'tool-page' }, h('h1', { class: 'tool-title' }, title), lead ? h('p', { class: 'lead' }, lead) : null, kids); }
   function ctx() { return RF.forms.ctxNow(); }
   function needProject() { return UI.callout('warn', 'Primero crea tu proyecto.', ' Ve a «Mi comunidad y proyectos» y agrega el primero.'); }
   function silent() { RF.store.update(function () { }, { silent: true }); }
@@ -196,9 +196,9 @@
       var actOpts = [{ id: '', name: 'Sin actividad' }].concat(L.allActivities(p).map(function (x) { return { id: x.act.id, name: x.act.name || '(sin nombre)' }; }));
       var form = h('div', null,
         e._ocrNote ? UI.callout('info', '', e._ocrNote) : null,
-        h('h4', { class: 'grp' }, '1. El documento'),
+        h('h3', { class: 'grp' }, '1. El documento'),
         h('div', { class: 'form-grid' }, fld('Tipo de documento', 'docType', { type: 'select', options: docOpts, noEmpty: true, cls: 'span2' }), fld('Número (folio)', 'folio', { type: 'text' }), fld('Fecha del documento', 'fecha', { type: 'date' }), fld('Nombre del proveedor', 'proveedor', { type: 'text', cls: 'wide' }), fld('Nombre comercial o local (opcional)', 'nombreComercial', { type: 'text', cls: 'wide', hint: 'Solo para reconocerlo; el proveedor es quien tiene el RUT.' }), fld('RUT del proveedor', 'rutProveedor', { type: 'rut' })),
-        h('h4', { class: 'grp' }, '2. Los montos'),
+        h('h3', { class: 'grp' }, '2. Los montos'),
         h('div', { class: 'form-grid' }, fld('Monto neto ($)', 'neto', { type: 'money' }), fld('IVA ($)', 'iva', { type: 'money' }), fld('Total del documento ($)', 'total', { type: 'money' }),
           h('div', { class: 'field wide' }, h('div', { class: 'row-actions' },
             UI.btn('Calcular IVA y total desde el neto', { cls: 'ghost', onclick: function () { var n = num(e.neto); e.iva = Math.round(n * D.REGLAS.IVA); e.total = n + e.iva; paint(); } }),
@@ -206,15 +206,15 @@
           e.cuenta === 'administracion' ? fld('Porcentaje que corresponde al proyecto (%)', 'pctUso', { type: 'pct', hint: 'Si el gasto es compartido, se pide el Anexo 5.' }) : null,
           fld('Monto a rendir ($)', 'montoRendir', { type: 'money' }), h('div', { class: 'field calc-field' }, h('span', { class: 'lbl' }, 'Según tu situación de IVA'), calcBox,
             UI.btn('Usar ese monto', { cls: 'ghost', onclick: function () { e._manualRendir = false; syncRendir(e, c.community); paint(); } }))),
-        h('h4', { class: 'grp' }, '3. Dónde va'),
+        h('h3', { class: 'grp' }, '3. Dónde va'),
         h('div', { class: 'form-grid' }, fld('Cuenta', 'cuenta', { type: 'select', options: D.CUENTAS.map(function (x) { return { id: x.id, name: x.name }; }), noEmpty: true, after: function () { paint(); } }), fld('Actividad de tu Gantt', 'actId', { type: 'select', options: actOpts, noEmpty: true }), fld('Ítem del presupuesto', 'item', { type: 'text', ph: 'Ej: Materiales' }),
           fld('Glosa: qué compraste y para qué', 'glosa', { type: 'textarea', rows: 2, cls: 'wide', counter: D.REGLAS.GLOSA_MAX, counterWarn: D.REGLAS.GLOSA_AVISO })),
-        h('h4', { class: 'grp' }, '4. El pago'),
+        h('h3', { class: 'grp' }, '4. El pago'),
         h('div', { class: 'form-grid' }, fld('Forma de pago', 'formaPago', { type: 'select', options: D.FORMAS_PAGO, noEmpty: true }), fld('Fecha del pago', 'fechaPago', { type: 'date' })),
-        h('h4', { class: 'grp' }, '5. Marcas'),
+        h('h3', { class: 'grp' }, '5. Marcas'),
         h('div', { class: 'checks' }, fld('Es un viático o viaje', 'esViatico', { type: 'check' }), fld('Es un servicio técnico-profesional (no pide cotizaciones)', 'servicioTecnico', { type: 'check' }), e.cuenta === 'inversion' ? fld('Es un inmueble o derechos de agua', 'esInmueble', { type: 'check' }) : null),
-        h('h4', { class: 'grp' }, '6. Respaldos que hay que guardar'), reqBox,
-        h('h4', { class: 'grp' }, '7. Revisión humana'),
+        h('h3', { class: 'grp' }, '6. Respaldos que hay que guardar'), reqBox,
+        h('h3', { class: 'grp' }, '7. Revisión humana'),
         fld('Comparé cada dato con el documento original y está correcto', 'verified', { type: 'check', hint: e.ocr ? 'Obligatorio: los datos leídos por la nube pueden tener errores (por ejemplo, un dígito del RUT).' : '' }),
         RF.cloud.configured() ? h('div', { class: 'row-actions' }, UI.btn(e.driveFichaAt ? 'Actualizar la ficha en el Drive' : 'Guardar la ficha en el Drive', { icon: 'cloud', cls: 'ghost', onclick: function () { RF.drive.saveFicha(e, p, c.community).then(function () { paint(); }).catch(function () { }); } }), h('span', { class: 'hint' }, 'La ficha es un texto con todos los datos de este gasto y lo que leyó la nube. Se guarda sola al marcar la revisión; usa este botón si cambias algo después.')) : null);
       var head = h('div', { class: 'row-actions between' }, UI.btn('← Volver a la lista', { cls: 'ghost', onclick: function () { st.editing = null; paint(); } }),
@@ -332,7 +332,7 @@
       h('div', { class: 'row-actions' },
         UI.btn('Preparar mi carpeta' + (pj ? ' para «' + pj.name + '»' : ''), { icon: 'folder', cls: 'primary', onclick: function () { U.clear(driveOut); driveOut.appendChild(UI.callout('info', '', 'Preparando la carpeta…')); RF.drive.setup(pj && pj.name).then(function (r) { U.clear(driveOut); driveOut.appendChild(UI.callout('ok', 'Lista.', ' La carpeta «Rinde fácil» está en tu Drive.')); if (r.rootUrl) driveOut.appendChild(h('p', null, h('a', { href: r.rootUrl, target: '_blank', rel: 'noopener' }, 'Abrir la carpeta en Drive'))); paintSaves(); }).catch(function (e) { U.clear(driveOut); driveOut.appendChild(UI.callout('bad', '', e.message === 'NO_CONFIGURADO' ? 'Primero conecta el servicio de tu comunidad.' : 'No se pudo preparar la carpeta (' + e.message + ').')); }); } }),
         s.cloud.rootUrl ? h('a', { class: 'btn ghost', href: s.cloud.rootUrl, target: '_blank', rel: 'noopener' }, 'Abrir en Drive') : null),
-      driveOut, h('h4', { class: 'grp' }, 'Últimos archivos guardados'), savesBox]));
+      driveOut, h('h3', { class: 'grp' }, 'Últimos archivos guardados'), savesBox]));
     function silentSave() { RF.store.update(function () { }, { silent: true }); }
     paintSaves();
     var fi = h('input', { type: 'file', accept: 'application/json,.json', class: 'sr-only', 'aria-label': 'Cargar copia' });
