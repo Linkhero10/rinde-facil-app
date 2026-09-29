@@ -1,13 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=JetBrains+Mono:wght@500;600&display=swap');
-/* Rinde Fácil · identidad "salar": color = quién actúa (CORFO, comunidad, Novandina, SMI). */
+/* Rinde Fácil · identidad "salar": color = quién actúa (CORFO, comunidad, Novandina, Organismo Colaborador).
+   Modo claro: blanco con morado (el color del Organismo Colaborador); el modo oscuro conserva el turquesa. */
 :root{
-  --ink:#182229; --ink-2:#3e4d56; --muted:#566871;
-  --paper:#f4f7f7; --canvas:#e9f0ef; --line:#d3dfdd; --card:#ffffff; --card-2:#f7faf9;
+  --ink:#1d1630; --ink-2:#463d5c; --muted:#645b7a;
+  --paper:#ffffff; --canvas:#f7f4fb; --line:#e3dbef; --card:#ffffff; --card-2:#faf7fd;
   --corfo:#2454a8; --corfo-soft:#e4ecf9; --novandina:#0a6b64; --novandina-soft:#dff4f1;
-  --comunidad:#8f5610; --comunidad-soft:#faecd9; --smi:#6b4c9a; --smi-soft:#ece5f5;
+  --comunidad:#8f5610; --comunidad-soft:#faecd9; --smi:#51247a; --smi-soft:#efe7f8;
   --ok:#0a6b64; --ok-soft:#dff4f1; --warn:#8a5a00; --warn-soft:#fff3cf; --bad:#a3271f; --bad-soft:#fbe4e1; --info:#2454a8; --info-soft:#e4ecf9;
-  --action:#0a6b64; --action-ink:#ffffff;
-  --shadow:0 10px 28px rgba(24,34,41,.10); --radius:6px; --side-w:310px;
+  --action:#51247a; --action-ink:#ffffff; --action-soft:#efe7f8;
+  --shadow:0 10px 28px rgba(58,28,98,.12); --radius:6px; --side-w:310px;
   --display:"Big Shoulders Display","Arial Narrow",system-ui,sans-serif; --body:"Source Serif 4",Georgia,serif; --mono:"JetBrains Mono",ui-monospace,monospace;
   color-scheme:light;
 }
@@ -60,7 +61,7 @@ img{max-width:100%;display:block}
 .acc-head:hover{background:var(--card)}
 .acc-head .ico{flex:none;margin-left:auto;transition:transform .18s ease;color:var(--muted)}
 .acc-head[aria-expanded="true"] .ico{transform:rotate(180deg)}
-.acc-n{flex:none;width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--paper);display:grid;place-items:center;font:700 12px var(--mono)}
+.acc-n{flex:none;width:24px;height:24px;border-radius:50%;background:var(--action);color:var(--action-ink);display:grid;place-items:center;font:700 12px var(--mono)}
 .acc-head.complete .acc-n{background:var(--ok);color:var(--action-ink)}
 .acc-head.tools .acc-title{font-weight:600;color:var(--ink-2)}
 .acc-title{font-weight:700;font-size:15px;line-height:1.25}
