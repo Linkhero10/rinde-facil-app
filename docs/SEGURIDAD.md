@@ -46,7 +46,7 @@ Estado: **revisión propia con pruebas automáticas; todavía sin auditoría ext
 5. **Un equipo desbloqueado es un equipo abierto.** El bloqueo por inactividad reduce el riesgo, no lo elimina. Un navegador con extensiones maliciosas o un equipo con virus puede leer la memoria.
 6. **Sin dependencia de terceros en ejecución**, salvo `vendor/parser.js` (propio) y las tipografías de Google Fonts. No hay auditoría de cadena de suministro más allá de eso.
 7. **La versión 3 del servicio no se ha desplegado todavía en Apps Script real**: las pruebas usan una simulación del servicio (`test/gas_sim.mjs`) que ejecuta el `WebApi.gs` verdadero con Drive y propiedades simulados. Falta la verificación contra el servicio real.
-8. **Prueba de penetración pendiente.** Está planificada con Strix (ver §6); todavía no se ejecutó.
+8. **Prueba de penetración parcial.** Se hizo una pasada con Strix (ver §6); cubrió el servicio sin sesión y la revisión del código, pero no los flujos autenticados ni la app en el navegador.
 
 ## 5. Operación segura (para quien instala)
 
@@ -59,7 +59,13 @@ Estado: **revisión propia con pruebas automáticas; todavía sin auditoría ext
 
 ## 6. Prueba de penetración (Strix)
 
-Plan (skill `faro-strix-pentest`): solo sobre una **copia aislada** del servicio y la app, sin secretos reales, en Docker local, sin arreglos automáticos; cada hallazgo se registra en la bitácora con su prueba de concepto y se corrige con una prueba de regresión. Requiere una clave de API de un modelo de lenguaje y autorización de costo del usuario. **Estado: pendiente de autorización.**
+**Pasada del 30-sep-2026** — Strix 1.6.2, modo profundo, modelo `gpt-6-luna` con esfuerzo `xhigh` sobre una suscripción de ChatGPT; 13 minutos y 190 llamadas al modelo. Se corrió sobre una **copia aislada** (Docker local, datos de prueba, servicio simulado que ejecuta el `WebApi.gs` real), sin arreglos automáticos.
+
+* **Hallazgos confirmados por Strix: 0.** Las acciones con datos rechazaron tokens ausentes, mal formados o inválidos; usuario conocido y desconocido dieron el mismo error; no se filtraron secretos; el CORS del simulador no permitió leer datos protegidos.
+* **Lo que no cubrió (8 puntos marcados «requiere más revisión»):** no hubo flujo autenticado; la app servida por HTTP mostró la barrera de origen seguro y no se pudo probar en el navegador; no se probó el vencimiento a 12 horas ni el umbral de 5 fallos; no se probaron con sesión válida los límites de `saveFile`, `saveState` y `ocr`. Esos controles sí tienen pruebas propias (`backend.test.mjs`, `e2e.mjs`), pero no fueron atacados por una herramienta externa.
+* **Hallazgo propio derivado de la pasada:** al importar un respaldo con claves `__proto__` o `constructor`, el estado heredaba propiedades ajenas (`Object.prototype` global no se contaminaba). Severidad baja. **Corregido**: los datos que entran desde afuera se leen con `RF.util.safeParse`, que descarta esas claves; prueba de regresión en `security.test.mjs`.
+* **Límites:** el modelo usado no figura en la lista de modelos recomendados de Strix, así que puede pasar por alto vulnerabilidades. Un resultado sin hallazgos no prueba que no existan. El servicio simulado no es Apps Script real: CORS, límites de cuerpo y cuotas de producción no se probaron.
+* **Siguiente pasada recomendada:** con sesión válida de prueba y la app servida por un origen seguro (HTTPS), para cubrir los 8 puntos pendientes.
 
 ## 7. ¿Hace falta un servidor de base de datos?
 

@@ -31,3 +31,16 @@ test('un servicio que propone menos vueltas de PBKDF2 no recibe nada: ni la clav
   assert.deepEqual(sent, ['challenge']);
   await RF.auth.wipeDevice(); /* detiene el temporizador de inactividad para que la prueba termine */
 });
+
+test('un respaldo con claves __proto__ o constructor no cambia el prototipo de nada (hallazgo de la revisión con Strix)', () => {
+  RF.store.reset();
+  const evil = '{"__proto__":{"polluted":"si"},"constructor":{"prototype":{"polluted2":"si"}},"projects":[{"id":"p1","name":"X","__proto__":{"polluted3":"si"}}],"community":{"name":"C","__proto__":{"polluted5":"si"}}}';
+  RF.store.importJSON(evil);
+  const s = RF.store.get();
+  assert.equal(({}).polluted, undefined); assert.equal(({}).polluted2, undefined);
+  assert.equal(s.polluted, undefined, 'el estado no hereda propiedades ajenas');
+  assert.equal(s.projects[0].polluted3, undefined);
+  assert.equal(s.community.polluted5, undefined);
+  assert.equal(Object.prototype.hasOwnProperty.call(s, 'constructor'), false);
+  assert.equal(s.projects[0].name, 'X', 'lo legítimo se conserva');
+});

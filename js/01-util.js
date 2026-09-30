@@ -226,7 +226,13 @@
     } catch (e) { return false; }
   }
 
+  /* JSON que viene de afuera (respaldos, copia de la nube): se descartan las claves que cambiarían el prototipo del objeto */
+  function safeParse(text) {
+    return JSON.parse(text, function (k, v) { return (k === '__proto__' || k === 'constructor' || k === 'prototype') ? undefined : v; });
+  }
+
   RF.util = {
+    safeParse: safeParse,
     fmtCLP: fmtCLP, fmtNum: fmtNum, parseCLP: parseCLP, clamp: clamp, sum: sum,
     isoToDate: isoToDate, dateToIso: dateToIso, todayISO: todayISO, addDays: addDays, diffDays: diffDays,
     addBusinessDays: addBusinessDays, businessDaysBetween: businessDaysBetween,

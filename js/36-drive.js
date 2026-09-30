@@ -162,7 +162,7 @@
   function pullState() {
     return RF.cloud.post('loadState', {}, 60000).then(function (r) {
       if (!r || !r.ok || !r.state) return { ok: false, error: (r && r.error) || 'SIN_COPIA' };
-      return { ok: true, remote: JSON.parse(r.state), rev: r.rev || 0 };
+      return { ok: true, remote: U.safeParse(r.state), rev: r.rev || 0 };
     });
   }
   /* pullOnly: el usuario pidió traer la copia. Si no, hay un conflicto al guardar. Devuelve { ok, text } */

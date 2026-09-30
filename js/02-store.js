@@ -128,7 +128,7 @@
     return JSON.stringify(copy, null, 2);
   }
   function importJSON(text) {
-    var parsed = JSON.parse(text);
+    var parsed = U.safeParse(text);
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.projects)) throw new Error('El archivo no es una copia de Rinde Fácil.');
     var mine = get().cloud;
     state = migrate(parsed);

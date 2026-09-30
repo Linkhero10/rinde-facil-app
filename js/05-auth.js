@@ -133,7 +133,7 @@
       if (!r || !r.ok) throw Object.assign(new Error(r && r.error === 'BLOQUEADO' ? 'Demasiados intentos. Espera un rato.' : 'La comunidad o la contraseña no coinciden con las del servicio.'), { code: r && r.error });
       setToken(r);
       return RF.cloud.postRawTo(url, 'loadState', { t: r.token }).then(function (st) {
-        var state = st && st.ok ? JSON.parse(st.state) : RF.store.defaults();
+        var state = st && st.ok ? RF.util.safeParse(st.state) : RF.store.defaults();
         state.cloud = Object.assign({}, state.cloud || {}, { apiUrl: url }); state.community = Object.assign({}, state.community || {}, { name: (state.community && state.community.name) || user });
         return V.create(user, password, state, { noRecovery: true, skipPolicy: !problems.length ? false : true }).then(function () { afterOpen(state); return { rev: st && st.rev }; });
       });
