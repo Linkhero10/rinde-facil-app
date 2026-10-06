@@ -24,7 +24,7 @@
   function throttle() {
     var f; try { f = JSON.parse(ls().getItem(FAILS) || '{}'); } catch (e) { f = {}; }
     var left = (f.until || 0) - Date.now();
-    if (left > 0) throw Object.assign(fail('ESPERA', 'Demasiados intentos. Espera ' + Math.ceil(left / 1000) + ' segundos.'), { seconds: Math.ceil(left / 1000) });
+    if (left > 0) throw Object.assign(fail('ESPERA', 'Demasiados intentos. Faltan ' + RF.util.waitText(Math.ceil(left / 1000)) + '.'), { seconds: Math.ceil(left / 1000) });
   }
   function noteFail() {
     var f; try { f = JSON.parse(ls().getItem(FAILS) || '{}'); } catch (e) { f = {}; }

@@ -99,7 +99,7 @@ test('recuperación preparada no modifica la bóveda hasta confirmar el commit l
 test('freno local: tras 5 intentos fallidos hay que esperar', async () => {
   reset(); await RF.vault.create('Comunidad Freno larga', PW, STATE, { iterations: 2000 }); RF.vault.lock();
   for (let i = 0; i < 5; i++) await assert.rejects(RF.vault.unlock('Comunidad Freno larga', 'mala contraseña larga ' + i));
-  await assert.rejects(RF.vault.unlock('Comunidad Freno larga', PW), /Espera/, 'aunque sea la correcta, primero hay que esperar');
+  await assert.rejects(RF.vault.unlock('Comunidad Freno larga', PW), /Faltan/, 'aunque sea la correcta, primero hay que esperar');
 });
 test('datos antiguos sin cifrar: se migran, se comprueba que se leen y recién entonces se borra la copia clara (sin la clave del servicio)', async () => {
   reset();
@@ -111,4 +111,18 @@ test('datos antiguos sin cifrar: se migran, se comprueba que se leen y recién e
   assert.equal(await RF.vault.verifyReadable(), true);
   RF.vault.dropLegacy();
   assert.equal(LS.getItem('rinde_facil_v2'), null); assert.equal(RF.vault.status(), 'open');
+});
+test('cuenta regresiva: segundos si falta menos de un minuto; minutos y segundos si falta más', () => {
+  const W = RF.util.waitText;
+  assert.equal(W(1), '1 segundo');
+  assert.equal(W(45), '45 segundos');
+  assert.equal(W(60), '1 minuto');
+  assert.equal(W(90), '1 minuto y 30 segundos');
+  assert.equal(W(121), '2 minutos y 1 segundo');
+  assert.equal(W(0), '0 segundos');
+});
+test('el nombre de la comunidad no distingue mayúsculas, tildes ni espacios repetidos', () => {
+  const N = RF.crypto.normUser;
+  assert.equal(N('Comunidad Atacameña  de MACHUCA '), N('comunidad atacamena de machuca'));
+  assert.equal(N('COMUNIDAD'), N('comunidad'));
 });

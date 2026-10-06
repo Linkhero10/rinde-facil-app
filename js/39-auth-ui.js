@@ -25,7 +25,23 @@
     return promise.then(function (r) { b.done('Listo'); return r; }, function (e) { b.fail(e && e.message ? e.message : 'No se pudo'); throw e; });
   }
   function errBox() { return h('div', { class: 'auth-err', role: 'alert' }); }
-  function showErr(box, msg) { U.clear(box); if (msg) box.appendChild(UI.callout('bad', '', msg)); }
+  /* si el error trae una espera (retryAfter del servicio o seconds de la bóveda), el aviso cuenta hacia atrás cada segundo */
+  var tickers = new WeakMap();
+  function showErr(box, msg, e) {
+    if (tickers.has(box)) { clearInterval(tickers.get(box)); tickers.delete(box); }
+    U.clear(box); if (!msg) return;
+    var total = e && Number(e.retryAfter || e.seconds);
+    if (!(total > 0)) { box.appendChild(UI.callout('bad', '', msg)); return; }
+    var end = Date.now() + total * 1000, node = UI.callout('bad', '', ''), span = node;
+    node.setAttribute('role', 'timer');
+    function paint() {
+      var left = Math.ceil((end - Date.now()) / 1000);
+      if (left <= 0) { span.textContent = 'Ya pasó la espera. Puedes intentarlo de nuevo.'; clearInterval(id); tickers.delete(box); return; }
+      span.textContent = 'Pausa de seguridad: faltan ' + U.waitText(left) + ' para volver a intentar.';
+    }
+    var id = setInterval(function () { if (!node.isConnected) { clearInterval(id); tickers.delete(box); return; } paint(); }, 1000);
+    tickers.set(box, id); box.appendChild(node); paint();
+  }
   function passwordChecklist(passwordInput, communityInput, id) {
     var list = h('ul', { class: 'pw-hints', id: id, 'aria-label': 'Requisitos de la contraseña' }), parts = [];
     function communityName() { return communityInput && communityInput.value !== undefined ? communityInput.value : (communityInput || ''); }
@@ -96,7 +112,7 @@
       if (nm.length < 3) return showErr(err, 'Escribe el nombre de la comunidad.');
       var pr = C.passwordProblems(p1.input.value, nm); if (pr.length) return showErr(err, pr[0]);
       if (!matchHint.validate()) return;
-      work(A.createAccount(nm, p1.input.value), 'Creando tu cuenta…').then(function (r) { onDone(r); }).catch(function (e) { showErr(err, e.message); });
+      work(A.createAccount(nm, p1.input.value), 'Creando tu cuenta…').then(function (r) { onDone(r); }).catch(function (e) { showErr(err, e.message, e); });
     } }, name.node, p1.node, hints.node, p2.node, err, h('button', { type: 'submit', class: 'btn primary big' }, legacy ? 'Proteger mis datos' : 'Crear cuenta'));
     return shell(legacy ? 'Protege los datos de tu comunidad' : 'Crea la cuenta de tu comunidad',
       legacy ? 'Tus datos de antes se van a guardar cifrados con una contraseña. Elige una que puedas recordar; sin ella nadie podrá abrirlos, ni siquiera nosotros.' : 'La contraseña protege lo que guardas en este equipo: gastos, fotos y documentos. Nadie más puede abrirlo sin ella.',
@@ -111,7 +127,7 @@
     var err = errBox();
     var form = h('form', { class: 'auth-form', onsubmit: function (ev) {
       ev.preventDefault(); showErr(err, '');
-      work(A.unlock(name.input.value, pw.input.value), 'Abriendo…').catch(function (e) { showErr(err, e.message); pw.input.value = ''; pw.input.focus(); });
+      work(A.unlock(name.input.value, pw.input.value), 'Abriendo…').catch(function (e) { showErr(err, e.message, e); pw.input.value = ''; pw.input.focus(); });
     } }, name.node, pw.node, err, h('button', { type: 'submit', class: 'btn primary big' }, 'Entrar'));
     setTimeout(function () { (name.input.value ? pw.input : name.input).focus(); }, 30);
     return shell('Entra a Rinde Fácil', reason === 'inactividad' ? 'La sesión se cerró porque estuvo un rato sin usarse. Tus datos siguen guardados.' : 'Escribe el nombre de tu comunidad y tu contraseña.',
@@ -139,7 +155,7 @@
         A.goto('recovery', { code: r.recoveryCode, warning: warning });
       }).catch(function (e) {
         if (e && e.code === 'LOCAL_RECOVERY_COMMIT_FAILED_AFTER_REMOTE' && e.recoveryCode) A.goto('recovery', { code: e.recoveryCode, warning: e.message });
-        else showErr(err, e.message);
+        else showErr(err, e.message, e);
       });
     } }, code.node, p1.node, hints.node, p2.node, err, h('button', { type: 'submit', class: 'btn primary big' }, 'Cambiar contraseña'));
     return shell('Recuperar el acceso', 'Con el código de recuperación puedes elegir una contraseña nueva sin perder tus datos.', [form, h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('lock'); } }, 'Volver')]);
@@ -152,7 +168,7 @@
     var err = errBox();
     var form = h('form', { class: 'auth-form', onsubmit: function (ev) {
       ev.preventDefault(); showErr(err, '');
-      work(A.connectDevice(url.input.value.trim(), name.input.value, pw.input.value), 'Conectando…').then(function () { }).catch(function (e) { showErr(err, e.message); });
+      work(A.connectDevice(url.input.value.trim(), name.input.value, pw.input.value), 'Conectando…').then(function () { }).catch(function (e) { showErr(err, e.message, e); });
     } }, url.node, name.node, pw.node, err, h('button', { type: 'submit', class: 'btn primary big' }, 'Conectar este equipo'));
     return shell('Conectar este equipo', 'Esta publicación no trae una dirección de servicio aprobada. No pegues una URL recibida por mensaje: hasta verificar y aprobar el servicio de tu comunidad, Rinde Fácil no enviará contraseñas ni documentos.', [UI.callout('info', 'Servicio aún no configurado', 'La app sigue funcionando en este equipo. La conexión con OCR y Drive se habilitará cuando exista una publicación aprobada para el servicio de tu comunidad.'), form, h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('none'); } }, 'Volver')]);
   }
@@ -176,7 +192,7 @@
     return createScreen(phase === 'legacy' ? V.legacyState() : null, function (r) { view = 'recovery'; arg = r.recoveryCode; RF.app.render(); });
   }
   A.goto = function (v, a) { view = v; arg = a || null; RF.app.render(); };
-  RF.authui = { screen: screen, pending: function () { return view === 'recovery'; } };
+  RF.authui = { showErr: showErr, screen: screen, pending: function () { return view === 'recovery'; } };
 
   /* ================= herramienta «Seguridad» ================= */
   TOOLS.seguridad = { title: 'Seguridad', icon: 'shield', desc: 'Cambia la contraseña, cierra sesiones, mira quién entró y revisa que todo esté protegido.', render: function () {

@@ -130,8 +130,7 @@
   function loginFailureMessage(r) {
     var code = r && r.error;
     if (code === 'BLOQUEADO') {
-      var minutes = Math.max(1, Math.ceil((Number(r.retryAfter) || 60) / 60));
-      return 'Pausa de seguridad: espera ' + minutes + (minutes === 1 ? ' minuto' : ' minutos') + '. Intentos disponibles ahora: 0.';
+      return 'Pausa de seguridad: faltan ' + RF.util.waitText(Number(r.retryAfter) || 60) + '. Intentos disponibles ahora: 0.';
     }
     if (code === 'CREDENCIALES_INVALIDAS') {
       var message = 'El nombre o la contraseña de la comunidad no coinciden.';

@@ -237,12 +237,22 @@
   }
 
   /* JSON que viene de afuera (respaldos, copia de la nube): se descartan las claves que cambiarían el prototipo del objeto */
+  /* tiempo de espera legible: «45 segundos» si falta menos de un minuto; «1 minuto y 30 segundos» si falta más */
+  function waitText(total) {
+    var s = Math.max(0, Math.ceil(Number(total) || 0)), m = Math.floor(s / 60), r = s % 60;
+    function seg(n) { return n + (n === 1 ? ' segundo' : ' segundos'); }
+    if (m < 1) return seg(s);
+    var mm = m + (m === 1 ? ' minuto' : ' minutos');
+    return r ? mm + ' y ' + seg(r) : mm;
+  }
+
   function safeParse(text) {
     return JSON.parse(text, function (k, v) { return (k === '__proto__' || k === 'constructor' || k === 'prototype') ? undefined : v; });
   }
 
   RF.util = {
     safeParse: safeParse,
+    waitText: waitText,
     fmtCLP: fmtCLP, fmtNum: fmtNum, parseCLP: parseCLP, clamp: clamp, sum: sum,
     isoToDate: isoToDate, dateToIso: dateToIso, todayISO: todayISO, addDays: addDays, diffDays: diffDays,
     addBusinessDays: addBusinessDays, businessDaysBetween: businessDaysBetween,
