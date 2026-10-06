@@ -32,8 +32,8 @@ test('util: dinero, RUT y fechas', () => {
 });
 
 test('datos: cada trámite del inventario está cubierto una sola vez', () => {
-  const inv = JSON.parse(fs.readFileSync(new URL('../../../../_FARO/07_evaluaciones/inventario_tramites_corfo.json', import.meta.url), 'utf8'));
-  const ids = inv.entries.map(e => e.id).sort();
+  /* Contrato versionado para que el paquete público no dependa del disco privado de SMI. */
+  const ids = JSON.parse(fs.readFileSync(new URL('./fixtures/tramite-ids.json', import.meta.url), 'utf8')).sort();
   assert.equal(ids.length, 29);
   const inFases = [].concat(...D.FASES.map(f => f.items), D.AYUDA).filter(x => x.startsWith('TRM-')).sort();
   assert.deepEqual(Array.from(inFases), ids, 'las fases + ayuda deben cubrir exactamente los 29 trámites');
