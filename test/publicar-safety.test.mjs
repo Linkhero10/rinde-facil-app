@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 const scriptPath = new URL('../tools/publicar.ps1', import.meta.url);
 const source = await readFile(scriptPath, 'utf8');
+const swSource = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
 
 test('el publicador fija y comprueba los dos directorios autorizados', () => {
   assert.match(source, /ExpectedSourceRoot\s*=\s*['"]D:\\SMI\\Productos\\Rinde fácil\\app['"]/i);
@@ -59,6 +60,11 @@ test('omite fixtures privados y cachés generadas en lugar de copiarlos o bloque
   assert.match(filter, /private|__pycache__/i);
   assert.match(filter, /\.py\[co\]\$/i);
   assert.match(filter, /continue/i);
+});
+
+test('la publicación invalida la caché anterior y precarga el módulo de confianza', () => {
+  assert.match(swSource, /var VERSION\s*=\s*['"]rf-v3-1['"]/);
+  assert.match(swSource, /CORE\s*=\s*\[[^\]]*['"]js\/00-service-trust\.js['"]/s);
 });
 
 test('commit y push usan funciones protegidas y un refspec explícito, sin force', () => {
