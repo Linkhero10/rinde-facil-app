@@ -50,22 +50,47 @@ test('toda acción con datos exige una sesión válida', () => {
 test('login: usuario o clave equivocados dan el mismo error; el nombre no distingue tildes ni mayúsculas', () => {
   const e = makeEnv({ RINDE_FACIL_SETUP_CODE: 'k' });
   const a = login(e, b64of('otra')), b = login(e, ACC.authKey, 'Otra comunidad'), c = login(e, ACC.authKey, ''), d = login(e, null, null);
-  [a, b, c, d].forEach(r => assert.deepEqual(r, { ok: false, error: 'CREDENCIALES_INVALIDAS' }));
+  [a, b, c, d].forEach(r => assert.equal(r.error, 'CREDENCIALES_INVALIDAS'));
+  assert.deepEqual([a, b, c, d].map(r => r.attemptsRemaining), [4, 3, 2, 1]);
+  assert.ok(a.attemptsLimit >= a.attemptsRemaining, 'se informa el límite sin distinguir nombre de contraseña');
   const ok = login(e, ACC.authKey, '  COMUNIDAD atacamena   de PRUEBA ');
   assert.equal(ok.ok, true); assert.equal(ok.saltP, ACC.saltP); assert.match(ok.token, /^[0-9a-f]{64}$/); assert.notEqual(ok.token, e.t);
   assert.ok(!('hashAuth' in ok));
 });
-test('bloqueo por intentos: 5 fallos bloquean, la clave buena tampoco entra, se duplica y se libera con el tiempo', () => {
+test('login: escala los intentos 5 y luego 3, y los bloqueos siguen 1, 2, 5, 10, 20 y 30 minutos', () => {
+  const e = makeEnv({ RINDE_FACIL_SETUP_CODE: 'k' });
+  const durations = [60000, 120000, 300000, 600000, 1200000, 1800000, 1800000];
+  let now = T0;
+  durations.forEach((duration, round) => {
+    setTime(e, now);
+    const allowed = round === 0 ? 5 : 3;
+    for (let i = 0; i < allowed - 1; i++) {
+      const r = login(e, b64of('wrong-' + round + '-' + i));
+      assert.equal(r.error, 'CREDENCIALES_INVALIDAS');
+      assert.equal(r.attemptsRemaining, allowed - i - 1);
+      assert.equal(r.attemptsLimit, allowed);
+    }
+    const blocked = login(e, b64of('wrong-final-' + round));
+    assert.equal(blocked.error, 'BLOQUEADO');
+    assert.equal(blocked.attemptsRemaining, 0);
+    assert.equal(blocked.attemptsLimit, allowed);
+    assert.ok(blocked.retryAfter > duration / 1000 - 2 && blocked.retryAfter <= duration / 1000, 'duración de bloqueo ronda ' + round);
+    const beforeExpiry = login(e, ACC.authKey);
+    assert.equal(beforeExpiry.error, 'BLOQUEADO', 'ni siquiera prueba la clave correcta mientras dura el bloqueo');
+    now += duration + 1;
+  });
+});
+test('login: migra un bloqueo antiguo largo a la nueva escala sin mantener 15 minutos', () => {
   const e = makeEnv({ RINDE_FACIL_SETUP_CODE: 'k' });
   setTime(e, T0);
-  for (let i = 0; i < 4; i++) assert.equal(login(e, b64of('x' + i)).error, 'CREDENCIALES_INVALIDAS');
-  assert.equal(login(e, b64of('x4')).error, 'CREDENCIALES_INVALIDAS');
-  const l = login(e); assert.equal(l.error, 'BLOQUEADO'); assert.ok(l.retryAfter > 800 && l.retryAfter <= 900, '15 minutos');
-  setTime(e, T0 + 16 * 60000);
-  for (let i = 0; i < 5; i++) login(e, b64of('y' + i)); /* seguidos, sin un acierto en medio: el castigo crece */
-  setTime(e, T0 + 17 * 60000);
-  assert.equal(login(e, b64of('z')).error, 'BLOQUEADO', 'mientras dura el bloqueo ni siquiera se prueba la clave');
-  const l2 = login(e); assert.equal(l2.error, 'BLOQUEADO'); assert.ok(l2.retryAfter > 1500, 'la segunda vez el bloqueo se duplica (30 min)');
+  e.P.set('RF_LOCK', JSON.stringify({ fails: 5, lockUntil: T0 + 15 * 60000 }));
+  const blocked = login(e, ACC.authKey);
+  assert.equal(blocked.error, 'BLOQUEADO');
+  assert.ok(blocked.retryAfter > 58 && blocked.retryAfter <= 60, 'el bloqueo antiguo se acorta a un minuto');
+  assert.equal(blocked.attemptsRemaining, 0);
+  const state = JSON.parse(e.P.get('RF_LOCK'));
+  assert.equal(state.loginPolicyVersion, 2);
+  assert.equal(state.lockouts, 1);
 });
 test('un acierto borra los fallos anteriores', () => {
   const e = makeEnv({ RINDE_FACIL_SETUP_CODE: 'k' });
@@ -143,14 +168,15 @@ test('equipos conocidos: un desconocido no puede dejar a la comunidad fuera (hal
   setTime(e, T0);
   assert.match(e.device, /^[0-9a-f]{64}$/, 'el alta entrega la credencial del primer equipo');
   const ataque = () => login(e, b64of('adivinar-' + Math.random()));
-  for (let i = 0; i < 5; i++) assert.equal(ataque().error, 'CREDENCIALES_INVALIDAS');
+  for (let i = 0; i < 4; i++) assert.equal(ataque().error, 'CREDENCIALES_INVALIDAS');
+  assert.equal(ataque().error, 'BLOQUEADO', 'el quinto fallo inicia la pausa');
   assert.equal(login(e).error, 'BLOQUEADO', 'quien no tiene equipo conocido sigue bloqueado');
   const ok = e.call({ action: 'login', user: ACC.user, authKey: ACC.authKey, device: e.device });
   assert.equal(ok.ok, true, 'el equipo conocido entra aunque el ataque haya agotado los intentos globales');
   assert.ok(!('device' in ok), 'no se entrega una credencial nueva si ya se tiene');
   const mal = () => e.call({ action: 'login', user: ACC.user, authKey: b64of('otra'), device: e.device });
-  for (let i = 0; i < 5; i++) assert.equal(mal().error, 'CREDENCIALES_INVALIDAS');
-  assert.equal(mal().error, 'BLOQUEADO', 'el equipo conocido con clave equivocada también se frena, con su propio contador');
+  for (let i = 0; i < 4; i++) assert.equal(mal().error, 'CREDENCIALES_INVALIDAS');
+  assert.equal(mal().error, 'BLOQUEADO', 'el quinto fallo del equipo conocido inicia su pausa propia');
   assert.equal(e.call({ action: 'login', user: ACC.user, authKey: ACC.authKey, device: e.device }).error, 'BLOQUEADO');
   const otro = e.call({ action: 'login', user: ACC.user, authKey: ACC.authKey, device: '0'.repeat(64) });
   assert.equal(otro.error, 'BLOQUEADO', 'una credencial inventada no cuenta como equipo conocido');
@@ -167,7 +193,8 @@ test('equipos conocidos: un desconocido no puede dejar a la comunidad fuera (hal
 test('una sesión autenticada puede cambiar la contraseña aunque haya bloqueo global de login anónimo', () => {
   const e = makeEnv({ RINDE_FACIL_SETUP_CODE: 'k' });
   setTime(e, T0);
-  for (let i = 0; i < 5; i++) assert.equal(login(e, b64of('externo-' + i)).error, 'CREDENCIALES_INVALIDAS');
+  for (let i = 0; i < 4; i++) assert.equal(login(e, b64of('externo-' + i)).error, 'CREDENCIALES_INVALIDAS');
+  assert.equal(login(e, b64of('externo-final')).error, 'BLOQUEADO', 'el quinto intento inicia la pausa anónima');
   assert.equal(login(e).error, 'BLOQUEADO', 'el ataque anónimo sigue limitado');
   const nueva = { saltP: Buffer.alloc(16, 6).toString('base64'), authKey: b64of('clave-cambio') };
   const changed = e.call(Object.assign({ action: 'changePassword', t: e.t, authKeyOld: ACC.authKey }, nueva));

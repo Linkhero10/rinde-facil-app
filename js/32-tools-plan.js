@@ -229,7 +229,7 @@
       U.clear(chk);
       var delta = U.sum(r.rows, function (x) { return num(x.nuevo) - num(x.actual); });
       if (!r.rows.length) { chk.appendChild(UI.callout('info', '', 'Agrega las líneas que cambian.')); return; }
-      if (delta === 0) chk.appendChild(UI.callout('ok', 'El total no cambia:', ' lo que sube en una cuenta baja en otra.'));
+      if (delta === 0) chk.appendChild(UI.callout('info', 'El total no cambia:', ' lo que sube en una cuenta baja en otra.'));
       else chk.appendChild(UI.callout('warn', 'El total cambia en ' + U.fmtCLP(delta) + '.', ' Una reitemización normalmente reasigna montos sin aumentar el total. Si es un aumento, debe estar aprobado por CORFO.'));
       if (!String(r.motivo || '').trim()) chk.appendChild(UI.callout('warn', '', 'Falta explicar por escrito el motivo del cambio.'));
     }
@@ -320,12 +320,12 @@
       if (p.start && st.fecha < p.start) out.appendChild(UI.callout('bad', 'No entra:', ' es anterior al inicio del proyecto (' + U.fmtDate(p.start) + ').'));
       else if (p.end && st.fecha > p.end) out.appendChild(UI.callout('bad', 'No entra:', ' es posterior al término del proyecto (' + U.fmtDate(p.end) + ').'));
       else if (!p.start && !p.end) out.appendChild(UI.callout('warn', '', 'Faltan las fechas de tu proyecto. Agrégalas en «Mi comunidad y proyectos».'));
-      else out.appendChild(UI.callout('ok', 'Dentro del proyecto.', ''));
+      else out.appendChild(UI.callout('info', 'Dentro del proyecto.', ''));
       if (p.periodoInicio && p.periodoFin) {
-        if (st.fecha >= p.periodoInicio && st.fecha <= p.periodoFin) out.appendChild(UI.callout('ok', 'Va en esta rendición', ' (' + U.fmtDateShort(p.periodoInicio) + ' al ' + U.fmtDateShort(p.periodoFin) + ').'));
+        if (st.fecha >= p.periodoInicio && st.fecha <= p.periodoFin) out.appendChild(UI.callout('info', 'Va en esta rendición', ' (' + U.fmtDateShort(p.periodoInicio) + ' al ' + U.fmtDateShort(p.periodoFin) + ').'));
         else out.appendChild(UI.callout('warn', 'Iría en otra rendición.', ' Un documento posterior al cierre va en la siguiente; uno anterior solo entra si no fue aprobado antes y no pasa el presupuesto.'));
       }
-      if (st.actId) { var a = L.allActivities(p).filter(function (x) { return x.act.id === st.actId; })[0]; if (a && a.act.start && a.act.end) { if (st.fecha < a.act.start || st.fecha > a.act.end) out.appendChild(UI.callout('warn', '', 'La fecha cae fuera de la actividad «' + a.act.name + '» (' + U.fmtDateShort(a.act.start) + ' al ' + U.fmtDateShort(a.act.end) + ').')); else out.appendChild(UI.callout('ok', '', 'Cae dentro de la actividad «' + a.act.name + '».')); } }
+      if (st.actId) { var a = L.allActivities(p).filter(function (x) { return x.act.id === st.actId; })[0]; if (a && a.act.start && a.act.end) { if (st.fecha < a.act.start || st.fecha > a.act.end) out.appendChild(UI.callout('warn', '', 'La fecha cae fuera de la actividad «' + a.act.name + '» (' + U.fmtDateShort(a.act.start) + ' al ' + U.fmtDateShort(a.act.end) + ').')); else out.appendChild(UI.callout('info', '', 'Cae dentro de la actividad «' + a.act.name + '».')); } }
     }
     var root = h('div', null, UI.section('Revisa una fecha', [h('div', { class: 'form-grid' }, UI.field('Fecha del documento', st, 'fecha', { type: 'date', onChange: paint }), UI.field('Actividad (opcional)', st, 'actId', { type: 'select', options: [{ id: '', name: 'Ninguna' }].concat(L.allActivities(p).map(function (x) { return { id: x.act.id, name: x.act.name || '(sin nombre)' }; })), noEmpty: true, onChange: paint })), out]));
     paint();
@@ -338,7 +338,7 @@
       { q: 'Viaje o viático', c: 'operacion', note: 'Dentro de la región, los traslados de los representantes van en administración.' }, { q: 'Servicio contratado a un tercero para una actividad', c: 'operacion' }
     ];
     var out = h('div'), root = h('div');
-    function show(it) { U.clear(out); var cu = D.CUENTA_BY_ID[it.c]; out.appendChild(UI.callout('ok', 'Va en «' + cu.name + '».', ' ' + cu.desc + (it.note ? ' ' + it.note : ''))); }
+    function show(it) { U.clear(out); var cu = D.CUENTA_BY_ID[it.c]; out.appendChild(UI.callout('info', 'Va en «' + cu.name + '».', ' ' + cu.desc + (it.note ? ' ' + it.note : ''))); }
     root.appendChild(UI.section('¿Qué compraste?', [h('div', { class: 'choice-list' }, items.map(function (it) { return h('button', { type: 'button', class: 'choice', onclick: function () { show(it); } }, it.q); })), out]));
     root.appendChild(UI.section('Las 4 cuentas', [h('div', { class: 'cards-2' }, D.CUENTAS.map(function (cu) { return h('div', { class: 'mini-card' }, h('strong', null, cu.name), h('p', null, cu.desc), h('p', { class: 'hint' }, 'Ej: ' + cu.ej)); }))]));
     return page('¿En qué cuenta va?', 'Cada gasto va en una de 4 cuentas (Manual, sección IX).', root);
@@ -354,7 +354,7 @@
   TOOLS.plazos = { title: 'Calculadora de plazos', icon: 'clock', desc: 'PEA (90 + 30 días) y aclaración de observaciones (10 días hábiles).', render: function () {
     var s = RF.store.get(), st = { pago: '', obs: U.todayISO() }, o1 = h('div'), o2 = h('div');
     function p1() { U.clear(o1); if (!st.pago) return; var pd = L.peaDeadline({ desembolso1: st.pago }, U.todayISO()); o1.appendChild(UI.callout(pd.diasRestantes < 0 ? 'warn' : 'ok', 'El PEA vence el ' + U.fmtDate(pd.fin) + '.', ' Con la prórroga única (hasta 30 días, pedida antes del vencimiento): ' + U.fmtDate(pd.finProrroga) + '.')); }
-    function p2() { U.clear(o2); if (!st.obs) return; var lim = L.aclaracionDeadline(st.obs, s.holidays); o2.appendChild(UI.callout('ok', 'Tienes hasta el ' + U.fmtDate(lim) + '.', ' Son 10 días hábiles desde que CORFO comunicó las observaciones' + (s.holidays.length ? ' (descontando tus feriados).' : ' (sin feriados: agrégalos en «Mi comunidad y proyectos»).') + ' La aclaración se hace una sola vez.')); }
+    function p2() { U.clear(o2); if (!st.obs) return; var lim = L.aclaracionDeadline(st.obs, s.holidays); o2.appendChild(UI.callout('info', 'Tienes hasta el ' + U.fmtDate(lim) + '.', ' Son 10 días hábiles desde que CORFO comunicó las observaciones' + (s.holidays.length ? ' (descontando tus feriados).' : ' (sin feriados: agrégalos en «Mi comunidad y proyectos»).') + ' La aclaración se hace una sola vez.')); }
     var root = h('div', null, UI.section('Plazo del PEA', [UI.field('Fecha del primer pago (30 %)', st, 'pago', { type: 'date', onChange: p1 }), o1]), UI.section('Plazo para aclarar observaciones', [UI.field('Fecha en que CORFO comunicó las observaciones', st, 'obs', { type: 'date', onChange: p2 }), o2]));
     p1(); p2();
     return page('Calculadora de plazos', 'Los plazos que aparecen en los documentos del convenio.', root);

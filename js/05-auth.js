@@ -127,6 +127,25 @@
   function setToken(r) { S.token = r.token; S.exp = r.exp || (Date.now() + 11 * 3600000); }
   function needsSession(action) { return !PUBLIC[action]; }
 
+  function loginFailureMessage(r) {
+    var code = r && r.error;
+    if (code === 'BLOQUEADO') {
+      var minutes = Math.max(1, Math.ceil((Number(r.retryAfter) || 60) / 60));
+      return 'Pausa de seguridad: espera ' + minutes + (minutes === 1 ? ' minuto' : ' minutos') + '. Intentos disponibles ahora: 0.';
+    }
+    if (code === 'CREDENCIALES_INVALIDAS') {
+      var message = 'El nombre o la contraseña de la comunidad no coinciden.';
+      var remaining = Number(r.attemptsRemaining), limit = Number(r.attemptsLimit);
+      if (Number.isInteger(remaining) && remaining >= 0) {
+        message += remaining === 1 ? ' Te queda 1 intento' : ' Te quedan ' + remaining + ' intentos';
+        if (Number.isInteger(limit) && limit > 0) message += ' (de ' + limit + ')';
+        message += '.';
+      }
+      return message;
+    }
+    return 'No se pudo iniciar sesión (' + (code || 'ERROR') + ').';
+  }
+
   /* inicia sesión con el servicio usando la contraseña que ya se escribió al abrir la app */
   function serverLogin(passwordOverride) {
     var pw = passwordOverride || V.password(), user = V.user();
@@ -139,7 +158,7 @@
     }).then(function (r) {
       if (r && r.ok) { setToken(r); keepDevice(r); return r.token; }
       var code = (r && r.error) || 'ERROR';
-      throw Object.assign(new Error(code === 'BLOQUEADO' ? 'Demasiados intentos. Espera ' + Math.ceil((r.retryAfter || 900) / 60) + ' minutos.' : code === 'CREDENCIALES_INVALIDAS' ? 'La contraseña del servicio es distinta a la de este equipo.' : 'No se pudo iniciar sesión (' + code + ').'), { code: code === 'CREDENCIALES_INVALIDAS' ? 'CLAVE_DISTINTA' : code, retryAfter: r && r.retryAfter });
+      throw Object.assign(new Error(loginFailureMessage(r)), { code: code === 'CREDENCIALES_INVALIDAS' ? 'CLAVE_DISTINTA' : code, retryAfter: r && r.retryAfter, attemptsRemaining: r && r.attemptsRemaining, attemptsLimit: r && r.attemptsLimit });
     });
   }
   function ensureSession() {
@@ -172,7 +191,7 @@
       checkChallenge(ch);
       return C.deriveKeys(password, ch.saltP, ch.it).then(function (k) { return RF.cloud.postRawTo(url, 'login', { user: user, authKey: k.authKey, wantDevice: true }); });
     }).then(function (r) {
-      if (!r || !r.ok) throw Object.assign(new Error(r && r.error === 'BLOQUEADO' ? 'Demasiados intentos. Espera un rato.' : 'La comunidad o la contraseña no coinciden con las del servicio.'), { code: r && r.error });
+      if (!r || !r.ok) throw Object.assign(new Error(loginFailureMessage(r)), { code: r && r.error, retryAfter: r && r.retryAfter, attemptsRemaining: r && r.attemptsRemaining, attemptsLimit: r && r.attemptsLimit });
       setToken(r);
       return RF.cloud.postRawTo(url, 'loadState', { t: r.token }).then(function (st) {
         var state = st && st.ok ? RF.util.safeParse(st.state) : RF.store.defaults();

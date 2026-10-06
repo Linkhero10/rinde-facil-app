@@ -313,13 +313,14 @@ function rfSaveFile_(p) {
  * La contraseña NUNCA llega a este servicio. La app la convierte en una «clave de acceso» de 256 bits con PBKDF2 (600.000 vueltas)
  * y solo esa clave viaja; aquí se guarda únicamente un HMAC de ella con un secreto del servidor (pimienta).
  * Con la clave correcta se entrega un token de sesión aleatorio que vence a las 12 horas; el servidor guarda solo su hash.
- * Defensas: bloqueo por intentos fallidos (5 → 15 min, luego el doble hasta 24 h), comparaciones en tiempo constante,
+ * Defensas: bloqueo progresivo de acceso (5 fallos iniciales, luego 3; pausa de 1, 2, 5, 10, 20 y hasta 30 min), comparaciones en tiempo constante,
  * mismo mensaje para usuario o clave incorrectos, registro de accesos y cierre de todas las sesiones al cambiar la contraseña.
  */
 const RF_AUTH = {
   accountProp: 'RF_ACCOUNT', pepperProp: 'RF_PEPPER', sessPrefix: 'RF_SESS_', lockProp: 'RF_LOCK', changeLockPrefix: 'RF_CHANGELOCK_', recLockProp: 'RF_RECLOCK', setupLockProp: 'RF_SETUPLOCK',
   auditProp: 'RF_AUDIT', revProp: 'RF_STATE_REV', setupCodeProp: 'RINDE_FACIL_SETUP_CODE',
-  iterations: 600000, sessionMs: 12 * 3600 * 1000, maxSessions: 20, maxFails: 5, lockBaseMs: 15 * 60 * 1000, lockMaxMs: 24 * 3600 * 1000, auditKeep: 80
+  iterations: 600000, sessionMs: 12 * 3600 * 1000, maxSessions: 20, maxFails: 5, lockBaseMs: 15 * 60 * 1000, lockMaxMs: 24 * 3600 * 1000,
+  loginPolicyVersion: 2, loginInitialFails: 5, loginSubsequentFails: 3, loginLockMs: [60000, 120000, 300000, 600000, 1200000, 1800000], auditKeep: 80
 };
 
 function rfNow_() { return Date.now(); }
@@ -362,6 +363,61 @@ function rfRegisterFail_(prop, baseMs) {
   rfSetJson_(prop, s);
 }
 function rfClearFails_(prop) { rfProps_().deleteProperty(prop); }
+
+/* El acceso a la cuenta usa una escala corta y legible, separada de setup/cambio de clave. */
+function rfLoginLockDuration_(lockouts) {
+  const i = Math.max(0, Math.min(Math.floor(Number(lockouts) || 0), RF_AUTH.loginLockMs.length - 1));
+  return RF_AUTH.loginLockMs[i];
+}
+function rfLoginLockStatus_(prop) {
+  const now = rfNow_();
+  let s = rfGetJson_(prop, { fails: 0, lockUntil: 0, lockouts: 0, loginPolicyVersion: RF_AUTH.loginPolicyVersion });
+  if (!s || typeof s !== 'object' || Array.isArray(s)) s = { fails: 0, lockUntil: 0, lockouts: 0, loginPolicyVersion: RF_AUTH.loginPolicyVersion };
+  if (s.loginPolicyVersion !== RF_AUTH.loginPolicyVersion) {
+    // Conserva la intensidad histórica, pero acorta un bloqueo anterior según la escala nueva.
+    const legacyFails = Math.max(0, Math.floor(Number(s.fails) || 0));
+    let lockouts = Math.floor(legacyFails / RF_AUTH.maxFails);
+    let fails = legacyFails % RF_AUTH.maxFails;
+    let lockUntil = Math.max(0, Number(s.lockUntil) || 0);
+    if (lockUntil > now) {
+      if (lockouts === 0) lockouts = 1;
+      lockUntil = Math.min(lockUntil, now + rfLoginLockDuration_(lockouts - 1));
+      fails = 0;
+    } else {
+      lockUntil = 0;
+      const threshold = lockouts > 0 ? RF_AUTH.loginSubsequentFails : RF_AUTH.loginInitialFails;
+      if (fails >= threshold) {
+        lockouts += 1;
+        lockUntil = now + rfLoginLockDuration_(lockouts - 1);
+        fails = 0;
+      }
+    }
+    s = { fails: fails, lockouts: lockouts, lockUntil: lockUntil, loginPolicyVersion: RF_AUTH.loginPolicyVersion };
+    rfSetJson_(prop, s);
+  }
+  const threshold = Number(s.lockouts) > 0 ? RF_AUTH.loginSubsequentFails : RF_AUTH.loginInitialFails;
+  if (Number(s.lockUntil) > now) return { locked: true, retryAfter: Math.ceil((Number(s.lockUntil) - now) / 1000), attemptsRemaining: 0, attemptsLimit: threshold };
+  return { locked: false, attemptsRemaining: Math.max(0, threshold - Math.max(0, Number(s.fails) || 0)), attemptsLimit: threshold };
+}
+function rfRegisterLoginFail_(prop) {
+  const status = rfLoginLockStatus_(prop);
+  if (status.locked) return status;
+  const s = rfGetJson_(prop, { fails: 0, lockUntil: 0, lockouts: 0, loginPolicyVersion: RF_AUTH.loginPolicyVersion });
+  const threshold = Number(s.lockouts) > 0 ? RF_AUTH.loginSubsequentFails : RF_AUTH.loginInitialFails;
+  s.fails = Math.max(0, Number(s.fails) || 0) + 1;
+  if (s.fails >= threshold) {
+    const duration = rfLoginLockDuration_(s.lockouts);
+    s.lockouts = Math.max(0, Number(s.lockouts) || 0) + 1;
+    s.fails = 0;
+    s.lockUntil = rfNow_() + duration;
+    s.loginPolicyVersion = RF_AUTH.loginPolicyVersion;
+    rfSetJson_(prop, s);
+    return { locked: true, retryAfter: Math.ceil(duration / 1000), attemptsRemaining: 0, attemptsLimit: threshold };
+  }
+  s.loginPolicyVersion = RF_AUTH.loginPolicyVersion;
+  rfSetJson_(prop, s);
+  return { locked: false, attemptsRemaining: threshold - s.fails, attemptsLimit: threshold };
+}
 
 /* ---- registro de accesos ---- */
 function rfAudit_(ev, ok) {
@@ -458,18 +514,22 @@ function rfLogin_(p) {
     const known = rfDeviceOk_(a, p.device);
     // equipo conocido: su propio contador; desconocido: el contador global
     const lockProp = known ? RF_AUTH.lockProp + '_D' + rfDeviceHash_(p.device).replace(/[^A-Za-z0-9]/g, '').slice(0, 16) : RF_AUTH.lockProp;
-    const ls = rfLockStatus_(lockProp);
-    if (ls.locked) return { ok: false, error: 'BLOQUEADO', retryAfter: ls.retryAfter };
+    const ls = rfLoginLockStatus_(lockProp);
+    if (ls.locked) return { ok: false, error: 'BLOQUEADO', retryAfter: ls.retryAfter, attemptsRemaining: 0, attemptsLimit: ls.attemptsLimit };
     const h = rfHash_(String(p.authKey || '')); // se calcula siempre: el tiempo no delata si la cuenta existe
     const okUser = a ? rfSafeEqual_(rfNormUser_(p.user), a.user) : false;
     const okPass = a ? rfSafeEqual_(h, a.hashAuth) : false;
-    if (!(a && okUser && okPass)) { rfRegisterFail_(lockProp, RF_AUTH.lockBaseMs); rfAudit_('login_fail', false); return { ok: false, error: 'CREDENCIALES_INVALIDAS' }; }
+    if (!(a && okUser && okPass)) {
+      const attempt = rfRegisterLoginFail_(lockProp);
+      rfAudit_('login_fail', false);
+      return { ok: false, error: attempt.locked ? 'BLOQUEADO' : 'CREDENCIALES_INVALIDAS', attemptsRemaining: attempt.attemptsRemaining, attemptsLimit: attempt.attemptsLimit, retryAfter: attempt.retryAfter };
+    }
     rfClearFails_(lockProp);
     let device = null;
     if (!known && p.wantDevice === true) { device = rfAddDevice_(a); rfSetJson_(RF_AUTH.accountProp, a); }
     const s = rfNewSession_();
     rfAudit_('login', true);
-    const out = { ok: true, token: s.token, exp: s.exp, saltP: a.saltP, it: a.it };
+    const out = { ok: true, token: s.token, exp: s.exp, saltP: a.saltP, it: a.it, attemptsRemaining: RF_AUTH.loginInitialFails, attemptsLimit: RF_AUTH.loginInitialFails };
     if (device) out.device = device;
     return out;
   });

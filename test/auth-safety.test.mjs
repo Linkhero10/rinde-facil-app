@@ -23,6 +23,46 @@ async function openedApp() {
   return RF;
 }
 
+test('serverLogin informa los intentos restantes sin revelar qué dato de acceso falló', async () => {
+  const RF = loadWithTestService();
+  RF.crypto.ITERATIONS = 2000;
+  await RF.vault.create('Comunidad Cuenta', OLD, STATE, { iterations: 2000 });
+  RF.store.useVault();
+  RF.store.attach(STATE, RF.vault.save);
+  RF.cloud.postRaw = async action => {
+    if (action === 'challenge') return { ok: true, exists: true, saltP: RF.vault.meta().saltP, it: 2000 };
+    if (action === 'login') return { ok: false, error: 'CREDENCIALES_INVALIDAS', attemptsRemaining: 2, attemptsLimit: 3 };
+    throw new Error('acción inesperada: ' + action);
+  };
+
+  await assert.rejects(RF.auth.serverLogin(), error => {
+    assert.equal(error.attemptsRemaining, 2);
+    assert.equal(error.attemptsLimit, 3);
+    assert.match(error.message, /2 intentos/);
+    assert.match(error.message, /nombre o la contraseña/i);
+    return true;
+  });
+});
+
+test('connectDevice muestra intentos restantes cuando el servicio rechaza el acceso', async () => {
+  const RF = loadWithTestService();
+  RF.crypto.ITERATIONS = 2000;
+  RF.cloud.postRawTo = async (url, action) => {
+    assert.equal(url, STATE.cloud.apiUrl);
+    if (action === 'challenge') return { ok: true, exists: true, saltP: Buffer.alloc(16, 8).toString('base64'), it: 2000 };
+    if (action === 'login') return { ok: false, error: 'CREDENCIALES_INVALIDAS', attemptsRemaining: 1, attemptsLimit: 3 };
+    throw new Error('acción inesperada: ' + action);
+  };
+
+  await assert.rejects(RF.auth.connectDevice(STATE.cloud.apiUrl, 'Comunidad Cuenta', NEXT), error => {
+    assert.equal(error.attemptsRemaining, 1);
+    assert.equal(error.attemptsLimit, 3);
+    assert.match(error.message, /1 intento/);
+    return true;
+  });
+  assert.equal(RF.vault.status(), 'none', 'un rechazo no crea bóveda local');
+});
+
 test('si el servicio rechaza el cambio, la contraseña local tampoco cambia', async () => {
   const RF = await openedApp();
   const before = JSON.stringify(RF.vault.meta());

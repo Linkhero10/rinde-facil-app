@@ -300,9 +300,10 @@
         var upd = function () {
           U.clear(status); if (!o.recibida) { status.appendChild(UI.callout('info', '', 'Anota la fecha en que CORFO te comunicó la observación para calcular tu plazo.')); return; }
           var lim = L.aclaracionDeadline(o.recibida, hol), left = U.businessDaysBetween(U.todayISO(), lim, hol);
-          if (o.respondida) status.appendChild(UI.callout('ok', 'Respondida.', ' El plazo vencía el ' + U.fmtDate(lim) + '.'));
+          if (o.respondida) status.appendChild(UI.callout('info', 'Fecha límite: ' + U.fmtDate(lim) + '.', ' Marcaste que ya enviaste la aclaración.'));
           else if (U.todayISO() > lim) status.appendChild(UI.callout('bad', 'Venció el plazo (' + U.fmtDate(lim) + ').', ' Si no se envió la aclaración a tiempo, los gastos observados se rechazan.'));
-          else status.appendChild(UI.callout(left <= 3 ? 'warn' : 'ok', 'Tienes hasta el ' + U.fmtDate(lim) + '.', ' Quedan ' + left + ' día(s) hábil(es). Se puede aclarar una sola vez.'));
+          else if (left <= 3) status.appendChild(UI.callout('warn', 'Plazo próximo: ' + U.fmtDate(lim) + '.', ' Quedan ' + left + ' día(s) hábil(es).'));
+          else status.appendChild(UI.callout('info', 'Fecha límite: ' + U.fmtDate(lim) + '.', ' Quedan ' + left + ' días hábiles; la aclaración se hace una sola vez.'));
         };
         body.appendChild(h('div', { class: 'stage-card' },
           h('div', { class: 'stage-head' }, h('span', { class: 'stage-n' }, 'Observación ' + (i + 1)), UI.bind(o, 'titulo', { type: 'text', ph: 'Resumen corto', aria: 'Resumen de la observación' }),
@@ -324,13 +325,18 @@
   /* ================= Nube y copias ================= */
   TOOLS.nube = { title: 'Nube y copias', icon: 'cloud', desc: 'Conecta el servicio de tu comunidad, guarda en la nube y haz copias.', render: function () {
     var s = RF.store.get(), root = h('div'), out = h('div');
-    function msg(kind, t) { U.clear(out); out.appendChild(UI.callout(kind, '', t)); }
+    function msg(kind, t) { U.clear(out); if (kind !== 'ok') out.appendChild(UI.callout(kind, '', t)); }
+    function reportResolution(res) {
+      if (!res) { msg('bad', 'No se recibió respuesta al resolver la copia.'); return; }
+      if (res.ok || res.text === 'No se hizo ningún cambio.') { msg('ok', ''); return; }
+      msg('warn', res.text);
+    }
     root.appendChild(UI.callout('info', 'Cómo funciona:', ' tus datos se guardan en este dispositivo. Si conectas el servicio de tu comunidad (un Apps Script en su propia cuenta de Google) y entras con la contraseña de tu comunidad, la app puede leer fotos con Google Cloud Vision y guardar una copia en el Drive de la comunidad. Nada se manda a la nube sin que tú lo pidas.'));
     var pendBox = h('div');
     function paintPend() {
       U.clear(pendBox);
       RF.outbox.list().then(function (items) {
-        if (!items.length) { pendBox.appendChild(UI.callout('ok', 'No hay elementos pendientes.', 'La cola local se pudo revisar correctamente.')); return; }
+        if (!items.length) return;
         var attention = items.filter(function (x) { return x.status === 'needs_attention'; }).length;
         var attentionText = items.filter(function (x) { return x.status === 'needs_attention'; }).map(function (x) {
           if (x.errorCode === 'SERVICIO_CAMBIO') return 'Cambió la dirección del servicio desde que se guardó este elemento. Verifica la comunidad de destino antes de reintentar.';
@@ -339,11 +345,11 @@
         }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }).join(' ');
         pendBox.appendChild(UI.callout(attention ? 'bad' : 'warn', items.length + (items.length === 1 ? ' elemento pendiente.' : ' elementos pendientes.'), attention ? attention + ' necesitan revisión antes de volver a intentar. Los originales siguen en este dispositivo. ' + attentionText : 'Se intentarán subir cuando vuelva la conexión; aún no están guardados en Drive.'));
         pendBox.appendChild(UI.btn(attention ? 'Reintentar lo pendiente' : 'Reintentar ahora', { icon: 'cloud', cls: 'ghost', onclick: function () {
-          msg('info', 'Reintentando lo pendiente…');
+          U.clear(out);
           RF.outbox.retryAll().then(function () { return RF.drive.flushOutbox(); }).then(function (r) {
             if (!r.ok) msg('bad', 'No se pudo revisar o actualizar la cola local (' + (r.error || 'error') + '). No asumimos que esté vacía.');
             else if (r.needsAttention) msg('warn', 'Quedan ' + r.needsAttention + ' elementos que requieren revisión; siguen guardados en este dispositivo.');
-            else if (r.left) msg('info', 'Quedan ' + r.left + ' elementos pendientes.');
+            else if (r.left) msg('warn', 'Quedan ' + r.left + ' elementos pendientes; aún no están guardados en Drive.');
             else msg('ok', 'La cola se revisó y no quedan elementos pendientes.');
             paintPend();
           }).catch(function (e) { msg('bad', 'No se pudo revisar la cola (' + (e.message || e) + '). Los datos locales no se borraron.'); });
@@ -360,18 +366,18 @@
       if (/^[12]\./.test(String(info.version || ''))) { setupBox.appendChild(UI.callout('warn', 'El servicio es de una versión anterior (' + info.version + ').', ' Pide a quien lo instaló que ponga la versión 3, que agrega la cuenta con contraseña. Mientras tanto la app funciona sin nube.')); return; }
       if (info.account === false) {
         var code = h('input', { type: 'password', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Código de instalación' });
-        setupBox.appendChild(h('div', { class: 'callout info' }, h('strong', null, 'El servicio todavía no tiene cuenta.'), h('span', null, ' Escribe el código de instalación que puso quien lo instaló (se usa una sola vez). La cuenta se crea con el nombre de tu comunidad y la contraseña que ya elegiste.'),
-          h('div', { class: 'inline-add' }, code, UI.btn('Crear la cuenta del servicio', { icon: 'shield', cls: 'primary', onclick: function () { msg('info', 'Creando la cuenta…'); RF.auth.serverSetup(code.value.trim()).then(function () { code.value = ''; msg('ok', 'Cuenta creada. Desde ahora entras al servicio con la misma contraseña.'); paintSetup({ account: true, version: info.version }); }).catch(function (e) { msg('bad', e.message); }); } }))));
-      } else setupBox.appendChild(UI.callout('ok', 'El servicio tiene cuenta.', ' Se inicia sesión sola con tu contraseña cada vez que abres la app.'));
+        setupBox.appendChild(h('div', { class: 'setup-guidance' }, h('strong', null, 'El servicio todavía no tiene cuenta.'), h('span', null, ' Escribe el código de instalación que puso quien lo instaló (se usa una sola vez). La cuenta se crea con el nombre de tu comunidad y la contraseña que ya elegiste.'),
+          h('div', { class: 'inline-add' }, code, UI.btn('Crear la cuenta del servicio', { icon: 'shield', cls: 'primary', onclick: function () { U.clear(out); RF.auth.serverSetup(code.value.trim()).then(function () { code.value = ''; paintSetup({ account: true, version: info.version }); }).catch(function (e) { msg('bad', e.message); }); } }))));
+      }
     }
     root.appendChild(UI.section('Servicio de la comunidad', [h('div', { class: 'form-grid' },
       UI.field('Dirección del servicio (termina en /exec)', s.cloud, 'apiUrl', { type: 'text', cls: 'wide', ph: 'https://script.google.com/macros/s/…/exec' })),
       h('div', { class: 'row-actions' },
-        UI.btn('Probar conexión', { icon: 'link', cls: 'primary', onclick: function () { msg('info', 'Probando…'); RF.cloud.ping().then(function (r) { if (r && r.ok) { msg('ok', 'Conectado · versión ' + (r.version || '?') + ' · lectura de fotos: ' + (r.ocr ? 'lista' : 'no configurada')); paintSetup(r); } else msg('bad', 'El servicio respondió con un error: ' + ((r && r.error) || 'desconocido')); }).catch(function (e) { msg('bad', e.message === 'NO_CONFIGURADO' ? 'Pega primero la dirección del servicio (empieza con https://).' : 'No se pudo conectar (' + e.message + ').'); }); } }),
-        UI.btn('Guardar copia en la nube', { icon: 'cloud', onclick: function () { msg('info', 'Guardando…'); RF.drive.pushState().then(function (r) { if (r.ok && r.remote) msg('ok', 'Copia guardada en el Drive de la comunidad.'); else if (r.queued) msg('warn', 'La copia quedó pendiente en este dispositivo; todavía no está en Drive.'); else if (r.conflict) RF.drive.resolveConflict().then(function (res) { msg(res.ok ? 'ok' : 'info', res.text); }); else msg('bad', 'No se pudo guardar: ' + (r.error || 'error')); }).catch(function (e) { msg('bad', 'No se pudo guardar (' + e.message + ').'); }); } }),
-        UI.btn('Traer la copia de la nube', { icon: 'download', onclick: function () { msg('info', 'Trayendo…'); RF.drive.resolveConflict({ pullOnly: true }).then(function (res) { msg(res.ok ? 'ok' : 'info', res.text); }).catch(function (e) { msg('bad', 'No se pudo traer (' + e.message + ').'); }); } })),
+        UI.btn('Probar conexión', { icon: 'link', cls: 'primary', onclick: function () { U.clear(out); RF.cloud.ping().then(function (r) { if (r && r.ok) { msg(r.ocr ? 'ok' : 'warn', r.ocr ? '' : 'El servicio responde, pero la lectura de fotos no está configurada.'); paintSetup(r); } else msg('bad', 'El servicio respondió con un error: ' + ((r && r.error) || 'desconocido')); }).catch(function (e) { msg('bad', e.message === 'NO_CONFIGURADO' ? 'Pega primero la dirección del servicio (empieza con https://).' : 'No se pudo conectar (' + e.message + ').'); }); } }),
+        UI.btn('Guardar copia en la nube', { icon: 'cloud', onclick: function () { U.clear(out); RF.drive.pushState().then(function (r) { if (r.ok && r.remote) msg('ok', ''); else if (r.queued) msg('warn', 'La copia quedó pendiente en este dispositivo; todavía no está en Drive.'); else if (r.conflict) RF.drive.resolveConflict().then(reportResolution); else msg('bad', 'No se pudo guardar: ' + (r.error || 'error')); }).catch(function (e) { msg('bad', 'No se pudo guardar (' + e.message + ').'); }); } }),
+        UI.btn('Traer la copia de la nube', { icon: 'download', onclick: function () { U.clear(out); RF.drive.resolveConflict({ pullOnly: true }).then(reportResolution).catch(function (e) { msg('bad', 'No se pudo traer (' + e.message + ').'); }); } })),
       s.cloud.conflict ? UI.callout('warn', 'Hay una copia más nueva en la nube.', ' Otro equipo guardó cambios. Pulsa «Guardar copia en la nube» para combinarlas sin perder nada.') : null,
-      s.cloud.lastSync ? h('p', { class: 'hint' }, 'Última copia en la nube: ' + new Date(s.cloud.lastSync).toLocaleString('es-CL')) : null, setupBox, pendBox, out]));
+      setupBox, pendBox, out]));
     /* carpeta «Rinde fácil» en el Drive de la comunidad */
     var driveOut = h('div'), savesBox = h('div');
     function paintSaves() {
@@ -387,7 +393,7 @@
       h('p', { class: 'hint' }, 'Lo que saques (Carta Gantt, anexos, rendición) y las fotos que revises quedan ordenados en una carpeta de tu Drive: Proyectos › nombre del proyecto › Planificación, Anexos, Rendición y Comprobantes por mes. Nunca se borra nada; si un documento cambia, se guarda otra versión.'),
       UI.field('Guardar en el Drive todo lo que saque o suba', s.cloud, 'autoSave', { type: 'check', onChange: function () { silentSave(); } }),
       h('div', { class: 'row-actions' },
-        UI.btn('Preparar mi carpeta' + (pj ? ' para «' + pj.name + '»' : ''), { icon: 'folder', cls: 'primary', onclick: function () { U.clear(driveOut); driveOut.appendChild(UI.callout('info', '', 'Preparando la carpeta…')); RF.drive.setup(pj && pj.name).then(function (r) { U.clear(driveOut); driveOut.appendChild(UI.callout('ok', 'Lista.', ' La carpeta «Rinde fácil» está en tu Drive.')); if (r.rootUrl) driveOut.appendChild(h('p', null, h('a', { href: r.rootUrl, target: '_blank', rel: 'noopener' }, 'Abrir la carpeta en Drive'))); paintSaves(); }).catch(function (e) { U.clear(driveOut); driveOut.appendChild(UI.callout('bad', '', e.message === 'NO_CONFIGURADO' ? 'Primero conecta el servicio de tu comunidad.' : 'No se pudo preparar la carpeta (' + e.message + ').')); }); } }),
+        UI.btn('Preparar mi carpeta' + (pj ? ' para «' + pj.name + '»' : ''), { icon: 'folder', cls: 'primary', onclick: function () { U.clear(driveOut); RF.drive.setup(pj && pj.name).then(function (r) { U.clear(driveOut); if (r.rootUrl) driveOut.appendChild(h('p', null, h('a', { href: r.rootUrl, target: '_blank', rel: 'noopener' }, 'Abrir la carpeta en Drive'))); paintSaves(); }).catch(function (e) { U.clear(driveOut); driveOut.appendChild(UI.callout('bad', '', e.message === 'NO_CONFIGURADO' ? 'Primero conecta el servicio de tu comunidad.' : 'No se pudo preparar la carpeta (' + e.message + ').')); }); } }),
         s.cloud.rootUrl ? h('a', { class: 'btn ghost', href: s.cloud.rootUrl, target: '_blank', rel: 'noopener' }, 'Abrir en Drive') : null),
       driveOut, h('h3', { class: 'grp' }, 'Últimos archivos guardados'), savesBox]));
     function silentSave() { RF.store.update(function () { }, { silent: true }); }

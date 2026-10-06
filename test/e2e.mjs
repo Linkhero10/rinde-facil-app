@@ -95,7 +95,7 @@ async function routeTestService(page) {
   });
 }
 let testNetworkOffline = false;
-const browser = await chromium.launch({ headless: true, downloadsPath: DOWNLOADS });
+const browser = await chromium.launch({ headless: true, downloadsPath: DOWNLOADS, executablePath: process.env.RF_BROWSER_EXECUTABLE_PATH || undefined });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] });
 const page = await ctx.newPage();
 await page.addInitScript(() => {
@@ -264,7 +264,7 @@ await step('7. Gastos a mano: faltan cosas -> errores claros; se corrigen -> que
   await page.locator('label.check', { hasText: 'Comprobante de pago' }).locator('input').check();
   await page.waitForTimeout(200);
   t = await page.textContent('.issues');
-  ok(/Todo en orden/.test(t), 'queda sin problemas: ' + t.slice(0, 700));
+  ok(!t.trim(), 'sin problemas no aparece una confirmación rutinaria: ' + t.slice(0, 700));
   await shot('07-gasto');
   await page.getByRole('button', { name: /Volver a la lista/ }).click();
   ok(/Listo/.test(await page.textContent('.list-grid')), 'aparece como Listo en la lista');
@@ -348,13 +348,20 @@ await step('12. Foto de un comprobante: OCR en la nube (servicio de prueba) rell
   await page.getByLabel('Dirección del servicio (termina en /exec)').fill(TEST_API_URL);
   ok(!(await page.getByLabel('Clave de acceso').count()), 'ya no existe la clave compartida');
   await page.getByRole('button', { name: 'Probar conexión' }).click();
-  await page.waitForFunction(() => /Conectado/.test(document.querySelector('.tool-page').textContent), null, { timeout: 8000 });
+  await page.getByLabel('Código de instalación').waitFor({ timeout: 8000 });
+  ok(!/Conectado/.test(await page.textContent('.tool-page')), 'una conexión correcta no genera un aviso rutinario');
   await page.getByLabel('Código de instalación').fill('codigo-equivocado');
   await page.getByRole('button', { name: 'Crear la cuenta del servicio' }).click();
   await page.waitForFunction(() => /no es correcto/.test(document.querySelector('.tool-page').textContent), null, { timeout: 15000 });
+  const alert = page.locator('.tool-page .callout.bad').last();
+  ok(await alert.isVisible(), 'el error queda visible junto a la configuración');
+  const alertStyle = await alert.evaluate(el => ({ background: getComputedStyle(el).backgroundColor, leftBorder: getComputedStyle(el).borderLeftWidth }));
+  ok(alertStyle.background === 'rgba(0, 0, 0, 0)' && alertStyle.leftBorder === '0px', 'el error no vuelve a una tarjeta teñida o con franja: ' + JSON.stringify(alertStyle));
+  await shot('12-cloud-error');
   await page.getByLabel('Código de instalación').fill(SETUP_CODE);
   await page.getByRole('button', { name: 'Crear la cuenta del servicio' }).click();
-  await page.waitForFunction(() => /Cuenta creada/.test(document.querySelector('.tool-page').textContent), null, { timeout: 15000 });
+  await page.getByLabel('Código de instalación').waitFor({ state: 'detached', timeout: 15000 });
+  ok(!/Cuenta creada/.test(await page.textContent('.tool-page')), 'crear la cuenta no muestra confirmación rutinaria');
   await go('#/h/gastos');
   stub.store.ocrDelay = 2200; /* el servicio de prueba se demora, como Google */
   const beforeUnsupported = await page.evaluate(() => RF.forms.ctxNow().project.expenses.length);
@@ -371,8 +378,8 @@ await step('12. Foto de un comprobante: OCR en la nube (servicio de prueba) rell
   ok(/[0-9]+ s/.test(await page.textContent('.busy')), 'muestra los segundos');
   await shot('12-progreso');
   await page.waitForSelector('.editor-split', { timeout: 15000 });
-  await page.waitForSelector('.busy.ok', { timeout: 5000 });
-  ok(/Listo/.test(await page.textContent('.busy.ok')), 'avisa cuando termina');
+  await page.waitForFunction(() => !document.querySelector('.busy'), null, { timeout: 5000 });
+  ok(await page.locator('.busy.ok').count() === 0, 'al terminar no aparece una confirmación rutinaria');
   stub.store.ocrDelay = 0;
   await page.waitForFunction(() => !document.querySelector('.busy'), null, { timeout: 5000 });
   eq(await page.inputValue('input[data-key="folio"]'), '1042');
@@ -423,8 +430,9 @@ await step('12d. Lo que se saca (Excel de la Carta Gantt) queda también en el D
   eq(stub.store.calls.filter(x => x.action === 'saveFile' && x.category === 'planificacion').length, 2);
   await go('#/h/nube');
   await page.getByRole('button', { name: /Preparar mi carpeta/ }).click();
-  await page.waitForFunction(() => /La carpeta «Rinde fácil» está en tu Drive/.test(document.querySelector('.tool-page').textContent), null, { timeout: 8000 });
+  await page.getByRole('link', { name: 'Abrir la carpeta en Drive' }).waitFor({ timeout: 8000 });
   const t = await page.textContent('.tool-page');
+  ok(!/Última copia en la nube/.test(t), 'no se muestra el estado rutinario de la última sincronización');
   ok(/carta-gantt/.test(t) && /Planificaci[oó]n/i.test(t), 'lista lo guardado con su ubicación');
   const exp = await page.evaluate(() => window.RF.store.exportJSON());
   ok(!/"key"/.test(JSON.stringify(JSON.parse(exp).cloud)), 'la copia no incluye claves');
@@ -467,7 +475,8 @@ await step('12c. Varios proyectos: crear otro, cambiar entre ellos y que no se m
 await step('13. Guardar y traer la copia de la nube', async () => {
   await go('#/h/nube');
   await page.getByRole('button', { name: 'Guardar copia en la nube' }).click();
-  await page.waitForFunction(() => /Copia guardada/.test(document.querySelector('.tool-page').textContent), null, { timeout: 8000 });
+  await page.waitForTimeout(500);
+  ok(!/Copia guardada/.test(await page.textContent('.tool-page')), 'guardar correctamente no muestra confirmación rutinaria');
   ok(stub.store.state && JSON.parse(stub.store.state).projects.length === 2, 'la nube guardó el estado con los dos proyectos');
 });
 

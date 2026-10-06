@@ -35,9 +35,9 @@
   /* ---------- avisos ---------- */
   function toast(msg, kind) {
     var host = document.getElementById('toasts');
-    if (!host) return;
+    if (!host || (kind !== 'bad' && kind !== 'warn')) return;
     while (host.firstChild) host.removeChild(host.firstChild);
-    var t = h('div', { class: 'toast ' + (kind || ''), role: 'status' }, msg);
+    var t = h('div', { class: 'toast ' + kind, role: kind === 'bad' ? 'alert' : 'status' }, msg);
     host.appendChild(t);
     setTimeout(function () { t.classList.add('out'); }, 3200);
     setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 3700);
@@ -182,7 +182,10 @@
 
   /* ---------- pequeñas piezas ---------- */
   function badge(text, kind) { return h('span', { class: 'badge ' + (kind || '') }, text); }
-  function callout(kind, title, body) { return h('div', { class: 'callout ' + kind, role: kind === 'bad' ? 'alert' : null }, title ? h('strong', null, title) : null, body ? h('span', null, ' ' + body) : null); }
+  function callout(kind, title, body) {
+    if (kind === 'ok') return h('div', { class: 'callout ok', hidden: true, 'aria-hidden': 'true' });
+    return h('div', { class: 'callout ' + kind, role: kind === 'bad' ? 'alert' : kind === 'warn' ? 'status' : 'note' }, title ? h('strong', null, title) : null, body ? h('span', null, ' ' + body) : null);
+  }
   function empty(text) { return h('p', { class: 'empty-note' }, text); }
   function section(title, kids, cls) { return h('section', { class: 'card ' + (cls || '') }, title ? h('h2', { class: 'card-title' }, title) : null, kids); }
   var FILE_MIME_BY_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', tif: 'image/tiff', tiff: 'image/tiff', pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
@@ -241,13 +244,14 @@
     var timer = setInterval(draw, 250);
     function end(cls, text, ms) {
       finished = true; clearInterval(timer); card.classList.add(cls); stepEl.textContent = text; timeEl.textContent = ''; noteEl.textContent = '';
+      if (cls === 'bad') { card.setAttribute('role', 'alert'); card.removeAttribute('aria-live'); }
       if (cls === 'ok') { bar.style.width = '100%'; pbar.setAttribute('aria-valuenow', '100'); }
       setTimeout(function () { card.classList.add('out'); setTimeout(function () { if (card.parentNode) card.parentNode.removeChild(card); }, 400); }, ms);
     }
     return {
       stage: function (id, label) { for (var i = 0; i < stages.length; i++) if (stages[i].id === id) { cur = stages[i]; tStage = Date.now(); stepEl.textContent = label || cur.label; draw(); return; } if (label) stepEl.textContent = label; },
       label: function (text) { stepEl.textContent = text; },
-      done: function (text) { end('ok', text || 'Listo', 1300); },
+      done: function () { finished = true; clearInterval(timer); card.classList.add('out'); setTimeout(function () { if (card.parentNode) card.parentNode.removeChild(card); }, 400); },
       fail: function (text) { end('bad', text || 'No se pudo', 6000); }
     };
   }
