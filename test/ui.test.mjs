@@ -35,7 +35,7 @@ test('un aviso nuevo reemplaza el anterior para que los mensajes no tapen la pan
   assert.match(host.firstChild.className, /bad/);
 });
 
-test('los avisos de éxito rutinarios se silencian y los errores se anuncian', () => {
+test('el resultado de una acción se avisa, también cuando salió bien', () => {
   const host = new FakeNode('div');
   const document = {
     createElement: tag => new FakeNode(tag),
@@ -45,12 +45,12 @@ test('los avisos de éxito rutinarios se silencian y los errores se anuncian', (
   const RF = loadApp(['01-util.js', '30-ui.js'], { document, setTimeout: () => 0 });
 
   RF.ui.toast('Conectado; todo funciona.', 'ok');
-  RF.ui.toast('Guardado en el dispositivo, aún no en Drive.', 'info');
-  assert.equal(host.children.length, 0, 'no aparece un aviso por una operación normal');
+  assert.equal(host.children.length, 1, 'una acción que salió bien se confirma');
+  assert.match(host.firstChild.className, /toast ok/);
+  assert.equal(host.firstChild.attributes.role, 'status');
 
   RF.ui.toast('El archivo sigue pendiente de subir.', 'warn');
-  assert.equal(host.children.length, 1, 'sí se muestra un aviso que requiere atención');
-  assert.equal(host.firstChild.attributes.role, 'status');
+  assert.equal(host.children.length, 1, 'un aviso que requiere atención también se muestra');
 
   RF.ui.toast('No se pudo guardar.', 'bad');
   assert.equal(host.children.length, 1);
@@ -58,7 +58,7 @@ test('los avisos de éxito rutinarios se silencian y los errores se anuncian', (
   assert.equal(host.firstChild.attributes.role, 'alert');
 });
 
-test('los avisos positivos no se muestran y los fallos conservan semántica de alerta', () => {
+test('el aviso de éxito se ve en verde y los fallos conservan semántica de alerta', () => {
   const document = {
     createElement: tag => new FakeNode(tag),
     createTextNode: text => { const node = new FakeNode('#text'); node.textContent = text; return node; }
@@ -66,9 +66,9 @@ test('los avisos positivos no se muestran y los fallos conservan semántica de a
   const RF = loadApp(['01-util.js', '30-ui.js'], { document });
 
   const success = RF.ui.callout('ok', 'Todo en orden.', 'No hay nada que corregir.');
-  assert.equal(success.attributes.hidden, '');
-  assert.equal(success.attributes['aria-hidden'], 'true');
-  assert.equal(success.textContent, '');
+  assert.match(success.className, /callout ok/);
+  assert.notEqual(success.attributes.hidden, '');
+  assert.match(success.textContent, /Todo en orden/);
 
   const failure = RF.ui.callout('bad', 'No se pudo guardar.', 'Tus datos siguen en este dispositivo.');
   assert.equal(failure.attributes.role, 'alert');
@@ -76,7 +76,7 @@ test('los avisos positivos no se muestran y los fallos conservan semántica de a
   assert.match(failure.textContent, /No se pudo guardar/);
 });
 
-test('el progreso de una tarea termina sin anunciar rutinariamente el éxito', () => {
+test('el progreso de una tarea termina confirmando que salió bien', () => {
   const body = new FakeNode('body');
   const document = {
     body,
@@ -89,8 +89,7 @@ test('el progreso de una tarea termina sin anunciar rutinariamente el éxito', (
 
   job.done('Listo');
 
-  assert.equal(body.children.length, 0, 'la barra desaparece al terminar y cede el espacio al resultado');
-  assert.doesNotMatch(card.textContent, /Listo/, 'no se muestra una confirmación de éxito');
+  assert.match(card.textContent, /Listo/, 'se muestra la confirmación de éxito');
 });
 
 test('si una tarea larga falla, el aviso persiste y se anuncia como alerta', () => {
@@ -118,10 +117,27 @@ test('los avisos y errores de progreso no usan tarjeta teñida ni franja lateral
   const rule = css.match(/\.callout\s*\{([^}]*)\}/);
   assert.ok(rule, 'existe una regla base para el aviso');
   assert.doesNotMatch(rule[1], /border-left\s*:|background(?:-color)?\s*:/i);
-  assert.match(css, /\.callout\.ok\s*\{[^}]*display\s*:\s*none/i);
+  assert.ok(css.includes('.callout.ok{color:var(--ok)'), 'el éxito de una acción se ve en verde');
   const busy = css.match(/\.busy\s*\{([^}]*)\}/);
   const busyBad = css.match(/\.busy\.bad\s*\{([^}]*)\}/);
   assert.ok(busy && busyBad, 'existen reglas de progreso y fallo de progreso');
   assert.doesNotMatch(busy[1], /border-left\s*:/i, 'el progreso no usa franja lateral');
   assert.doesNotMatch(busyBad[1], /background(?:-color)?\s*:/i, 'el fallo no usa fondo teñido');
+});
+
+test('el aviso de guardado en Drive trae un botón a la carpeta, solo con enlaces de Google Drive', () => {
+  const host = new FakeNode('div');
+  const document = {
+    createElement: tag => new FakeNode(tag),
+    createTextNode: text => { const node = new FakeNode('#text'); node.textContent = text; return node; },
+    getElementById: id => id === 'toasts' ? host : null
+  };
+  const RF = loadApp(['01-util.js', '30-ui.js'], { document, setTimeout: () => 0 });
+  RF.ui.toast('Guardado en el Drive: Proyecto / Comprobantes', 'ok', { href: 'https://drive.google.com/drive/folders/abc123' });
+  const link = host.firstChild.children.find(c => c.tagName === 'a');
+  assert.ok(link, 'hay botón para ver la carpeta');
+  assert.equal(link.attributes.href, 'https://drive.google.com/drive/folders/abc123');
+  assert.equal(link.attributes.target, '_blank');
+  RF.ui.toast('Guardado', 'ok', { href: 'https://sitio-falso.example/drive.google.com/' });
+  assert.equal(host.firstChild.children.find(c => c.tagName === 'a'), undefined, 'un enlace que no es de Drive no se muestra');
 });

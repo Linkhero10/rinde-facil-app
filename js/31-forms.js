@@ -403,7 +403,6 @@
     function paint() {
       U.clear(box);
       var list = sc.check ? sc.check(data, ctx) : [];
-      if (!list.length) box.appendChild(UI.callout('ok', 'Todo en orden.', 'No vemos nada raro en este documento.'));
       list.forEach(function (i) { box.appendChild(UI.callout(i.level === 'error' ? 'bad' : i.level === 'warn' ? 'warn' : 'info', '', i.msg)); });
     }
     paint();

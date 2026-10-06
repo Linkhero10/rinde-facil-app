@@ -48,7 +48,7 @@
     return RF.cloud.post('saveFile', payload, 90000).then(function (r) {
       if (!r || !r.ok) { var er = new Error(errText(r && r.error)); er.server = true; er.code = r && r.error; throw er; }
       remember({ at: new Date().toISOString(), name: r.fileName || payload.fileName, where: r.where, url: r.url, folderUrl: r.folderUrl, idempotent: !!r.idempotent });
-      if (!quiet) RF.ui.toast((r.idempotent ? 'Ya estaba en el Drive: ' : 'Guardado en el Drive: ') + r.where, 'ok');
+      if (!quiet) RF.ui.toast((r.idempotent ? 'Ya estaba en el Drive: ' : 'Guardado en el Drive: ') + r.where, 'ok', { href: r.folderUrl || r.url });
       return Object.assign({ remote: true, queued: false }, r);
     }).catch(function (e) {
       if (retryable(e)) return RF.outbox.add(outKey(payload), label || payload.fileName, payload, Object.assign({}, meta || {}, { action: 'saveFile', serviceUrl: serviceKey() })).then(function (id) {
@@ -260,7 +260,7 @@
         var status = remote === parts.length ? 'saved' : queued === parts.length ? 'queued' : 'partial';
         if (!parts.length) status = 'partial';
         var documentsLabel = result.receipt.skipped ? 'La ficha del gasto y la copia' : 'La foto del comprobante, su ficha y la copia';
-        if (status === 'saved') RF.ui.toast(documentsLabel + ' quedaron guardadas en Drive.', 'ok');
+        if (status === 'saved') RF.ui.toast(documentsLabel + ' quedaron guardadas en Drive.', 'ok', { href: (result.receipt && result.receipt.folderUrl) || (result.ficha && result.ficha.folderUrl) || (result.backup && result.backup.folderUrl) });
         else if (status === 'queued') RF.ui.toast(documentsLabel + ' quedaron pendientes en este dispositivo; todavía no están en Drive.', 'warn');
         else RF.ui.toast('Guardado parcial: algunas partes están en Drive y otras siguen pendientes o requieren atención. Revisa la cola antes de darlo por terminado.', 'warn');
         return { ok: status === 'saved', remote: status === 'saved', queued: queued > 0, queuedParts: queued, status: status, parts: result };
@@ -317,7 +317,7 @@
             parts: { file: r1, ficha: r2 }
           });
           if (status !== 'saved') { delete result.fileId; delete result.url; delete result.folderUrl; }
-          if (status === 'saved') RF.ui.toast(blob ? 'El archivo original y su ficha quedaron guardados en Drive.' : 'La ficha quedó guardada en Drive.', 'ok');
+          if (status === 'saved') RF.ui.toast(blob ? 'El archivo original y su ficha quedaron guardados en Drive.' : 'La ficha quedó guardada en Drive.', 'ok', { href: primary.folderUrl || (r1 && r1.folderUrl) || (r2 && r2.folderUrl) });
           else if (status === 'queued') RF.ui.toast(blob ? 'El archivo original y su ficha quedaron pendientes en este dispositivo; todavía no están en Drive.' : 'La ficha quedó pendiente en este dispositivo; todavía no está en Drive.', 'warn');
           else {
             var stateText = function (part) { return part.remote ? 'guardado en Drive' : part.queued ? 'pendiente en este dispositivo, aún no está en Drive' : part.skipped ? 'no requerido' : 'requiere revisión'; };

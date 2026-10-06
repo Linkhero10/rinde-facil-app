@@ -121,7 +121,7 @@
     }
     var issues = { refresh: function () { } };
     var issuesBox = h('div', { class: 'issues' });
-    issues.refresh = function () { U.clear(issuesBox); var list = L.ganttIssues(p); if (!list.length && L.allActivities(p).length) issuesBox.appendChild(UI.callout('ok', 'Todo en orden.', 'Fechas y límites del proyecto sin problemas.')); list.forEach(function (i) { issuesBox.appendChild(UI.callout(i.level === 'error' ? 'bad' : 'warn', '', i.msg)); }); };
+    issues.refresh = function () { U.clear(issuesBox); var list = L.ganttIssues(p); list.forEach(function (i) { issuesBox.appendChild(UI.callout(i.level === 'error' ? 'bad' : 'warn', '', i.msg)); }); };
     paint(); issues.refresh();
     root.appendChild(UI.section('Etapas y actividades', [body]));
     root.appendChild(UI.section('Vista por meses', [monthsBox]));
@@ -229,7 +229,7 @@
       U.clear(chk);
       var delta = U.sum(r.rows, function (x) { return num(x.nuevo) - num(x.actual); });
       if (!r.rows.length) { chk.appendChild(UI.callout('info', '', 'Agrega las líneas que cambian.')); return; }
-      if (delta === 0) chk.appendChild(UI.callout('info', 'El total no cambia:', ' lo que sube en una cuenta baja en otra.'));
+      if (delta === 0) chk.appendChild(UI.callout('ok', 'El total no cambia:', ' lo que sube en una cuenta baja en otra.'));
       else chk.appendChild(UI.callout('warn', 'El total cambia en ' + U.fmtCLP(delta) + '.', ' Una reitemización normalmente reasigna montos sin aumentar el total. Si es un aumento, debe estar aprobado por CORFO.'));
       if (!String(r.motivo || '').trim()) chk.appendChild(UI.callout('warn', '', 'Falta explicar por escrito el motivo del cambio.'));
     }
@@ -320,12 +320,12 @@
       if (p.start && st.fecha < p.start) out.appendChild(UI.callout('bad', 'No entra:', ' es anterior al inicio del proyecto (' + U.fmtDate(p.start) + ').'));
       else if (p.end && st.fecha > p.end) out.appendChild(UI.callout('bad', 'No entra:', ' es posterior al término del proyecto (' + U.fmtDate(p.end) + ').'));
       else if (!p.start && !p.end) out.appendChild(UI.callout('warn', '', 'Faltan las fechas de tu proyecto. Agrégalas en «Mi comunidad y proyectos».'));
-      else out.appendChild(UI.callout('info', 'Dentro del proyecto.', ''));
+      else out.appendChild(UI.callout('ok', 'Dentro del proyecto.', ''));
       if (p.periodoInicio && p.periodoFin) {
-        if (st.fecha >= p.periodoInicio && st.fecha <= p.periodoFin) out.appendChild(UI.callout('info', 'Va en esta rendición', ' (' + U.fmtDateShort(p.periodoInicio) + ' al ' + U.fmtDateShort(p.periodoFin) + ').'));
+        if (st.fecha >= p.periodoInicio && st.fecha <= p.periodoFin) out.appendChild(UI.callout('ok', 'Va en esta rendición', ' (' + U.fmtDateShort(p.periodoInicio) + ' al ' + U.fmtDateShort(p.periodoFin) + ').'));
         else out.appendChild(UI.callout('warn', 'Iría en otra rendición.', ' Un documento posterior al cierre va en la siguiente; uno anterior solo entra si no fue aprobado antes y no pasa el presupuesto.'));
       }
-      if (st.actId) { var a = L.allActivities(p).filter(function (x) { return x.act.id === st.actId; })[0]; if (a && a.act.start && a.act.end) { if (st.fecha < a.act.start || st.fecha > a.act.end) out.appendChild(UI.callout('warn', '', 'La fecha cae fuera de la actividad «' + a.act.name + '» (' + U.fmtDateShort(a.act.start) + ' al ' + U.fmtDateShort(a.act.end) + ').')); else out.appendChild(UI.callout('info', '', 'Cae dentro de la actividad «' + a.act.name + '».')); } }
+      if (st.actId) { var a = L.allActivities(p).filter(function (x) { return x.act.id === st.actId; })[0]; if (a && a.act.start && a.act.end) { if (st.fecha < a.act.start || st.fecha > a.act.end) out.appendChild(UI.callout('warn', '', 'La fecha cae fuera de la actividad «' + a.act.name + '» (' + U.fmtDateShort(a.act.start) + ' al ' + U.fmtDateShort(a.act.end) + ').')); else out.appendChild(UI.callout('ok', '', 'Cae dentro de la actividad «' + a.act.name + '».')); } }
     }
     var root = h('div', null, UI.section('Revisa una fecha', [h('div', { class: 'form-grid' }, UI.field('Fecha del documento', st, 'fecha', { type: 'date', onChange: paint }), UI.field('Actividad (opcional)', st, 'actId', { type: 'select', options: [{ id: '', name: 'Ninguna' }].concat(L.allActivities(p).map(function (x) { return { id: x.act.id, name: x.act.name || '(sin nombre)' }; })), noEmpty: true, onChange: paint })), out]));
     paint();
@@ -338,7 +338,7 @@
       { q: 'Viaje o viático', c: 'operacion', note: 'Dentro de la región, los traslados de los representantes van en administración.' }, { q: 'Servicio contratado a un tercero para una actividad', c: 'operacion' }
     ];
     var out = h('div'), root = h('div');
-    function show(it) { U.clear(out); var cu = D.CUENTA_BY_ID[it.c]; out.appendChild(UI.callout('info', 'Va en «' + cu.name + '».', ' ' + cu.desc + (it.note ? ' ' + it.note : ''))); }
+    function show(it) { U.clear(out); var cu = D.CUENTA_BY_ID[it.c]; out.appendChild(UI.callout('ok', 'Va en «' + cu.name + '».', ' ' + cu.desc + (it.note ? ' ' + it.note : ''))); }
     root.appendChild(UI.section('¿Qué compraste?', [h('div', { class: 'choice-list' }, items.map(function (it) { return h('button', { type: 'button', class: 'choice', onclick: function () { show(it); } }, it.q); })), out]));
     root.appendChild(UI.section('Las 4 cuentas', [h('div', { class: 'cards-2' }, D.CUENTAS.map(function (cu) { return h('div', { class: 'mini-card' }, h('strong', null, cu.name), h('p', null, cu.desc), h('p', { class: 'hint' }, 'Ej: ' + cu.ej)); }))]));
     return page('¿En qué cuenta va?', 'Cada gasto va en una de 4 cuentas (Manual, sección IX).', root);

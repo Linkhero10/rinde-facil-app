@@ -33,14 +33,18 @@
   }
 
   /* ---------- avisos ---------- */
-  function toast(msg, kind) {
+  /* opts.href: botón «Ver en Drive» que abre la carpeta donde quedó el archivo (solo enlaces de Google Drive); el aviso dura más para poder pulsarlo */
+  function toast(msg, kind, opts) {
     var host = document.getElementById('toasts');
-    if (!host || (kind !== 'bad' && kind !== 'warn')) return;
+    if (!host) return;
     while (host.firstChild) host.removeChild(host.firstChild);
-    var t = h('div', { class: 'toast ' + kind, role: kind === 'bad' ? 'alert' : 'status' }, msg);
+    var href = opts && typeof opts.href === 'string' && (opts.href.indexOf('https://drive.google.com/') === 0 || opts.href.indexOf('https://docs.google.com/') === 0) ? opts.href : '';
+    var t = h('div', { class: 'toast ' + (kind || ''), role: kind === 'bad' ? 'alert' : 'status' }, msg,
+      href ? h('a', { class: 'btn toast-link', href: href, target: '_blank', rel: 'noopener' }, (opts && opts.label) || 'Ver en Drive') : null);
     host.appendChild(t);
-    setTimeout(function () { t.classList.add('out'); }, 3200);
-    setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 3700);
+    var life = href ? 15000 : 3200;
+    setTimeout(function () { t.classList.add('out'); }, life);
+    setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, life + 500);
   }
   function confirmBox(msg, okLabel) {
     return new Promise(function (resolve) {
@@ -183,8 +187,7 @@
   /* ---------- pequeñas piezas ---------- */
   function badge(text, kind) { return h('span', { class: 'badge ' + (kind || '') }, text); }
   function callout(kind, title, body) {
-    if (kind === 'ok') return h('div', { class: 'callout ok', hidden: true, 'aria-hidden': 'true' });
-    return h('div', { class: 'callout ' + kind, role: kind === 'bad' ? 'alert' : kind === 'warn' ? 'status' : 'note' }, title ? h('strong', null, title) : null, body ? h('span', null, ' ' + body) : null);
+    return h('div', { class: 'callout ' + kind, role: kind === 'bad' ? 'alert' : 'status' }, title ? h('strong', null, title) : null, body ? h('span', null, ' ' + body) : null);
   }
   function empty(text) { return h('p', { class: 'empty-note' }, text); }
   function section(title, kids, cls) { return h('section', { class: 'card ' + (cls || '') }, title ? h('h2', { class: 'card-title' }, title) : null, kids); }
@@ -251,7 +254,7 @@
     return {
       stage: function (id, label) { for (var i = 0; i < stages.length; i++) if (stages[i].id === id) { cur = stages[i]; tStage = Date.now(); stepEl.textContent = label || cur.label; draw(); return; } if (label) stepEl.textContent = label; },
       label: function (text) { stepEl.textContent = text; },
-      done: function () { finished = true; clearInterval(timer); card.classList.add('out'); setTimeout(function () { if (card.parentNode) card.parentNode.removeChild(card); }, 400); },
+      done: function (text) { end('ok', text || 'Listo', 1300); },
       fail: function (text) { end('bad', text || 'No se pudo', 6000); }
     };
   }
