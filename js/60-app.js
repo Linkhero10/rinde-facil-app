@@ -4,6 +4,25 @@
   var RF = root.RF = root.RF || {};
   var U = RF.util, UI = RF.ui, h = U.h;
   var app = RF.app = { pendingFilter: null, lastTramite: null };
+  var storageBanner = null, storageBannerText = null, storageRetry = null, lastStorageOk = true;
+
+  function paintStorageStatus(ok) {
+    if (!storageBanner && document.body) {
+      storageBannerText = h('span', null, '');
+      storageRetry = h('button', { type: 'button', class: 'btn ghost small', onclick: function () {
+        storageRetry.disabled = true;
+        var wasFailed = !RF.store.storageOk();
+        RF.store.flush().then(function () { if (!wasFailed) UI.toast('No hay cambios pendientes de guardar.', 'ok'); }, function () { UI.toast('Todavía no se pudo guardar. Revisa el espacio disponible y vuelve a intentar.', 'bad'); }).then(function () { storageRetry.disabled = false; });
+      } }, 'Reintentar guardado');
+      storageBanner = h('div', { class: 'storage-warning', id: 'storageWarning', role: 'alert', 'aria-live': 'assertive' }, storageBannerText, storageRetry);
+      document.body.appendChild(storageBanner);
+    }
+    if (!storageBanner) return;
+    storageBanner.hidden = !!ok;
+    if (!ok) storageBannerText.textContent = 'No se guardaron los últimos cambios en este dispositivo. No cierres ni bloquees Rinde Fácil todavía. Libera espacio o comprueba el almacenamiento y pulsa «Reintentar guardado».';
+    if (lastStorageOk === false && ok) UI.toast('El guardado volvió a funcionar.', 'ok');
+    lastStorageOk = ok;
+  }
 
   function route() {
     var hash = (location.hash || '#/').replace(/^#\/?/, ''), parts = hash.split('?')[0].split('/'), from = null;
@@ -96,11 +115,12 @@
   }
   function start() {
     applyTheme();
+    paintStorageStatus(RF.store.storageOk());
+    RF.store.onStorageStatus(paintStorageStatus);
     var pending = null;
     RF.store.subscribe(function () { clearTimeout(pending); pending = setTimeout(render, 0); });
     window.addEventListener('hashchange', render);
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
-    if (!RF.store.storageOk()) { /* aviso si el navegador no deja guardar */ }
     render();
     if ('serviceWorker' in navigator && /^(https:|http:\/\/localhost|http:\/\/127\.0\.0\.1)/.test(location.protocol + '//' + location.host) ) { try {
       var hadController = !!navigator.serviceWorker.controller;

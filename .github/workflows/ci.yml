@@ -16,7 +16,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Instalar openpyxl
+        run: python -m pip install openpyxl
       - name: Instalar herramientas de revisión
         run: npm install --no-audit --no-fund
       - name: Sintaxis de la app y del servicio

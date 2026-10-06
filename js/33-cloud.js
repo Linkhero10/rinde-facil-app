@@ -24,11 +24,12 @@
   function isBlob(x) { return typeof Blob !== 'undefined' && x instanceof Blob; }
   var blobs = {
     put: function (id, blob) {
+      if (!id || !blob) return Promise.reject(new Error('Falta el identificador o el archivo del comprobante.'));
       var enc = RF.vault && RF.vault.isOpen() ? RF.vault.encryptBlob(blob) : Promise.resolve(blob);
-      return enc.then(function (rec) { return tx('readwrite', function (s) { return s.put(rec, id); }); }).catch(function () { return null; });
+      return enc.then(function (rec) { return tx('readwrite', function (s) { return s.put(rec, id); }); });
     },
     get: function (id) {
-      return tx('readonly', function (s) { return s.get(id); }).then(function (rec) { return rec && rec.enc && RF.vault ? RF.vault.decryptBlob(rec) : rec; }).catch(function () { return null; });
+      return tx('readonly', function (s) { return s.get(id); }).then(function (rec) { return rec && rec.enc && RF.vault ? RF.vault.decryptBlob(rec) : rec; });
     },
     del: function (id) { return tx('readwrite', function (s) { return s.delete(id); }).catch(function () { return null; }); },
     encryptAll: function () {
@@ -50,19 +51,40 @@
   /* ---------- cola de envíos: lo que no se pudo subir al Drive por falta de conexión espera aquí (cifrado) y se reintenta solo ---------- */
   var outbox = {
     add: function (key, label, payload, meta) {
-      if (!RF.vault || !RF.vault.isOpen()) return Promise.resolve(null);
+      if (!RF.vault || !RF.vault.isOpen()) return Promise.reject(new Error('BOVEDA_CERRADA'));
       /* ni el nombre del proyecto ni el del archivo quedan a la vista: la clave es un hash y el resto va cifrado */
       var blob = new Blob([JSON.stringify({ label: label, payload: payload, meta: meta || null })], { type: 'application/json' });
-      return root.crypto.subtle.digest('SHA-256', new TextEncoder().encode(key)).then(function (d) {
-        var id = 'q' + Array.prototype.map.call(new Uint8Array(d).subarray(0, 12), function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
-        return RF.vault.encryptBlob(blob).then(function (enc) { return tx('readwrite', function (s) { return s.put({ id: id, at: new Date().toISOString(), tries: 0, enc: enc }, id); }, OUTBOX); }).then(function () { return id; });
+      var serviceUrl = meta && meta.serviceUrl ? String(meta.serviceUrl).trim().replace(/\/+$/, '') : '';
+      var identity = JSON.stringify(meta && meta.coalesce
+        ? { key: String(key), serviceUrl: serviceUrl }
+        : { key: String(key), serviceUrl: serviceUrl, payload: payload });
+      return root.crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity)).then(function (d) {
+        var id = 'q' + Array.prototype.map.call(new Uint8Array(d), function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+        return RF.vault.encryptBlob(blob).then(function (enc) { return tx('readwrite', function (s) { return s.put({ id: id, at: new Date().toISOString(), tries: 0, status: 'pending', errorCode: null, enc: enc }, id); }, OUTBOX); }).then(function () { return id; });
       });
     },
-    list: function () { return tx('readonly', function (s) { return s.getAll(); }, OUTBOX).then(function (a) { return (a || []).sort(function (x, y) { return x.at < y.at ? -1 : 1; }); }).catch(function () { return []; }); },
+    list: function () { return tx('readonly', function (s) { return s.getAll(); }, OUTBOX).then(function (a) { return (a || []).sort(function (x, y) { return x.at < y.at ? -1 : x.at > y.at ? 1 : 0; }); }); },
     open: function (rec) { return RF.vault.decryptBlob(rec.enc).then(function (b) { return b.text(); }).then(function (t) { return JSON.parse(t); }); },
-    del: function (id) { return tx('readwrite', function (s) { return s.delete(id); }, OUTBOX).catch(function () { return null; }); },
-    bump: function (rec) { rec.tries = (rec.tries || 0) + 1; return tx('readwrite', function (s) { return s.put(rec, rec.id); }, OUTBOX).catch(function () { return null; }); },
-    count: function () { return tx('readonly', function (s) { return s.count(); }, OUTBOX).catch(function () { return 0; }); }
+    del: function (id) { return tx('readwrite', function (s) { return s.delete(id); }, OUTBOX); },
+    bump: function (rec, errorCode, needsAttention) {
+      rec.tries = (rec.tries || 0) + 1;
+      rec.status = needsAttention ? 'needs_attention' : 'pending';
+      rec.errorCode = errorCode ? String(errorCode).replace(/[^A-Z0-9_]/g, '').slice(0, 64) || 'ERROR_DE_SERVICIO' : null;
+      return tx('readwrite', function (s) { return s.put(rec, rec.id); }, OUTBOX);
+    },
+    retryAll: function () {
+      return this.list().then(function (items) {
+        var retried = 0;
+        return items.reduce(function (chain, rec) {
+          if (rec.status !== 'needs_attention') return chain;
+          return chain.then(function () {
+            rec.tries = 0; rec.status = 'pending'; rec.errorCode = null;
+            return tx('readwrite', function (s) { return s.put(rec, rec.id); }, OUTBOX).then(function () { retried++; });
+          });
+        }, Promise.resolve()).then(function () { return retried; });
+      });
+    },
+    count: function () { return tx('readonly', function (s) { return s.count(); }, OUTBOX); }
   };
 
   /* ---------- reducir la foto antes de mandarla (más rápido en celular y respeta la orientación) ---------- */
@@ -89,10 +111,38 @@
 
   /* ---------- servicio en la nube ---------- */
   function cfg() { return RF.store.get().cloud; }
-  /* solo el servicio de Apps Script de Google (o localhost, para pruebas): así un enlace falso pegado por error no recibe ni siquiera la clave derivada */
-  function validUrl(u) { return !!(u && (/^https:\/\/script\.google\.com\/(macros|a\/macros\/[A-Za-z0-9.\-]+)\/s\/[A-Za-z0-9_\-]+\/exec\/?$/.test(u) || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(u))); }
-  function configured() { return validUrl(cfg().apiUrl); }
+  /* La sintaxis de una URL no autentica el servicio. Apps Script requiere pinning exacto por versión distribuida. */
+  function validUrl(u) { return !!(typeof u === 'string' && u === u.trim() && (/^https:\/\/script\.google\.com\/(macros|a\/macros\/[A-Za-z0-9.\-]+)\/s\/[A-Za-z0-9_\-]+\/exec\/?$/.test(u) || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(u))); }
+  function canonicalUrl(u) {
+    if (!validUrl(u)) return null;
+    try {
+      var x = new URL(u);
+      if (x.username || x.password || x.search || x.hash) return null;
+      x.pathname = x.pathname.replace(/\/+$/, '');
+      return x.href.replace(/\/+$/, '');
+    } catch (e) { return null; }
+  }
+  function trustedUrl(u) {
+    var key = canonicalUrl(u);
+    if (!key) return false;
+    var x = new URL(u);
+    if (x.protocol === 'http:' && (x.hostname === '127.0.0.1' || x.hostname === 'localhost')) {
+      var loc = root.location;
+      if (!loc || loc.protocol !== 'http:' || !loc.origin) return false;
+      try {
+        var here = new URL(loc.origin);
+        return here.protocol === 'http:' && (here.hostname === '127.0.0.1' || here.hostname === 'localhost') && here.origin === x.origin;
+      } catch (e) { return false; }
+    }
+    var trust = root.RF_SERVICE_TRUST || {}, list = trust.approvedAppsScriptUrls;
+    if (!Array.isArray(list)) return false;
+    return list.some(function (approved) { return canonicalUrl(approved) === key; });
+  }
+  function trustError() { return Object.assign(new Error('La dirección del servicio no está aprobada en esta versión de Rinde Fácil. No se enviaron datos ni claves.'), { code: 'SERVICIO_NO_APROBADO' }); }
+  function connectionError(u) { return u && validUrl(u) && !trustedUrl(u) ? trustError() : Object.assign(new Error('No hay un servicio aprobado configurado.'), { code: 'NO_CONFIGURADO' }); }
+  function configured() { return trustedUrl(cfg().apiUrl); }
   function rawPostTo(url, action, payload, timeoutMs) {
+    if (!trustedUrl(url)) return Promise.reject(trustError());
     var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var to = ctl ? setTimeout(function () { ctl.abort(); }, timeoutMs || 90000) : null;
     var body = JSON.stringify(Object.assign({ action: action }, payload || {}));
@@ -102,16 +152,17 @@
       .catch(function (e) { if (to) clearTimeout(to); if (e && e.name === 'AbortError') throw new Error('TIMEOUT'); throw e; });
   }
   function postRaw(action, payload, timeoutMs) {
-    if (!configured()) return Promise.reject(new Error('NO_CONFIGURADO'));
-    return rawPostTo(cfg().apiUrl, action, payload, timeoutMs);
+    var url = cfg().apiUrl;
+    if (!configured()) return Promise.reject(connectionError(url));
+    return rawPostTo(url, action, payload, timeoutMs);
   }
   function postRawTo(url, action, payload, timeoutMs) {
-    if (!validUrl(url)) return Promise.reject(new Error('NO_CONFIGURADO'));
+    if (!trustedUrl(url)) return Promise.reject(validUrl(url) ? trustError() : Object.assign(new Error('Dirección de servicio no válida.'), { code: 'NO_CONFIGURADO' }));
     return rawPostTo(url, action, payload, timeoutMs);
   }
   /* todo lo que toca datos lleva el token de la sesión; si venció, se inicia sesión de nuevo una vez y se repite */
   function post(action, payload, timeoutMs) {
-    if (!configured()) return Promise.reject(new Error('NO_CONFIGURADO'));
+    if (!configured()) return Promise.reject(connectionError(cfg().apiUrl));
     if (!RF.auth || !RF.auth.needsSession(action)) return postRaw(action, payload, timeoutMs);
     function go(t) { return postRaw(action, Object.assign({ t: t }, payload), timeoutMs); }
     return RF.auth.ensureSession().then(go).then(function (r) {
@@ -123,7 +174,7 @@
   function postRetry(action, payload, timeoutMs, valid, onRetry) {
     /* valid: comprueba que la respuesta trae lo esperado (en las pruebas llegó una vez la respuesta de «ping» a una lectura) */
     return post(action, payload, timeoutMs).then(function (r) { if (valid && !valid(r)) throw new Error('RESPUESTA_INVALIDA'); return r; }).catch(function (e) {
-      if (e && (e.message === 'NO_CONFIGURADO' || (e.code && /^(CLAVE_DISTINTA|SIN_CUENTA|BLOQUEADO|BLOQUEADA)$/.test(e.code)))) throw e;
+      if (e && (e.message === 'NO_CONFIGURADO' || (e.code && /^(CLAVE_DISTINTA|SIN_CUENTA|BLOQUEADO|BLOQUEADA|SERVICIO_NO_APROBADO)$/.test(e.code)))) throw e;
       if (onRetry) onRetry(e);
       return new Promise(function (res) { setTimeout(res, 1500); }).then(function () { return post(action, payload, timeoutMs); });
     });
@@ -161,6 +212,6 @@
 
   RF.blobs = blobs;
   RF.outbox = outbox;
-  RF.cloud = { configured: configured, validUrl: validUrl, post: post, postRaw: postRaw, postRawTo: postRawTo, postRetry: postRetry, ping: ping, downscale: downscale, blobToBase64: blobToBase64 };
+  RF.cloud = { configured: configured, validUrl: validUrl, trustedUrl: trustedUrl, post: post, postRaw: postRaw, postRawTo: postRawTo, postRetry: postRetry, ping: ping, downscale: downscale, blobToBase64: blobToBase64 };
   RF.ocr = { recognize: recognize, toExpenseFields: toExpenseFields };
 })(typeof window !== 'undefined' ? window : globalThis);

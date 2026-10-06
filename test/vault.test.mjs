@@ -69,6 +69,20 @@ test('olvidé mi contraseña: el código de recuperación abre los datos y pide 
   await RF.vault.unlock('Comunidad Recuperar larga', 'frase nueva larga 2028');
   RF.vault.lock(); await assert.rejects(RF.vault.recover(c.recoveryCode, 'otra frase larga 2029'), /código de recuperación/, 'el código viejo ya no sirve');
 });
+test('recuperación preparada no modifica la bóveda hasta confirmar el commit local', async () => {
+  reset(); const created = await RF.vault.create('Comunidad Recuperación diferida', PW, STATE, { iterations: 2000 });
+  RF.vault.lock();
+  const before = dump();
+  const prepared = await RF.vault.prepareRecovery(created.recoveryCode, 'nueva frase diferida 2028');
+  assert.equal(dump(), before, 'preparar no escribe ni rota el código actual');
+  assert.equal(RF.vault.status(), 'locked', 'preparar no abre la sesión');
+  const r = await RF.vault.commitRecovery(prepared);
+  assert.equal(r.state.projects[0].name, 'Invernadero');
+  assert.notEqual(r.recoveryCode, created.recoveryCode);
+  RF.vault.lock();
+  await RF.vault.unlock('Comunidad Recuperación diferida', 'nueva frase diferida 2028');
+  assert.equal((await RF.vault.readState()).projects[0].name, 'Invernadero');
+});
 test('freno local: tras 5 intentos fallidos hay que esperar', async () => {
   reset(); await RF.vault.create('Comunidad Freno larga', PW, STATE, { iterations: 2000 }); RF.vault.lock();
   for (let i = 0; i < 5; i++) await assert.rejects(RF.vault.unlock('Comunidad Freno larga', 'mala contraseña larga ' + i));

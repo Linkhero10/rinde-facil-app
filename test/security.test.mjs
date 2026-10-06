@@ -6,12 +6,79 @@ import { loadApp } from './load.mjs';
 const RF = loadApp();
 const PW = 'tres palabras largas 2026';
 
-test('solo se aceptan servicios de Apps Script de Google (o localhost para pruebas)', () => {
+test('la distribución pública no aprueba ningún servicio comunitario por defecto', () => {
+  assert.equal(RF.cloud.trustedUrl('https://script.google.com/macros/s/PERSONAL_DEMO_ENDPOINT/exec'), false);
+  assert.equal(RF.cloud.trustedUrl('https://script.google.com/macros/s/OTRO_DEPLOYMENT/exec'), false);
+});
+
+test('el filtro de URL valida dominio y formato, pero no autentica la identidad del script', () => {
+  /* Cualquier ID de implementación bajo script.google.com pasa el filtro. No equivale a pinning del servicio. */
   const ok = ['https://script.google.com/macros/s/AKfycbzXYZ_-123/exec', 'https://script.google.com/a/macros/comunidad.cl/s/AKfycbzXYZ/exec', 'http://127.0.0.1:8791/exec', 'http://localhost:3000/exec'];
   const bad = ['', null, undefined, 'http://script.google.com/macros/s/X/exec', 'https://script.google.com.evil.com/macros/s/X/exec', 'https://evil.com/script.google.com/macros/s/X/exec',
     'https://evil.com/exec', 'javascript:alert(1)', 'https://script.google.com/macros/s/X/dev', 'https://script.google.com/macros/s/X/exec?x=1', 'ftp://script.google.com/macros/s/X/exec', 'http://evil.com:80/x', 'http://localhost.evil.com/exec'];
   ok.forEach(u => assert.equal(RF.cloud.validUrl(u), true, u));
   bad.forEach(u => assert.equal(RF.cloud.validUrl(u), false, String(u)));
+});
+
+test('un Apps Script no aprobado no recibe solicitudes de conexión ni claves derivadas', async () => {
+  const requests = [];
+  const fake = 'https://script.google.com/macros/s/ATTACKER_DEPLOYMENT/exec';
+  const app = loadApp(undefined, {
+    RF_SERVICE_TRUST: { approvedAppsScriptUrls: [] },
+    fetch: async (url, init) => { requests.push({ url, body: JSON.parse(init.body) }); return { ok: true, text: async () => JSON.stringify({ ok: true, exists: true, saltP: Buffer.alloc(16, 4).toString('base64'), it: 600000 }) }; }
+  });
+
+  assert.equal(app.cloud.validUrl(fake), true, 'la URL tiene forma válida, pero eso no la hace confiable');
+  assert.equal(app.cloud.trustedUrl(fake), false);
+  await app.auth.createAccount('Comunidad de Prueba', PW);
+  app.store.update(s => { s.cloud.apiUrl = fake; });
+  assert.equal(app.cloud.configured(), false);
+  await assert.rejects(app.auth.connectDevice(fake, 'Comunidad', PW), e => e.code === 'SERVICIO_NO_APROBADO');
+  await assert.rejects(app.auth.serverLogin(), e => e.code === 'SERVICIO_NO_APROBADO');
+  await assert.rejects(app.cloud.postRaw('setup', { setupCode: 'secreto', authKey: 'derivada' }), e => e.code === 'SERVICIO_NO_APROBADO');
+  assert.deepEqual(requests, [], 'ningún código ni clave sale del navegador');
+  await app.auth.wipeDevice();
+});
+
+test('el endpoint exacto aprobado puede recibir la consulta pública; otro deployment no', async () => {
+  const requests = [];
+  const approved = 'https://script.google.com/macros/s/COMMUNITY_APPROVED/exec';
+  const app = loadApp(undefined, {
+    RF_SERVICE_TRUST: { approvedAppsScriptUrls: [approved] },
+    fetch: async (url, init) => { requests.push({ url, body: JSON.parse(init.body) }); return { ok: true, text: async () => JSON.stringify({ ok: true, exists: false }) }; }
+  });
+
+  assert.equal(app.cloud.trustedUrl(approved), true);
+  await assert.rejects(app.auth.connectDevice(approved, 'Comunidad', PW), e => e.code === 'SIN_CUENTA');
+  await assert.rejects(app.cloud.postRawTo('https://script.google.com/macros/s/OTHER_DEPLOYMENT/exec', 'login', { authKey: 'no' }), e => e.code === 'SERVICIO_NO_APROBADO');
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, approved);
+  assert.deepEqual(requests[0].body, { action: 'challenge' });
+});
+
+test('si el servicio guardado no está aprobado, cambiar o recuperar contraseña sigue siendo local y lo informa', async () => {
+  const requests = [];
+  const app = loadApp(undefined, { RF_SERVICE_TRUST: { approvedAppsScriptUrls: [] }, fetch: async (...args) => { requests.push(args); throw new Error('No debería llamar a la red'); } });
+  await app.auth.init();
+  const created = await app.auth.createAccount('Comunidad de Recuperación', PW);
+  const fake = 'https://script.google.com/macros/s/UNTRUSTED/exec';
+  app.store.update(s => { s.cloud.apiUrl = fake; });
+  const changed = await app.auth.changePassword(PW, 'otra frase larga y segura 2026');
+  assert.equal(changed.remoteTrustBlocked, true);
+  assert.equal(requests.length, 0);
+
+  const recovered = await app.auth.recover(created.recoveryCode, 'nueva frase segura de recuperación 2026');
+  assert.equal(recovered.serviceTrustBlocked, true);
+  assert.equal(requests.length, 0, 'ni la contraseña ni el código de recuperación llegan al servicio no aprobado');
+  await app.auth.wipeDevice();
+});
+
+test('localhost solo se acepta si coincide exactamente con el origen local de la app', () => {
+  const local = 'http://127.0.0.1:4179/exec';
+  const sameOrigin = loadApp(undefined, { location: { protocol: 'http:', hostname: '127.0.0.1', origin: 'http://127.0.0.1:4179' } });
+  const remoteOrigin = loadApp();
+  assert.equal(sameOrigin.cloud.trustedUrl(local), true);
+  assert.equal(remoteOrigin.cloud.trustedUrl(local), false);
 });
 
 test('un servicio que propone menos vueltas de PBKDF2 no recibe nada: ni la clave derivada', async () => {

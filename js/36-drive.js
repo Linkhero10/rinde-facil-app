@@ -9,6 +9,7 @@
   var ERRORS = { CLAVE_INVALIDA: 'La clave no coincide con la del servicio.', LIMITE_DIARIO: 'Se alcanzó el límite diario de lecturas.', ARCHIVO_MUY_GRANDE: 'El archivo pesa más de 8 MB.', TIPO_NO_PERMITIDO: 'Ese tipo de archivo no se puede guardar.', FECHA_INVALIDA: 'La fecha del documento no es válida.', OCUPADO: 'El servicio estaba ocupado; intenta de nuevo.', CATEGORIA_INVALIDA: 'Categoría desconocida.' };
 
   function cfg() { return RF.store.get().cloud; }
+  function serviceKey() { return String(cfg().apiUrl || '').trim().replace(/\/+$/, ''); }
   function enabled() { return RF.cloud.configured(); }
   function auto() { return enabled() && cfg().autoSave !== false; }
   function projectName() { var p = RF.store.project(); return p ? (p.name || 'Proyecto sin nombre') : 'Sin proyecto'; }
@@ -35,18 +36,24 @@
     }, { silent: true });
   }
   /* falta de conexión o servicio caído: se puede reintentar más tarde. Un rechazo del servicio (tipo no permitido, sesión bloqueada…) no. */
-  function retryable(e) { return !!e && !e.server && (root.navigator && root.navigator.onLine === false || /^(TIMEOUT|RESPUESTA_INVALIDA)$/.test(e.message) || /Failed to fetch|NetworkError|Load failed|HTTP 5\d\d|fetch/i.test(String(e.message))); }
+  function retryable(e) {
+    if (!e) return false;
+    var code = String(e.code || '').toUpperCase(), message = String(e.message || '');
+    var transientServer = e.server && (/^(OCUPADO|TIMEOUT|RESPUESTA_INVALIDA)$/.test(code) || /^HTTP 5\d\d$/.test(code));
+    if (e.server && !transientServer) return false;
+    return !!(root.navigator && root.navigator.onLine === false) || /^(TIMEOUT|RESPUESTA_INVALIDA)$/.test(code || message) || /Failed to fetch|NetworkError|Load failed|HTTP 5\d\d|fetch/i.test(message);
+  }
   function outKey(p) { return [p.project, p.category, p.subfolder || '', p.fileName, p.issueDate || '', (p.base64 || '').length].join('|'); }
   function send(payload, label, quiet, meta) {
     return RF.cloud.post('saveFile', payload, 90000).then(function (r) {
-      if (!r || !r.ok) { var er = new Error(errText(r && r.error)); er.server = true; throw er; }
+      if (!r || !r.ok) { var er = new Error(errText(r && r.error)); er.server = true; er.code = r && r.error; throw er; }
       remember({ at: new Date().toISOString(), name: r.fileName || payload.fileName, where: r.where, url: r.url, folderUrl: r.folderUrl, idempotent: !!r.idempotent });
       if (!quiet) RF.ui.toast((r.idempotent ? 'Ya estaba en el Drive: ' : 'Guardado en el Drive: ') + r.where, 'ok');
-      return r;
+      return Object.assign({ remote: true, queued: false }, r);
     }).catch(function (e) {
-      if (retryable(e)) return RF.outbox.add(outKey(payload), label || payload.fileName, payload, meta).then(function (id) {
-        if (id) { RF.ui.toast('Sin conexión: «' + (label || payload.fileName) + '» quedó en la cola y se subirá sola al volver.', 'info'); return { ok: true, queued: true }; }
-        throw e;
+      if (retryable(e)) return RF.outbox.add(outKey(payload), label || payload.fileName, payload, Object.assign({}, meta || {}, { action: 'saveFile', serviceUrl: serviceKey() })).then(function (id) {
+        if (!quiet) RF.ui.toast('Sin conexión: «' + (label || payload.fileName) + '» quedó pendiente en este dispositivo; todavía no está en el Drive.', 'info');
+        return { ok: false, remote: false, queued: true, outboxId: id };
       }).catch(function (e2) { RF.ui.toast('No se pudo guardar «' + (label || payload.fileName) + '» en el Drive (' + ((e2 && e2.message) || e2) + ').', 'bad'); throw e2; });
       RF.ui.toast('No se pudo guardar «' + (label || payload.fileName) + '» en el Drive (' + (e.message || e) + '). Puedes reintentar con «Guardar en Drive».', 'bad'); throw e;
     });
@@ -57,25 +64,66 @@
     if (!meta || !meta.expId) return;
     RF.store.update(function (s) { s.projects.forEach(function (p) { (p.expenses || []).forEach(function (x) { if (x.id !== meta.expId) return; if (meta.kind === 'foto') { x.driveId = r.fileId; x.driveUrl = r.url || ''; } else if (meta.kind === 'ficha') { x.driveFichaAt = new Date().toISOString(); x.driveFichaUrl = r.url || ''; } }); }); }, { silent: true });
   }
+  function applyStateResult(r) {
+    RF.store.update(function (s) { s.cloud.lastSync = new Date().toISOString(); s.cloud.rev = r.rev; s.cloud.conflict = false; }, { silent: true });
+  }
+  function errorCode(e) {
+    var value = e && (e.code || e.message) || 'ERROR_DE_SERVICIO';
+    return String(value).toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 64) || 'ERROR_DE_SERVICIO';
+  }
   function flushOutbox() {
     if (flushing) return flushing;
-    if (!enabled() || !RF.auth || RF.auth.phase() !== 'open' || (root.navigator && root.navigator.onLine === false)) return Promise.resolve({ sent: 0, left: null });
+    if (!enabled()) return Promise.resolve({ ok: false, sent: 0, left: null, error: 'NO_CONFIGURADO' });
+    if (!RF.auth || RF.auth.phase() !== 'open') return Promise.resolve({ ok: false, sent: 0, left: null, error: 'SESION_CERRADA' });
+    if (root.navigator && root.navigator.onLine === false) return Promise.resolve({ ok: false, sent: 0, left: null, error: 'SIN_CONEXION' });
     var sent = 0, stop = false;
     flushing = RF.outbox.list().then(function (items) {
       var chain = Promise.resolve();
       items.forEach(function (rec) {
         chain = chain.then(function () {
-          if (stop) return null;
-          return RF.outbox.open(rec).then(function (o) { return RF.cloud.post('saveFile', o.payload, 90000).then(function (r) {
-            if (r && r.ok) { remember({ at: new Date().toISOString(), name: r.fileName || o.payload.fileName, where: r.where, url: r.url, folderUrl: r.folderUrl, idempotent: !!r.idempotent }); applyMeta(o.meta, r); sent++; return RF.outbox.del(rec.id); }
-            if (r && r.error === 'SESION_INVALIDA') { stop = true; return null; }
-            if (rec.tries >= 5) return RF.outbox.del(rec.id); /* el servicio lo rechaza una y otra vez: no se reintenta para siempre */
-            return RF.outbox.bump(rec);
-          }); }).catch(function () { stop = true; });
+          if (stop || rec.status === 'needs_attention') return null;
+          return RF.outbox.open(rec).then(function (o) {
+            var action = o.meta && o.meta.action || 'saveFile';
+            var destination = String(o.meta && o.meta.serviceUrl || '').trim().replace(/\/+$/, '');
+            if (!destination) return RF.outbox.bump(rec, 'ORIGEN_NO_VERIFICADO', true);
+            if (destination !== serviceKey()) return RF.outbox.bump(rec, 'SERVICIO_CAMBIO', true);
+            var payload = action === 'saveState' ? { state: RF.store.exportJSON(), baseRev: cfg().rev || 0, force: false } : o.payload;
+            return RF.cloud.post(action, payload, action === 'saveState' ? 60000 : 90000).then(function (r) {
+              if (r && r.ok) {
+                if (action === 'saveState') applyStateResult(r);
+                else { remember({ at: new Date().toISOString(), name: r.fileName || payload.fileName, where: r.where, url: r.url, folderUrl: r.folderUrl, idempotent: !!r.idempotent }); applyMeta(o.meta, r); }
+                return RF.outbox.del(rec.id).then(function () { sent++; });
+              }
+              var responseError = { server: true, code: r && r.error, message: errText(r && r.error) };
+              var code = errorCode(responseError);
+              if (action === 'saveState' && r && r.error === 'CONFLICTO') RF.store.update(function (s) { s.cloud.conflict = true; }, { silent: true });
+              if (retryable(responseError)) {
+                var nextTry = (rec.tries || 0) + 1;
+                return RF.outbox.bump(rec, code, nextTry >= 5).then(function () { stop = true; });
+              }
+              return RF.outbox.bump(rec, code, true).then(function () { if (r && r.error === 'SESION_INVALIDA') stop = true; });
+            }, function (e) {
+              var nextTry = (rec.tries || 0) + 1;
+              if (!retryable(e)) return RF.outbox.bump(rec, errorCode(e), true);
+              return RF.outbox.bump(rec, errorCode(e), nextTry >= 5).then(function () { stop = true; });
+            });
+          }).catch(function (e) {
+            /* A failure to decrypt/read/reconcile the queue is not an empty queue or a successful upload. */
+            stop = true;
+            throw e;
+          });
         });
       });
       return chain;
-    }).then(function () { return RF.outbox.count(); }).then(function (left) { flushing = null; if (sent) RF.ui.toast(sent === 1 ? 'Se subió 1 archivo que estaba en la cola.' : 'Se subieron ' + sent + ' archivos que estaban en la cola.', 'ok'); return { sent: sent, left: left }; }, function () { flushing = null; return { sent: sent, left: null }; });
+    }).then(function () { return RF.outbox.count(); }).then(function (left) {
+      var attention = 0;
+      return RF.outbox.list().then(function (items) {
+        attention = items.filter(function (rec) { return rec.status === 'needs_attention'; }).length;
+        flushing = null;
+        if (sent) RF.ui.toast(sent === 1 ? 'Se subió 1 archivo pendiente.' : 'Se subieron ' + sent + ' elementos pendientes.', 'ok');
+        return { ok: true, sent: sent, left: left, needsAttention: attention };
+      });
+    }).catch(function (e) { flushing = null; return { ok: false, sent: sent, left: null, error: errorCode(e) }; });
     return flushing;
   }
   var outboxStarted = false;
@@ -98,16 +146,16 @@
   }
 
   /* Archiva la foto o PDF original de un comprobante en «4 Comprobantes/AAAA-MM» del proyecto. */
-  function saveReceipt(e, project) {
+  function saveReceipt(e, project, quiet) {
     if (!enabled()) return Promise.reject(new Error('NO_CONFIGURADO'));
     if (!e.fecha) { RF.ui.toast('Primero anota la fecha del documento: se usa para la carpeta del mes.', 'bad'); return Promise.reject(new Error('SIN_FECHA')); }
     return RF.blobs.get(e.imgId).then(function (blob) {
       if (!blob) throw new Error('La foto ya no está en este dispositivo.');
       var ext = /pdf/.test(blob.type) ? '.pdf' : /png/.test(blob.type) ? '.png' : /webp/.test(blob.type) ? '.webp' : '.jpg';
       return RF.cloud.blobToBase64(blob).then(function (b64) {
-        return send({ project: (project && project.name) || projectName(), category: 'comprobante', fileName: String(e.proveedor || 'comprobante').replace(/\s+/g, '_') + '-' + (e.folio || 'sn') + ext, mimeType: blob.type || 'image/jpeg', base64: b64, issueDate: e.fecha }, 'comprobante', false, { expId: e.id, kind: 'foto' });
+        return send({ project: (project && project.name) || projectName(), category: 'comprobante', fileName: String(e.proveedor || 'comprobante').replace(/\s+/g, '_') + '-' + (e.folio || 'sn') + ext, mimeType: blob.type || 'image/jpeg', base64: b64, issueDate: e.fecha }, 'comprobante', !!quiet, { expId: e.id, kind: 'foto' });
       });
-    }).then(function (r) { if (r.queued) return r; e.driveId = r.fileId; e.driveUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); return r; });
+    }).then(function (r) { if (!r.remote) return r; e.driveId = r.fileId; e.driveUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); return r; });
   }
 
   /* ---------- ficha del gasto: todos los datos ordenados en un texto, junto a la foto ---------- */
@@ -148,16 +196,24 @@
     if (!enabled()) return Promise.reject(new Error('NO_CONFIGURADO'));
     if (!e.fecha) { RF.ui.toast('Primero anota la fecha del documento: se usa para la carpeta del mes.', 'bad'); return Promise.reject(new Error('SIN_FECHA')); }
     return send({ project: (project && project.name) || projectName(), category: 'comprobante', fileName: baseName(e) + '.datos.txt', mimeType: 'text/plain', base64: textToB64('﻿' + fichaText(e, project, community)), issueDate: e.fecha }, 'ficha del gasto', quiet, { expId: e.id, kind: 'ficha' })
-      .then(function (r) { if (r.queued) return r; e.driveFichaAt = new Date().toISOString(); e.driveFichaUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); return r; });
+      .then(function (r) { if (!r.remote) return r; e.driveFichaAt = new Date().toISOString(); e.driveFichaUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); return r; });
   }
   /* copia de todos los datos de la app, con control de versiones: si otro equipo guardó algo más nuevo, no se pisa */
   function pushState(force) {
     var rev = cfg().rev || 0;
-    return RF.cloud.post('saveState', { state: RF.store.exportJSON(), baseRev: rev, force: !!force }, 60000).then(function (r) {
-      if (r && r.ok) { RF.store.update(function (s) { s.cloud.lastSync = new Date().toISOString(); s.cloud.rev = r.rev; s.cloud.conflict = false; }, { silent: true }); return { ok: true, rev: r.rev }; }
-      if (r && r.error === 'CONFLICTO') { RF.store.update(function (s) { s.cloud.conflict = true; }, { silent: true }); return { ok: false, conflict: true, rev: r.rev }; }
-      return { ok: false, error: r && r.error };
-    });
+    var payload = { state: RF.store.exportJSON(), baseRev: rev, force: !!force };
+    function queueSnapshot() {
+      return RF.outbox.add('saveState', 'copia de seguridad', payload, { action: 'saveState', coalesce: true, serviceUrl: serviceKey() }).then(function (id) {
+        return { ok: false, remote: false, queued: true, outboxId: id };
+      });
+    }
+    function handle(r) {
+      if (r && r.ok) { applyStateResult(r); return { ok: true, remote: true, queued: false, rev: r.rev }; }
+      if (r && r.error === 'CONFLICTO') { RF.store.update(function (s) { s.cloud.conflict = true; }, { silent: true }); return { ok: false, remote: false, conflict: true, rev: r.rev }; }
+      if (retryable({ server: true, code: r && r.error, message: r && r.error })) return queueSnapshot();
+      return { ok: false, remote: false, error: r && r.error };
+    }
+    return RF.cloud.post('saveState', payload, 60000).then(handle, function (e) { return retryable(e) ? queueSnapshot() : Promise.reject(e); });
   }
   function pullState() {
     return RF.cloud.post('loadState', {}, 60000).then(function (r) {
@@ -181,17 +237,33 @@
     });
   }
   function backupState() {
-    if (!enabled()) return Promise.resolve(null);
+    if (!enabled()) return Promise.resolve({ ok: false, remote: false, queued: false, error: 'NO_CONFIGURADO' });
     return pushState(false).then(function (r) {
       if (r.conflict) RF.ui.toast('Hay una copia más nueva en la nube (otro equipo). Ve a «Nube y copias» para combinarlas.', 'bad');
       return r;
-    }).catch(function () { return null; });
+    });
   }
 
   /* foto (si hay) + ficha con los datos + copia de seguridad */
   function archiveExpense(e, project, community) {
-    var first = e.imgId && !e.driveId ? saveReceipt(e, project) : Promise.resolve(null);
-    return first.then(function (r0) { return saveFicha(e, project, community, !!r0); }).then(function (r) { backupState(); return r; });
+    function settle(p) { return Promise.resolve(p).then(function (r) { return r; }, function (e) { return { ok: false, remote: false, queued: false, error: errorCode(e) }; }); }
+    var receipt = e.imgId && !e.driveId ? saveReceipt(e, project, true) : Promise.resolve({ ok: true, remote: true, skipped: true });
+    var result = {};
+    return settle(receipt).then(function (r) { result.receipt = r; return settle(saveFicha(e, project, community, true)); })
+      .then(function (r) { result.ficha = r; return settle(backupState()); })
+      .then(function (r) {
+        result.backup = r;
+        var parts = [result.receipt, result.ficha, result.backup].filter(function (x) { return !x.skipped; });
+        var queued = parts.filter(function (x) { return x.queued; }).length;
+        var remote = parts.filter(function (x) { return x.remote; }).length;
+        var status = remote === parts.length ? 'saved' : queued === parts.length ? 'queued' : 'partial';
+        if (!parts.length) status = 'partial';
+        var documentsLabel = result.receipt.skipped ? 'La ficha del gasto y la copia' : 'La foto del comprobante, su ficha y la copia';
+        if (status === 'saved') RF.ui.toast(documentsLabel + ' quedaron guardadas en Drive.', 'ok');
+        else if (status === 'queued') RF.ui.toast(documentsLabel + ' quedaron pendientes en este dispositivo; todavía no están en Drive.', 'info');
+        else RF.ui.toast('Guardado parcial: algunas partes están en Drive y otras siguen pendientes o requieren atención. Revisa la cola antes de darlo por terminado.', 'info');
+        return { ok: status === 'saved', remote: status === 'saved', queued: queued > 0, queuedParts: queued, status: status, parts: result };
+      });
   }
 
   /* ---------- documentos oficiales y actas (lo que llega de afuera) ---------- */
@@ -215,16 +287,43 @@
     out.push('', 'Archivo del acta: ' + (a.fileName || '—'), 'Nota: ' + (a.note || '—'));
     return out.join('\n');
   }
-  /* guarda el archivo (si hay) y una ficha de texto con los datos; devuelve el resultado del archivo o, si no hay archivo, el de la ficha */
+  /* Guarda archivo y ficha como partes separadas; el éxito remoto solo se declara si todas las partes requeridas llegaron. */
   function saveWithFicha(category, subfolder, base, rec, blob, metaText, issueDate) {
-    var ext = extOf(rec.fileName), send1 = null;
+    if (rec.blobId && !blob) return Promise.reject(new Error('ARCHIVO_LOCAL_NO_DISPONIBLE'));
+    var ext = extOf(rec.fileName), filePromise = null;
     if (blob) {
       var mime = RF.repo.mimeOf(rec.fileName, blob.type);
       if (!mime) return Promise.reject(new Error('Ese tipo de archivo no se puede guardar en el Drive (usa PDF, foto, Word o Excel)'));
-      send1 = RF.cloud.blobToBase64(blob).then(function (b64) { return send({ category: category, subfolder: subfolder, fileName: base + ext, mimeType: mime, base64: b64, issueDate: issueDate }, base + ext); });
+      filePromise = RF.cloud.blobToBase64(blob).then(function (b64) { return send({ category: category, subfolder: subfolder, fileName: base + ext, mimeType: mime, base64: b64, issueDate: issueDate }, base + ext, true); });
     }
-    return (send1 || Promise.resolve(null)).then(function (r1) {
-      return send({ category: category, subfolder: subfolder, fileName: base + '.datos.txt', mimeType: 'text/plain', base64: textToB64('﻿' + metaText), issueDate: issueDate }, 'ficha', !!r1).then(function (r2) { return r1 || r2; });
+    var fileResult = filePromise
+      ? Promise.resolve(filePromise).then(function (r) { return r; }, function (e) { return { ok: false, remote: false, queued: false, error: errorCode(e) }; })
+      : Promise.resolve({ ok: true, remote: false, queued: false, skipped: true });
+    return fileResult.then(function (r1) {
+      return Promise.resolve(send({ category: category, subfolder: subfolder, fileName: base + '.datos.txt', mimeType: 'text/plain', base64: textToB64('﻿' + metaText), issueDate: issueDate }, 'ficha', true))
+        .then(function (r) { return r; }, function (e) { return { ok: false, remote: false, queued: false, error: errorCode(e) }; })
+        .then(function (r2) {
+          var required = blob ? [r1, r2] : [r2];
+          var allRemote = required.every(function (part) { return part.remote === true; });
+          var allQueued = required.every(function (part) { return part.queued === true; });
+          var status = allRemote ? 'saved' : allQueued ? 'queued' : 'partial';
+          var primary = blob ? r1 : r2;
+          var result = Object.assign({}, primary, {
+            ok: status === 'saved',
+            remote: status === 'saved',
+            queued: required.some(function (part) { return part.queued === true; }),
+            status: status,
+            parts: { file: r1, ficha: r2 }
+          });
+          if (status !== 'saved') { delete result.fileId; delete result.url; delete result.folderUrl; }
+          if (status === 'saved') RF.ui.toast(blob ? 'El archivo original y su ficha quedaron guardados en Drive.' : 'La ficha quedó guardada en Drive.', 'ok');
+          else if (status === 'queued') RF.ui.toast(blob ? 'El archivo original y su ficha quedaron pendientes en este dispositivo; todavía no están en Drive.' : 'La ficha quedó pendiente en este dispositivo; todavía no está en Drive.', 'info');
+          else {
+            var stateText = function (part) { return part.remote ? 'guardado en Drive' : part.queued ? 'pendiente en este dispositivo, aún no está en Drive' : part.skipped ? 'no requerido' : 'requiere revisión'; };
+            RF.ui.toast('Guardado parcial. Archivo original: ' + stateText(r1) + '. Ficha: ' + stateText(r2) + '. Revisa la cola antes de darlo por terminado.', 'warn');
+          }
+          return result;
+        });
     });
   }
   function saveExternal(rec, blob) {

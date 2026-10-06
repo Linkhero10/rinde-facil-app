@@ -67,7 +67,7 @@
       h('p', { class: 'side-rules' }, 'Reglas: ' + cvi.vigencia),
       h('a', { href: '#/h/nube', class: 'side-link' + (route.name === 'tool' && route.id === 'nube' ? ' current' : '') }, UI.icon('cloud', 18), h('span', null, 'Nube y copias')),
       h('a', { href: '#/h/seguridad', class: 'side-link' + (route.name === 'tool' && route.id === 'seguridad' ? ' current' : '') }, UI.icon('shield', 18), h('span', null, 'Seguridad')),
-      h('button', { type: 'button', class: 'side-link', id: 'lockBtn', onclick: function () { RF.auth.lock('manual'); } }, UI.icon('shield', 18), h('span', null, 'Bloquear')),
+      h('button', { type: 'button', class: 'side-link', id: 'lockBtn', onclick: function () { RF.auth.lock('manual').catch(function () { RF.ui.toast('No se bloqueó la sesión porque los últimos cambios no se guardaron. Revisa el aviso superior y vuelve a intentarlo.', 'bad'); }); } }, UI.icon('shield', 18), h('span', null, 'Bloquear')),
       h('button', { type: 'button', class: 'side-link', id: 'textBtn', onclick: function () { RF.app.cycleText(); } }, UI.icon('search', 18), h('span', { id: 'textLbl' }, 'Letra')),
       h('button', { type: 'button', class: 'side-link', id: 'themeBtn', onclick: function () { RF.app.cycleTheme(); } }, UI.icon('sun', 18), h('span', { id: 'themeLbl' }, 'Tema'))));
     return side;

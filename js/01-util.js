@@ -171,6 +171,16 @@
   }
 
   /* ---------- DOM ---------- */
+  /* el navegador ignora espacios, tabulaciones, saltos y caracteres invisibles dentro del esquema de un enlace (java<tab>script:): se quitan antes de mirar */
+  function stripInvisible(v) {
+    var t = String(v), o = '';
+    for (var n = 0; n < t.length; n++) {
+      var c = t.charCodeAt(n);
+      if (c <= 32 || (c >= 127 && c <= 159) || c === 173 || (c >= 8203 && c <= 8207) || c === 8232 || c === 8233 || c === 65279) continue;
+      o += t.charAt(n);
+    }
+    return o;
+  }
   function h(tag, attrs) {
     var el = document.createElement(tag);
     if (attrs) {
@@ -185,7 +195,7 @@
         else if (k.slice(0, 2) === 'on' && typeof v === 'function') el.addEventListener(k.slice(2), v);
         else if (k === 'dataset') { for (var d in v) el.dataset[d] = v[d]; }
         else if (v === true) el.setAttribute(k, '');
-        else if ((k === 'href' || k === 'src' || k === 'action' || k === 'formaction') && /^\s*(javascript|vbscript|data)\s*:/i.test(String(v))) continue; /* enlaces que ejecutan código: se descartan */
+        else if ((k === 'href' || k === 'src' || k === 'action' || k === 'formaction') && /^(javascript|vbscript|data):/i.test(stripInvisible(v))) continue; /* enlaces que ejecutan código: se descartan */
         else el.setAttribute(k, v);
       }
     }

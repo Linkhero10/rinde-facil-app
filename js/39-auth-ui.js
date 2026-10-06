@@ -28,11 +28,12 @@
   function showErr(box, msg) { U.clear(box); if (msg) box.appendChild(UI.callout('bad', '', msg)); }
 
   /* ---------- código de recuperación ---------- */
-  function recoveryScreen(code, then) {
+  function recoveryScreen(code, then, warning) {
     var ok = h('input', { type: 'checkbox', id: 'recok' });
     var go = UI.btn('Continuar', { cls: 'primary big', onclick: function () { then(); } }); go.disabled = true;
     ok.addEventListener('change', function () { go.disabled = !ok.checked; });
     return shell('Guarda tu código de recuperación', 'Si algún día olvidas la contraseña, este código es la única forma de abrir los datos de este equipo. Anótalo en papel y guárdalo en un lugar seguro. No lo compartas por WhatsApp ni lo saques en foto.', [
+      warning ? UI.callout('warn', 'El servicio sigue con la contraseña anterior', warning) : null,
       h('div', { class: 'recovery-code', 'aria-label': 'Código de recuperación' }, code),
       h('div', { class: 'row-actions' }, UI.btn('Copiar', { icon: 'copy', cls: 'ghost', onclick: function () { U.copyText(code).then(function (okc) { UI.toast(okc ? 'Código copiado.' : 'No se pudo copiar; anótalo a mano.', okc ? 'ok' : 'bad'); }); } }),
         UI.btn('Imprimir', { icon: 'pdf', cls: 'ghost', onclick: function () { RF.exp.printDoc({ title: 'Código de recuperación de Rinde Fácil', subtitle: (V.user() || ''), blocks: [{ t: 'p', text: 'Guárdalo en un lugar seguro. Quien tenga este código puede abrir los datos de la comunidad.' }, { t: 'kv', rows: [['Código', code]] }], footer: 'Generado el ' + U.fmtDate(U.todayISO()) + '.' }); } })),
@@ -83,7 +84,15 @@
     var form = h('form', { class: 'auth-form', onsubmit: function (ev) {
       ev.preventDefault(); showErr(err, '');
       if (p1.input.value !== p2.input.value) return showErr(err, 'Las dos contraseñas no son iguales.');
-      work(A.recover(code.input.value, p1.input.value), 'Recuperando…').then(function (r) { A.goto('recovery', r.recoveryCode); }).catch(function (e) { showErr(err, e.message); });
+      work(A.recover(code.input.value, p1.input.value), 'Recuperando…').then(function (r) {
+        var warning = r.serviceTrustBlocked ? 'La bóveda de este equipo se recuperó, pero la dirección guardada del servicio no está aprobada en esta versión. No se envió el código ni se modificó el acceso remoto. Pide verificar y aprobar la dirección antes de conectar.'
+          : r.serverReset === false ? 'La bóveda de este equipo ya cambió y se generó el código nuevo que aparece abajo, pero el servicio remoto no confirmó el restablecimiento. El Drive todavía puede exigir la contraseña anterior. No borres esta sesión ni pierdas el código; vuelve a intentar cuando el servicio esté disponible.'
+          : r.serverAccountMissing ? 'La recuperación cambió la bóveda de este equipo, pero el servicio conectado todavía no tiene una cuenta creada. El código de abajo sirve para este equipo; no se modificó ningún acceso remoto.' : '';
+        A.goto('recovery', { code: r.recoveryCode, warning: warning });
+      }).catch(function (e) {
+        if (e && e.code === 'LOCAL_RECOVERY_COMMIT_FAILED_AFTER_REMOTE' && e.recoveryCode) A.goto('recovery', { code: e.recoveryCode, warning: e.message });
+        else showErr(err, e.message);
+      });
     } }, code.node, p1.node, p2.node, err, h('button', { type: 'submit', class: 'btn primary big' }, 'Cambiar contraseña'));
     return shell('Recuperar el acceso', 'Con el código de recuperación puedes elegir una contraseña nueva sin perder tus datos.', [form, h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('lock'); } }, 'Volver')]);
   }
@@ -97,7 +106,7 @@
       ev.preventDefault(); showErr(err, '');
       work(A.connectDevice(url.input.value.trim(), name.input.value, pw.input.value), 'Conectando…').then(function () { }).catch(function (e) { showErr(err, e.message); });
     } }, url.node, name.node, pw.node, err, h('button', { type: 'submit', class: 'btn primary big' }, 'Conectar este equipo'));
-    return shell('Conectar este equipo', 'Usa la dirección del servicio y la contraseña de tu comunidad. Se traerán los datos guardados en el Drive y se protegerán en este equipo.', [form, h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('none'); } }, 'Volver')]);
+    return shell('Conectar este equipo', 'Esta publicación no trae una dirección de servicio aprobada. No pegues una URL recibida por mensaje: hasta verificar y aprobar el servicio de tu comunidad, Rinde Fácil no enviará contraseñas ni documentos.', [UI.callout('info', 'Servicio aún no configurado', 'La app sigue funcionando en este equipo. La conexión con OCR y Drive se habilitará cuando exista una publicación aprobada para el servicio de tu comunidad.'), form, h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('none'); } }, 'Volver')]);
   }
 
   function insecureScreen() {
@@ -108,7 +117,10 @@
   var view = null, arg = null;
   function screen(phase) {
     if (phase === 'insecure') return insecureScreen();
-    if (view === 'recovery') return recoveryScreen(arg, function () { view = null; arg = null; A.touch(); RF.app.render(); });
+    if (view === 'recovery') {
+      var recovery = arg && typeof arg === 'object' ? arg : { code: arg, warning: '' };
+      return recoveryScreen(recovery.code, function () { view = null; arg = null; A.touch(); RF.app.render(); }, recovery.warning);
+    }
     if (view === 'connect') return connectScreen();
     if (view === 'recover' && phase === 'locked') return recoverScreen();
     if (view === 'lock' && phase === 'locked') return lockScreen(A.reason());
@@ -129,7 +141,7 @@
       var rows = [
         ['Datos de este equipo cifrados (AES-256)', true, 'Sin la contraseña o el código de recuperación no se pueden abrir.'],
         ['Código de recuperación', !!m.wrapR, m.wrapR ? 'Existe. Si lo perdiste, cambia la contraseña y se genera uno nuevo.' : 'Este equipo no tiene uno (se conectó a un servicio ya creado).'],
-        ['Servicio de la comunidad', RF.cloud.configured(), RF.cloud.configured() ? (tk ? 'Sesión abierta.' : 'Sin sesión todavía (se abre sola al usarlo).') : 'No conectado.'],
+        ['Servicio de la comunidad', RF.cloud.configured(), RF.cloud.configured() ? (tk ? 'Sesión abierta.' : 'Sesión cerrada; se abrirá al usarlo.') : (s.cloud.apiUrl ? 'Dirección no aprobada; no se envían datos.' : 'No conectado.')],
         ['Cierre por inactividad', true, (Number(s.ui.idleMinutes) || 15) + ' minutos']
       ];
       status.appendChild(h('ul', { class: 'sec-list' }, rows.map(function (r) { return h('li', { class: r[1] ? 'ok' : 'warn' }, h('span', { class: 'sec-ico' }, UI.icon(r[1] ? 'check' : 'alert', 18)), h('span', null, h('strong', null, r[0]), h('span', { class: 'muted small' }, ' · ' + r[2]))); })));
@@ -139,8 +151,11 @@
 
     var idle = UI.field('Cerrar la sesión si no la usas por', s.ui, 'idleMinutes', { type: 'select', noEmpty: true, options: [{ id: 5, name: '5 minutos' }, { id: 15, name: '15 minutos' }, { id: 30, name: '30 minutos' }, { id: 60, name: '1 hora' }], onChange: function (v) { s.ui.idleMinutes = Number(v); RF.store.update(function () { }, { silent: true }); paintStatus(); } });
     root.appendChild(UI.section('Esta sesión', [idle, h('div', { class: 'row-actions' },
-      UI.btn('Bloquear ahora', { icon: 'shield', cls: 'primary', onclick: function () { A.lock('manual'); } }),
-      RF.cloud.configured() ? UI.btn('Cerrar sesión en todos los dispositivos', { icon: 'close', cls: 'ghost', onclick: function () { A.logoutServer(true).then(function () { msg('ok', 'Se cerraron las sesiones con el servicio. Cada dispositivo tendrá que volver a entrar.'); paintStatus(); }); } }) : null)]));
+      UI.btn('Bloquear ahora', { icon: 'shield', cls: 'primary', onclick: function () { A.lock('manual').catch(function () { UI.toast('No se bloqueó la sesión porque los últimos cambios no se guardaron. Revisa el aviso superior y vuelve a intentarlo.', 'bad'); }); } }),
+      RF.cloud.configured() ? UI.btn('Cerrar sesión en todos los dispositivos', { icon: 'close', cls: 'ghost', onclick: function () {
+        A.logoutServer(true).then(function () { msg('ok', 'El servicio confirmó el cierre de las sesiones. Cada dispositivo tendrá que volver a entrar.'); paintStatus(); })
+          .catch(function (e) { msg('bad', 'No se pudo confirmar el cierre de las sesiones: ' + (e.message || e)); });
+      } }) : null)]));
 
     /* cambiar contraseña */
     var o = passField('Contraseña actual'), n1 = passField('Contraseña nueva', { autocomplete: 'new-password', hint: 'Al menos 10 caracteres.' }), n2 = passField('Repite la contraseña nueva', { autocomplete: 'new-password' });
@@ -148,9 +163,12 @@
       ev.preventDefault();
       if (n1.input.value !== n2.input.value) return msg('bad', 'Las dos contraseñas nuevas no son iguales.');
       var old = o.input.value, nw = n1.input.value;
-      work(V.changePassword(old, nw).then(function () { return RF.cloud.configured() ? A.serverChangePassword(old, nw).catch(function (e) { return { warn: e.message }; }) : null; }), 'Cambiando…').then(function (r) {
+      work(A.changePassword(old, nw), 'Cambiando…').then(function (r) {
         o.input.value = n1.input.value = n2.input.value = '';
-        msg(r && r.warn ? 'warn' : 'ok', r && r.warn ? 'La contraseña cambió en este equipo, pero el servicio dijo: ' + r.warn : 'Listo. Desde ahora usa la contraseña nueva; las sesiones de los demás dispositivos se cerraron.');
+        if (r.remoteChanged) msg('ok', 'La contraseña cambió en este equipo y el servicio confirmó el cambio; las demás sesiones se cerraron.');
+        else if (r.remoteTrustBlocked) msg('warn', 'La contraseña cambió solo en este equipo. La dirección del servicio no está aprobada en esta versión; no se envió la contraseña ni se cambió nada en la nube.');
+        else if (r.remoteAccountMissing) msg('warn', 'La contraseña cambió solo en este equipo. El servicio está configurado, pero todavía no tiene una cuenta creada.');
+        else msg('warn', 'La contraseña cambió solo en este equipo. No hay un servicio conectado; sus datos remotos no se modificaron.');
       }).catch(function (e) { msg('bad', e.message); });
     } }, o.node, n1.node, n2.node, h('button', { type: 'submit', class: 'btn' }, 'Cambiar contraseña'))]));
     root.appendChild(out);

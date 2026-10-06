@@ -9,18 +9,62 @@ const { chromium } = createRequire('D:/SMI/_FARO/runtime/package.json')('playwri
 
 const BASE = process.env.RF_URL || 'http://127.0.0.1:8790/index.html';
 const SHOTS = process.env.RF_SHOTS || 'D:/Temp/felip/claude/D--/abfc786f-cb73-42ec-bcbc-6654ab03f71c/scratchpad/shots';
+const DOWNLOADS = process.env.RF_DOWNLOADS || 'D:/SMI/_FARO/tmp/playwright-downloads';
+const TEST_API_URL = new URL('/exec', BASE).toString();
 const PY = 'D:/FARO_GLOBAL/.venvs/faro-runtime/Scripts/python.exe';
 fs.mkdirSync(SHOTS, { recursive: true });
+fs.mkdirSync(DOWNLOADS, { recursive: true });
 import { fileURLToPath } from 'node:url';
 const FIXTURE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'boleta-ficticia.jpg');
 
 const results = [];
 async function step(name, fn) {
   try { await fn(); results.push({ name, ok: true }); console.log('PASS', name); }
-  catch (e) { results.push({ name, ok: false, err: String(e.message || e).split('\n').slice(0, 4).join(' | ') }); console.log('FAIL', name, '->', String(e.message || e).split('\n').slice(0, 4).join(' | ')); }
+  catch (e) {
+    results.push({ name, ok: false, err: String(e.message || e).split('\n').slice(0, 4).join(' | ') });
+    let diagnostic = '';
+    if (process.env.RF_DIAGNOSTICS === '1' && typeof page !== 'undefined') {
+      const browserState = await page.evaluate(async () => ({
+        online: navigator.onLine,
+        authPhase: RF.auth && RF.auth.phase(),
+        hasToken: !!(RF.auth && RF.auth.token && RF.auth.token()),
+        apiUrl: RF.store && RF.store.get().cloud.apiUrl,
+        serviceTrusted: RF.cloud && RF.cloud.configured(),
+        origin: location.origin,
+        outboxCount: RF.outbox ? await RF.outbox.count() : null,
+        toast: document.getElementById('toasts')?.textContent || ''
+      })).catch(err => ({ unavailable: String(err.message || err) }));
+      diagnostic = ' DIAG ' + JSON.stringify({ browserState, recentCalls: stub.store.calls.slice(-12).map(({ action, ok, error, hadToken, category, subfolder }) => ({ action, ok, error, hadToken, category, subfolder })) });
+    }
+    console.log('FAIL', name, '->', String(e.message || e).split('\n').slice(0, 4).join(' | ') + diagnostic);
+  }
 }
 function eq(a, b, msg) { if (a !== b) throw new Error((msg || 'no coincide') + ': esperado ' + JSON.stringify(b) + ' y llegó ' + JSON.stringify(a)); }
 function ok(c, msg) { if (!c) throw new Error(msg || 'falló la condición'); }
+async function dragFileTo(selector, file) {
+  await page.locator(selector).evaluate((zone, payload) => {
+    const bytes = payload.base64
+      ? Uint8Array.from(atob(payload.base64), c => c.charCodeAt(0))
+      : new TextEncoder().encode(payload.text || '');
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], payload.name, { type: payload.type }));
+    zone.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+  }, file);
+}
+async function saveDownload(page, file) {
+  const output = await page.evaluate(async () => {
+    const item = window.__rfDownloads && window.__rfDownloads[window.__rfDownloads.length - 1];
+    if (!item || !item.filename) return null;
+    const bytes = new Uint8Array(await item.blob.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return { name: item.filename, type: item.blob.type, base64: btoa(binary) };
+  });
+  if (!output) throw new Error('La app no generó el archivo para descargar.');
+  fs.writeFileSync(file, Buffer.from(output.base64, 'base64'));
+  return output;
+}
 function xlsxInfo(file) {
   const py = `import openpyxl,json,sys
 wb=openpyxl.load_workbook(sys.argv[1]);ws=wb.worksheets[0]
@@ -32,9 +76,45 @@ print(json.dumps({'sheets':wb.sheetnames,'cells':cells},ensure_ascii=False,defau
 }
 
 const stub = await startStub(8791);
-const browser = await chromium.launch({ headless: true });
+async function routeTestService(page) {
+  await page.route(TEST_API_URL, async route => {
+    const req = route.request();
+    /* BrowserContext.setOffline no afecta a un fetch hecho por Node desde el handler.
+       Reflejamos el estado offline explícitamente para que el E2E pruebe la cola real. */
+    if (testNetworkOffline) return route.abort('internetdisconnected');
+    const response = await fetch(stub.url, {
+      method: req.method(),
+      headers: { 'content-type': req.headers()['content-type'] || 'application/json' },
+      body: req.postData() || undefined
+    });
+    await route.fulfill({
+      status: response.status,
+      headers: { 'content-type': response.headers.get('content-type') || 'application/json' },
+      body: await response.text()
+    });
+  });
+}
+let testNetworkOffline = false;
+const browser = await chromium.launch({ headless: true, downloadsPath: DOWNLOADS });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] });
 const page = await ctx.newPage();
+await page.addInitScript(() => {
+  const downloads = [];
+  const create = URL.createObjectURL.bind(URL);
+  URL.createObjectURL = blob => {
+    const url = create(blob);
+    if (blob instanceof Blob) downloads.push({ url, blob, filename: '' });
+    return url;
+  };
+  document.addEventListener('click', event => {
+    const link = event.target && event.target.closest && event.target.closest('a[download]');
+    if (!link) return;
+    const item = downloads.find(entry => entry.url === link.href);
+    if (item) { item.filename = link.download; event.preventDefault(); }
+  }, true);
+  window.__rfDownloads = downloads;
+});
+await routeTestService(page);
 const errors = [];
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', e => errors.push('PAGEERROR ' + e.message));
@@ -138,8 +218,8 @@ await step('5. Carta Gantt: etapas, actividades, meses y Excel real', async () =
   ok(/92 d/.test(await page.locator('.edit-grid output').first().textContent()), 'calcula 92 días');
   ok((await page.locator('.gantt-grid td.gbar').count()) === 3, 'tres meses coloreados');
   await shot('05-gantt');
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Excel' }).click()]);
-  const f = tmp('gantt.xlsx'); await dl.saveAs(f);
+  await page.getByRole('button', { name: 'Excel' }).click();
+  const f = tmp('gantt.xlsx'); await saveDownload(page, f);
   const info = xlsxInfo(f);
   ok(info.cells.includes('Taller de artesanía'), 'el Excel trae la actividad');
   ok(info.sheets[0] === 'Carta Gantt', 'nombre de hoja');
@@ -224,8 +304,8 @@ await step('9. Anexo 4: días y montos se calculan; Word, PDF y texto salen', as
   await page.waitForTimeout(200);
   ok(/120\.000/.test(await page.textContent('.edit-grid')), '3 días × 40.000 = 120.000');
   await shot('09-anexo4');
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Word' }).first().click()]);
-  const f = tmp('anexo4.doc'); await dl.saveAs(f);
+  await page.getByRole('button', { name: 'Word' }).first().click();
+  const f = tmp('anexo4.doc'); await saveDownload(page, f);
   ok(fs.readFileSync(f, 'utf8').includes('Juana Pérez'), 'el Word trae el nombre');
   await page.getByRole('button', { name: 'PDF' }).first().click();
   await page.waitForSelector('.print-overlay iframe');
@@ -247,8 +327,8 @@ await step('10. Anexo 5 calcula el monto a rendir y el Excel trae la fórmula de
   await row.locator('input[data-key="pct"]').fill('30');
   await page.waitForTimeout(200);
   ok(/30\.000/.test(await row.textContent()), '100.000 × 30 % = 30.000');
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Excel' }).click()]);
-  const f = tmp('anexo5.xlsx'); await dl.saveAs(f);
+  await page.getByRole('button', { name: 'Excel' }).click();
+  const f = tmp('anexo5.xlsx'); await saveDownload(page, f);
   const py = `import openpyxl,sys;wb=openpyxl.load_workbook(sys.argv[1]);ws=wb.worksheets[0];print([c.value for r in ws.iter_rows() for c in r if isinstance(c.value,str) and c.value.startswith('=')])`;
   const r = spawnSync(PY, ['-c', py, f], { encoding: 'utf8' });
   ok(/=SUM\(/.test(r.stdout), 'hay fórmulas SUM: ' + r.stdout);
@@ -265,7 +345,7 @@ await step('11. Revisión cruza gastos, anexos y presupuesto y ofrece "Arreglar"
 
 await step('12. Foto de un comprobante: OCR en la nube (servicio de prueba) rellena y exige revisión humana', async () => {
   await go('#/h/nube');
-  await page.getByLabel('Dirección del servicio (termina en /exec)').fill(stub.url);
+  await page.getByLabel('Dirección del servicio (termina en /exec)').fill(TEST_API_URL);
   ok(!(await page.getByLabel('Clave de acceso').count()), 'ya no existe la clave compartida');
   await page.getByRole('button', { name: 'Probar conexión' }).click();
   await page.waitForFunction(() => /Conectado/.test(document.querySelector('.tool-page').textContent), null, { timeout: 8000 });
@@ -277,7 +357,11 @@ await step('12. Foto de un comprobante: OCR en la nube (servicio de prueba) rell
   await page.waitForFunction(() => /Cuenta creada/.test(document.querySelector('.tool-page').textContent), null, { timeout: 15000 });
   await go('#/h/gastos');
   stub.store.ocrDelay = 2200; /* el servicio de prueba se demora, como Google */
-  await page.locator('input[type=file][multiple]').setInputFiles(FIXTURE);
+  const beforeUnsupported = await page.evaluate(() => RF.forms.ctxNow().project.expenses.length);
+  await dragFileTo('.file-drop[data-kind="expense"]', { name: 'programa-no-admitido.exe', type: 'application/x-msdownload', text: 'no ejecutar' });
+  eq(await page.evaluate(() => RF.forms.ctxNow().project.expenses.length), beforeUnsupported, 'rechaza extensiones que no son comprobantes');
+  ok(/no se puede usar/i.test(await page.textContent('#toasts')), 'explica por qué no agregó el archivo');
+  await dragFileTo('.file-drop[data-kind="expense"]', { name: 'boleta-ficticia.jpg', type: 'image/jpeg', base64: fs.readFileSync(FIXTURE).toString('base64') });
   await page.waitForSelector('.busy', { timeout: 5000 });
   ok(/Leyendo el comprobante/.test(await page.textContent('.busy')), 'muestra qué está haciendo');
   const p1 = +(await page.getAttribute('.busy [role=progressbar]', 'aria-valuenow'));
@@ -350,15 +434,16 @@ await step('12d. Lo que se saca (Excel de la Carta Gantt) queda también en el D
 await step('12e. Sin conexión: el archivo queda en una cola cifrada y se sube solo al volver', async () => {
   await go('#/h/gantt');
   const before = stub.store.calls.filter(x => x.action === 'saveFile').length;
+  testNetworkOffline = true;
   await ctx.setOffline(true);
   try {
   await page.getByRole('button', { name: 'Excel' }).first().click();
-  await page.waitForFunction(() => /quedó en la cola/.test(document.getElementById('toasts').textContent), null, { timeout: 10000 });
-  eq(await page.evaluate(() => RF.outbox.count()), 1, 'un archivo en la cola');
+  await page.waitForFunction(async () => await RF.outbox.count() === 1, null, { timeout: 10000 });
+  eq(await page.evaluate(() => RF.outbox.count()), 1, 'un archivo en la cola cifrada');
   const raw = await page.evaluate(async () => JSON.stringify(await RF.outbox.list()));
   ok(!raw.includes('Sede comunitaria') && !raw.includes('UEsD'), 'la cola no guarda nada legible: ' + raw.slice(0, 300));
   eq(stub.store.calls.filter(x => x.action === 'saveFile').length, before, 'sin conexión no llegó nada');
-  } finally { await ctx.setOffline(false); errors.splice(0, errors.length, ...errors.filter(x => !/ERR_INTERNET_DISCONNECTED/.test(x))); }
+  } finally { testNetworkOffline = false; await ctx.setOffline(false); errors.splice(0, errors.length, ...errors.filter(x => !/ERR_INTERNET_DISCONNECTED/.test(x))); }
   const r = await page.evaluate(() => RF.drive.flushOutbox());
   eq(r.sent, 1, 'se subió'); eq(r.left, 0, 'la cola quedó vacía');
   eq(stub.store.calls.filter(x => x.action === 'saveFile').length, before + 1, 'llegó al servicio al volver la conexión');
@@ -406,6 +491,8 @@ await step('13c. Bloquear: sin contraseña no se ve nada; contraseña mala no en
   await page.getByRole('button', { name: 'Entrar' }).click();
   await page.waitForSelector('.side', { timeout: 15000 });
   eq((await page.evaluate(() => RF.store.get().projects.length)), 2, 'los datos siguen ahí');
+  const cloudAfterUnlock = await page.evaluate(() => RF.store.get().cloud.apiUrl);
+  eq(cloudAfterUnlock, TEST_API_URL, 'la dirección aprobada sobrevive al bloqueo y desbloqueo');
 });
 
 await step('13d. Olvidé la contraseña: el código de recuperación abre y entrega uno nuevo', async () => {
@@ -423,7 +510,9 @@ await step('13d. Olvidé la contraseña: el código de recuperación abre y entr
   await page.getByRole('button', { name: 'Continuar' }).click();
   await page.waitForSelector('.side');
   eq((await page.evaluate(() => RF.store.get().projects.length)), 2, 'sin perder datos');
-  ok(stub.store.calls.some(c => c.action === 'resetPassword' && c.ok), 'el servicio también aceptó la contraseña nueva');
+  ok(await page.evaluate(() => RF.cloud.configured()), 'el servicio sigue aprobado al recuperar la bóveda');
+  const remoteReset = stub.store.calls.filter(c => c.action === 'resetPassword');
+  ok(remoteReset.some(c => c.ok), 'el servicio también aceptó la contraseña nueva; respuestas: ' + JSON.stringify(remoteReset));
   await page.evaluate(() => RF.auth.lock('manual'));
   await page.waitForSelector('.auth-card');
   await passwords().nth(0).fill(PW);
@@ -432,6 +521,18 @@ await step('13d. Olvidé la contraseña: el código de recuperación abre y entr
   await passwords().nth(0).fill(PW2);
   await page.getByRole('button', { name: 'Entrar' }).click();
   await page.waitForSelector('.side', { timeout: 15000 });
+});
+
+await step('13e. Un desconocido no puede dejar a la comunidad fuera: el equipo conocido sigue entrando', async () => {
+  const dev = await page.evaluate(() => RF.store.get().cloud.device || '');
+  ok(/^[0-9a-f]{64}$/.test(dev), 'este equipo guardó su credencial');
+  ok(!(await page.evaluate(() => RF.store.exportJSON())).includes(dev), 'la credencial no viaja en las copias');
+  for (let i = 0; i < 6; i++) await fetch(stub.url, { method: 'POST', body: JSON.stringify({ action: 'login', user: 'Comunidad de Prueba', authKey: Buffer.from('x' + i + 'x'.repeat(40)).toString('base64') }) });
+  const bloqueado = await (await fetch(stub.url, { method: 'POST', body: JSON.stringify({ action: 'login', user: 'Comunidad de Prueba', authKey: 'A'.repeat(43) + '=' }) })).json();
+  eq(bloqueado.error, 'BLOQUEADO', 'el ataque sí bloqueó a quien no tiene equipo conocido');
+  const r = await page.evaluate(async () => { RF.auth.dropToken(); const x = await RF.cloud.post('audit', {}, 30000); return x && x.ok; });
+  ok(r === true, 'la app entró igual con la credencial de equipo');
+  stub.store.env.ctx.rfNow_ = () => Date.now() + 16 * 60000; /* pasan los 15 minutos del bloqueo */
 });
 
 await step('14. Observaciones: 10 días hábiles desde la comunicación', async () => {
@@ -556,7 +657,64 @@ await step('15d. Documentos oficiales: subir el acta de no objeción; queda regi
   await shot('15d-documentos');
 });
 
-await step('15e. Actas de mesas de trabajo: aviso de asistencia mínima, compromisos pendientes y Drive', async () => {
+await step('15e. PEA observado, respuesta de la comunidad, versión corregida y documento misceláneo', async () => {
+  const beforeDocs = await page.evaluate(() => (RF.store.get().repo?.docs || []).length);
+  const callsBefore = stub.store.calls.filter(x => x.action === 'saveFile' && x.category === 'oficial').length;
+  await go('#/h/documentos');
+  await page.getByRole('button', { name: 'Agregar un documento' }).first().click();
+  await dragFileTo('.file-drop[data-kind="official"]', { name: 'pea-observado-sintetico.pdf', type: 'application/pdf', text: '%PDF-1.4\n% Simulación: CORFO pide corregir actividades y presupuesto.\n%%EOF' });
+  ok(/pea-observado-sintetico\.pdf/.test(await page.textContent('.file-pick')), 'el archivo soltado queda seleccionado');
+  eq(await page.evaluate(() => (RF.store.get().repo?.docs || []).length), beforeDocs, 'soltar el archivo no lo guarda todavía');
+  await page.getByLabel('¿Qué documento es?').selectOption('pea_observado');
+  await page.getByLabel('Título (opcional)').fill('PEA observado — simulación');
+  await page.getByLabel('Nota (opcional)').fill('CORFO solicita corregir actividades y presupuesto. Caso ficticio para prueba.');
+  await page.getByLabel('Actividades', { exact: true }).check();
+  await page.getByLabel('Presupuesto', { exact: true }).check();
+  ok(/reitemización/.test(await page.textContent('.tool-page')) && /asamblea/.test(await page.textContent('.tool-page')), 'explica las acciones sugeridas para un cambio del PEA');
+  ok(!/10 días hábiles/.test(await page.textContent('.tool-page')), 'no traslada al PEA el plazo de observaciones de gastos');
+  await page.getByRole('button', { name: 'Guardar el documento' }).click();
+  await page.waitForFunction(() => (RF.store.get().repo?.docs || []).some(d => d.type === 'pea_observado'));
+  const observed = await page.evaluate(() => {
+    const d = RF.store.get().repo.docs.find(x => x.type === 'pea_observado');
+    return { from: d.from, peaChange: d.peaChange, changes: d.changes, name: d.fileName, blob: d.blobId };
+  });
+  eq(observed.from, 'corfo'); eq(observed.peaChange, 'si'); eq(observed.changes.actividades, true); eq(observed.changes.presupuesto, true);
+  ok(observed.name === 'pea-observado-sintetico.pdf' && observed.blob, 'conserva el adjunto local con nombre y blob');
+  await page.waitForTimeout(600);
+  const observedCalls = stub.store.calls.filter(x => x.action === 'saveFile' && x.category === 'oficial').slice(callsBefore);
+  ok(observedCalls.filter(x => x.subfolder === 'PEA y sus cambios').length >= 2, 'el servicio simulado recibió archivo y ficha del PEA observado');
+  ok(observedCalls.some(x => x.mimeType === 'application/pdf' && /\.pdf$/i.test(x.fileName || '') && x.bytes > 20), 'la simulación conserva el PDF original, no solo una ficha');
+  await page.locator('table.list-grid tr').filter({ hasText: 'PEA observado — simulación' }).getByRole('button', { name: 'Editar' }).click();
+  await page.getByRole('button', { name: 'Preparar la solicitud de cambio' }).click();
+  await page.waitForFunction(() => location.hash.includes('/h/reitem') && location.hash.includes('TRM-028'));
+  await go('#/h/documentos');
+
+  async function addOfficial(type, name, title, note) {
+    await go('#/h/documentos');
+    await page.getByRole('button', { name: 'Agregar un documento' }).first().click();
+    await dragFileTo('.file-drop[data-kind="official"]', { name, type: 'application/pdf', text: '%PDF-1.4\n% Documento sintético de prueba.\n%%EOF' });
+    await page.getByLabel('¿Qué documento es?').selectOption(type);
+    await page.getByLabel('Título (opcional)').fill(title);
+    if (note) await page.getByLabel('Nota (opcional)').fill(note);
+    await page.getByRole('button', { name: 'Guardar el documento' }).click();
+    await page.waitForFunction((expected) => (RF.store.get().repo?.docs || []).some(d => d.type === expected.type && d.fileName === expected.name), { type, name });
+  }
+  await addOfficial('pea_enviado', 'respuesta-comunidad-sintetica.pdf', 'Respuesta de la comunidad — PEA corregido', 'Se reenvía una propuesta corregida a CORFO. Simulación, no enviada de verdad.');
+  await addOfficial('pea_corregido', 'pea-version-final-sintetica.pdf', 'PEA corregido — versión simulada', 'Respuesta ficticia de CORFO para probar el historial.');
+  await addOfficial('otro', 'respaldo-miscelaneo-sintetico.pdf', 'Documento de prueba misceláneo', 'Archivo ficticio para verificar la carpeta Otros.');
+  const docs = await page.evaluate(() => RF.store.get().repo.docs.map(d => ({ type: d.type, from: d.from, name: d.fileName, blob: d.blobId })));
+  eq(docs.length, beforeDocs + 4, 'quedan registrados observación, respuesta, versión final y otro respaldo');
+  ok(docs.some(d => d.type === 'pea_enviado' && d.from === 'comunidad'), 'la respuesta queda atribuida a la comunidad');
+  ok(docs.some(d => d.type === 'pea_corregido' && d.from === 'corfo'), 'la versión corregida queda atribuida a CORFO');
+  ok(docs.every(d => d.blob), 'cada documento conserva un adjunto local');
+  await page.waitForTimeout(700);
+  const allOfficial = stub.store.calls.filter(x => x.action === 'saveFile' && x.category === 'oficial').slice(callsBefore);
+  ok(allOfficial.some(x => x.subfolder === 'Otros'), 'el respaldo misceláneo se ordena en la carpeta Otros del Drive simulado');
+  ok(allOfficial.filter(x => x.fileName && /\.datos\.txt$/.test(x.fileName)).length >= 4, 'cada archivo tiene su ficha de contexto');
+  await shot('15e-pea-observado-respuesta-y-otros');
+});
+
+await step('15f. Actas de mesas de trabajo: aviso de asistencia mínima, compromisos pendientes y Drive', async () => {
   await go('#/h/actas');
   await page.getByRole('button', { name: 'Agregar un acta' }).click();
   await page.getByLabel('Representantes de CORFO').fill('1');
@@ -566,7 +724,7 @@ await step('15e. Actas de mesas de trabajo: aviso de asistencia mínima, comprom
   await page.getByLabel('Temas tratados').fill('Cambio de cronograma del proyecto.');
   await page.getByRole('button', { name: 'Agregar un acuerdo' }).click();
   await page.getByLabel('Acuerdo o compromiso').fill('Enviar el PEA corregido');
-  await page.locator('.file-pick input[type=file]').setInputFiles(FIXTURE);
+  await dragFileTo('.file-drop[data-kind="acta"]', { name: 'acta-mesa-sintetica.pdf', type: 'application/pdf', text: '%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF' });
   await page.getByRole('button', { name: 'Guardar el acta' }).click();
   await page.waitForSelector('table.list-grid');
   await page.waitForTimeout(800);
@@ -579,7 +737,7 @@ await step('15e. Actas de mesas de trabajo: aviso de asistencia mínima, comprom
   await shot('15e-actas');
 });
 
-await step('15f. Resumen para el Organismo Colaborador: elige qué incluye, exige autorización y no lleva datos de terceros', async () => {
+await step('15g. Resumen para el Organismo Colaborador: elige qué incluye, exige autorización y no lleva datos de terceros', async () => {
   await go('#/h/compartir');
   await page.waitForSelector('#part-avance');
   ok(/Elige qué quieres incluir/.test(await page.textContent('.tool-page')), 'sin elegir nada no muestra nada');
@@ -592,12 +750,25 @@ await step('15f. Resumen para el Organismo Colaborador: elige qué incluye, exig
   ok(/Falta tu autorización/.test(await page.textContent('.tool-page')));
   await page.locator('#consent-oc').check();
   await page.getByRole('button', { name: 'Excel' }).waitFor({ timeout: 5000 });
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Excel' }).click()]);
-  ok(/resumen-organismo-colaborador/.test(dl.suggestedFilename()), dl.suggestedFilename());
+  await page.getByRole('button', { name: 'Excel' }).click();
+  const f = tmp('resumen-organismo-colaborador.xlsx');
+  const output = await saveDownload(page, f);
+  ok(/resumen-organismo-colaborador/.test(output.name), output.name);
+  const cells = JSON.stringify(xlsxInfo(f).cells);
+  ok(!/Fantas[ií]a|76\.123\.456|1042|Proveedora/.test(cells), 'el Excel no incorpora proveedores, RUT ni folios');
   const sh = await page.evaluate(() => RF.store.get().shares || []);
   eq(sh.length, 1); eq(sh[0].parts.length, 5, 'queda anotado qué se compartió y cuándo');
   await page.locator('#part-rendicion').uncheck();
   ok(!/Montos por cuenta/.test(await page.textContent('.share-preview')), 'lo desmarcado desaparece');
+});
+
+await step('15h. Los enlaces que ejecutan código se descartan, también con tabulaciones o saltos dentro del esquema', async () => {
+  const r = await page.evaluate(() => {
+    const malos = ['javascript:alert(1)', ' JavaScript:alert(1)', 'java' + String.fromCharCode(9) + 'script:alert(1)', 'java' + String.fromCharCode(10) + 'script:alert(1)', 'jav' + String.fromCharCode(13) + 'ascript:alert(1)', String.fromCharCode(1) + 'javascript:alert(1)', 'vbscript:x', 'data:text/html,<b>x</b>', 'DaTa:text/html,x', 'java' + String.fromCharCode(0x200b) + 'script:alert(1)'];
+    const buenos = ['https://drive.google.com/x', '#/h/nube', 'mailto:a@b.cl', 'blob:https://x/1'];
+    return { malos: malos.filter(u => RF.util.h('a', { href: u }).hasAttribute('href')), buenos: buenos.filter(u => !RF.util.h('a', { href: u }).hasAttribute('href')) };
+  });
+  eq(JSON.stringify(r.malos), '[]', 'se colaron'); eq(JSON.stringify(r.buenos), '[]', 'se descartaron enlaces buenos');
 });
 
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });
@@ -605,11 +776,12 @@ await step('16. Sin errores de consola en todo el recorrido', async () => { ok(e
 /* ---- celular ---- */
 const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, acceptDownloads: true });
 const m = await mctx.newPage();
+await routeTestService(m);
 const merr = []; m.on('pageerror', e => merr.push(e.message));
 await m.goto(BASE);
 await m.waitForSelector('.auth-card');
 await m.getByRole('button', { name: 'Ya tengo un servicio de mi comunidad y este equipo es nuevo' }).click();
-await m.getByLabel('Dirección del servicio (termina en /exec)').fill(stub.url);
+await m.getByLabel('Dirección del servicio (termina en /exec)').fill(TEST_API_URL);
 await m.getByLabel('Nombre de la comunidad').fill('comunidad DE prueba');
 await m.locator('input[type=password]').fill(PW2);
 await m.getByRole('button', { name: 'Conectar este equipo' }).click();

@@ -53,6 +53,6 @@ export function makeEnv(props = {}, visionResult, opts = {}) {
   vm.runInContext(code, ctx);
   const env = { ctx, P, rootHolder, t: null, call: (payload, raw) => JSON.parse(ctx.doPost({ postData: { contents: raw !== undefined ? raw : JSON.stringify(payload) } }).content) };
   const code0 = props.RINDE_FACIL_SETUP_CODE || props.RINDE_FACIL_ACCESS_KEY;
-  if (code0 && !opts.anon) { const r = env.call(Object.assign({ action: 'setup', setupCode: code0 }, ACC)); if (!r.ok) throw new Error('setup: ' + JSON.stringify(r)); env.t = r.token; }
+  if (code0 && !opts.anon) { const r = env.call(Object.assign({ action: 'setup', setupCode: code0 }, ACC)); if (!r.ok) throw new Error('setup: ' + JSON.stringify(r)); env.t = r.token; env.device = r.device; }
   return env;
 }

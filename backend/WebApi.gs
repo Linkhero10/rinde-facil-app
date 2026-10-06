@@ -198,6 +198,7 @@ function rfSetup_(p) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(15000)) return { ok: false, error: 'OCUPADO' };
   try {
+    if (!rfSessionValid_(p && p.t)) return { ok: false, error: 'SESION_INVALIDA' };
     const root = rfRoot_();
     rfSub_(root, RF_WEB.backupsName);
     Object.keys(RF_WEB.rootCategories).forEach(function (k) { rfSub_(root, RF_WEB.rootCategories[k]); });
@@ -216,6 +217,7 @@ function rfSaveState_(p) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) return { ok: false, error: 'OCUPADO' };
   try {
+    if (!rfSessionValid_(p.t)) return { ok: false, error: 'SESION_INVALIDA' };
     /* control de versiones: si otro dispositivo guardó algo más nuevo, no se pisa; la app decide (traer lo nuevo o quedarse con lo suyo) */
     const rev = Number(rfProps_().getProperty(RF_AUTH.revProp) || 0);
     if (p.baseRev != null && Number(p.baseRev) < rev && !p.force) return { ok: false, error: 'CONFLICTO', rev: rev };
@@ -273,6 +275,7 @@ function rfSaveFile_(p) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) return { ok: false, error: 'OCUPADO' };
   try {
+    if (!rfSessionValid_(p.t)) return { ok: false, error: 'SESION_INVALIDA' };
     let folder, where;
     if (isRoot) {
       folder = rfSub_(rfRoot_(), RF_WEB.rootCategories[category]);
@@ -314,7 +317,7 @@ function rfSaveFile_(p) {
  * mismo mensaje para usuario o clave incorrectos, registro de accesos y cierre de todas las sesiones al cambiar la contraseña.
  */
 const RF_AUTH = {
-  accountProp: 'RF_ACCOUNT', pepperProp: 'RF_PEPPER', sessPrefix: 'RF_SESS_', lockProp: 'RF_LOCK', recLockProp: 'RF_RECLOCK', setupLockProp: 'RF_SETUPLOCK',
+  accountProp: 'RF_ACCOUNT', pepperProp: 'RF_PEPPER', sessPrefix: 'RF_SESS_', lockProp: 'RF_LOCK', changeLockPrefix: 'RF_CHANGELOCK_', recLockProp: 'RF_RECLOCK', setupLockProp: 'RF_SETUPLOCK',
   auditProp: 'RF_AUDIT', revProp: 'RF_STATE_REV', setupCodeProp: 'RINDE_FACIL_SETUP_CODE',
   iterations: 600000, sessionMs: 12 * 3600 * 1000, maxSessions: 20, maxFails: 5, lockBaseMs: 15 * 60 * 1000, lockMaxMs: 24 * 3600 * 1000, auditKeep: 80
 };
@@ -367,24 +370,49 @@ function rfAudit_(ev, ok) {
   rfSetJson_(RF_AUTH.auditProp, log.slice(-RF_AUTH.auditKeep));
 }
 
+/* ---- equipos conocidos ----
+ * Quien ya inició sesión recibe una credencial de equipo (256 bits, guardada cifrada en su equipo). Con ella Y la clave correcta puede entrar
+ * aunque un desconocido haya agotado los intentos: el bloqueo global solo frena a quien no tiene un equipo conocido, y cada equipo conocido
+ * tiene su propio contador. Así nadie puede dejar a la comunidad fuera solo conociendo la dirección del servicio. */
+const RF_MAX_DEVICES = 10;
+function rfDeviceHash_(d) { return rfHash_('equipo:' + d); }
+function rfDeviceOk_(a, d) {
+  if (!a || typeof d !== 'string' || !/^[0-9a-f]{64}$/.test(d) || !a.devices) return false;
+  const h = rfDeviceHash_(d);
+  let ok = false;
+  a.devices.forEach(function (x) { if (rfSafeEqual_(x.h, h)) ok = true; });
+  return ok;
+}
+function rfAddDevice_(a) {
+  const d = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+  a.devices = (a.devices || []).concat([{ h: rfDeviceHash_(d), at: new Date(rfNow_()).toISOString() }]).slice(-RF_MAX_DEVICES);
+  return d;
+}
+
 /* ---- sesiones ---- */
 function rfSessHash_(token) {
   return Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(token))).replace(/=+$/, '');
+}
+function rfChangeLockProp_(token) { return RF_AUTH.changeLockPrefix + rfSessHash_(token); }
+function rfDeleteSessionProp_(props, sessionKey) {
+  const sessionHash = sessionKey.slice(RF_AUTH.sessPrefix.length);
+  props.deleteProperty(sessionKey);
+  props.deleteProperty(RF_AUTH.changeLockPrefix + sessionHash);
 }
 function rfPurgeSessions_() {
   const props = rfProps_(), now = rfNow_(), live = [];
   props.getKeys().forEach(function (k) {
     if (k.indexOf(RF_AUTH.sessPrefix) !== 0) return;
     const s = rfGetJson_(k, null);
-    if (!s || s.exp < now) props.deleteProperty(k); else live.push({ k: k, at: s.at });
+    if (!s || s.exp < now) rfDeleteSessionProp_(props, k); else live.push({ k: k, at: s.at });
   });
   live.sort(function (a, b) { return a.at - b.at; });
-  while (live.length > RF_AUTH.maxSessions) props.deleteProperty(live.shift().k);
+  while (live.length > RF_AUTH.maxSessions) rfDeleteSessionProp_(props, live.shift().k);
 }
 function rfKillSessions_(exceptHash) {
   const props = rfProps_();
   props.getKeys().forEach(function (k) {
-    if (k.indexOf(RF_AUTH.sessPrefix) === 0 && k !== RF_AUTH.sessPrefix + (exceptHash || '')) props.deleteProperty(k);
+    if (k.indexOf(RF_AUTH.sessPrefix) === 0 && k !== RF_AUTH.sessPrefix + (exceptHash || '')) rfDeleteSessionProp_(props, k);
   });
 }
 function rfNewSession_() {
@@ -397,7 +425,7 @@ function rfSessionValid_(token) {
   if (typeof token !== 'string' || !/^[0-9a-f]{64}$/.test(token)) return false;
   const k = RF_AUTH.sessPrefix + rfSessHash_(token), s = rfGetJson_(k, null);
   if (!s) return false;
-  if (s.exp < rfNow_()) { rfProps_().deleteProperty(k); return false; }
+  if (s.exp < rfNow_()) { rfDeleteSessionProp_(rfProps_(), k); return false; }
   return true;
 }
 
@@ -415,57 +443,73 @@ function rfSetupAccount_(p) {
     if (!expected || !rfSafeEqual_(p.setupCode, expected)) { rfRegisterFail_(RF_AUTH.setupLockProp, 60 * 60 * 1000); rfAudit_('setup_fail', false); return { ok: false, error: 'CODIGO_INVALIDO' }; }
     const user = rfNormUser_(p.user);
     if (user.length < 3 || !rfIsB64Field_(p.saltP, 16, 64) || !rfIsB64Field_(p.authKey, 40, 48) || !rfIsB64Field_(p.recSalt, 16, 64) || !rfIsB64Field_(p.authKeyR, 40, 48)) return { ok: false, error: 'DATOS_INVALIDOS' };
-    rfSetJson_(RF_AUTH.accountProp, { user: user, saltP: p.saltP, it: RF_AUTH.iterations, hashAuth: rfHash_(p.authKey), recSalt: p.recSalt, hashRec: rfHash_(p.authKeyR), createdAt: new Date(rfNow_()).toISOString() });
+    const acct = { user: user, saltP: p.saltP, it: RF_AUTH.iterations, hashAuth: rfHash_(p.authKey), recSalt: p.recSalt, hashRec: rfHash_(p.authKeyR), createdAt: new Date(rfNow_()).toISOString(), devices: [] };
+    const device = rfAddDevice_(acct);
+    rfSetJson_(RF_AUTH.accountProp, acct);
     rfProps_().deleteProperty(RF_AUTH.setupCodeProp); rfProps_().deleteProperty('RINDE_FACIL_ACCESS_KEY'); // el código de instalación sirve una sola vez
     rfAudit_('setup', true);
     const s = rfNewSession_();
-    return { ok: true, token: s.token, exp: s.exp, it: RF_AUTH.iterations };
+    return { ok: true, token: s.token, exp: s.exp, it: RF_AUTH.iterations, device: device };
   });
 }
 function rfLogin_(p) {
   return rfWithLock_(function () {
-    const ls = rfLockStatus_(RF_AUTH.lockProp);
-    if (ls.locked) return { ok: false, error: 'BLOQUEADO', retryAfter: ls.retryAfter };
     const a = rfGetJson_(RF_AUTH.accountProp, null);
+    const known = rfDeviceOk_(a, p.device);
+    // equipo conocido: su propio contador; desconocido: el contador global
+    const lockProp = known ? RF_AUTH.lockProp + '_D' + rfDeviceHash_(p.device).replace(/[^A-Za-z0-9]/g, '').slice(0, 16) : RF_AUTH.lockProp;
+    const ls = rfLockStatus_(lockProp);
+    if (ls.locked) return { ok: false, error: 'BLOQUEADO', retryAfter: ls.retryAfter };
     const h = rfHash_(String(p.authKey || '')); // se calcula siempre: el tiempo no delata si la cuenta existe
     const okUser = a ? rfSafeEqual_(rfNormUser_(p.user), a.user) : false;
     const okPass = a ? rfSafeEqual_(h, a.hashAuth) : false;
-    if (!(a && okUser && okPass)) { rfRegisterFail_(RF_AUTH.lockProp, RF_AUTH.lockBaseMs); rfAudit_('login_fail', false); return { ok: false, error: 'CREDENCIALES_INVALIDAS' }; }
-    rfClearFails_(RF_AUTH.lockProp);
+    if (!(a && okUser && okPass)) { rfRegisterFail_(lockProp, RF_AUTH.lockBaseMs); rfAudit_('login_fail', false); return { ok: false, error: 'CREDENCIALES_INVALIDAS' }; }
+    rfClearFails_(lockProp);
+    let device = null;
+    if (!known && p.wantDevice === true) { device = rfAddDevice_(a); rfSetJson_(RF_AUTH.accountProp, a); }
     const s = rfNewSession_();
     rfAudit_('login', true);
-    return { ok: true, token: s.token, exp: s.exp, saltP: a.saltP, it: a.it };
+    const out = { ok: true, token: s.token, exp: s.exp, saltP: a.saltP, it: a.it };
+    if (device) out.device = device;
+    return out;
   });
 }
 function rfResetPassword_(p) {
   return rfWithLock_(function () {
-    const ls = rfLockStatus_(RF_AUTH.recLockProp);
-    if (ls.locked) return { ok: false, error: 'BLOQUEADO', retryAfter: ls.retryAfter };
+    // sin bloqueo: el código de recuperación tiene 128 bits (no se adivina en línea) y bloquearlo permitiría a cualquiera cerrar la única vía de rescate
     const a = rfGetJson_(RF_AUTH.accountProp, null);
     const h = rfHash_(String(p.authKeyR || ''));
     const ok = a && rfSafeEqual_(rfNormUser_(p.user), a.user) && rfSafeEqual_(h, a.hashRec);
-    if (!ok) { rfRegisterFail_(RF_AUTH.recLockProp, 60 * 60 * 1000); rfAudit_('reset_fail', false); return { ok: false, error: 'CREDENCIALES_INVALIDAS' }; }
+    if (!ok) { rfAudit_('reset_fail', false); return { ok: false, error: 'CREDENCIALES_INVALIDAS' }; }
     if (!rfIsB64Field_(p.saltP, 16, 64) || !rfIsB64Field_(p.authKey, 40, 48) || !rfIsB64Field_(p.recSalt, 16, 64) || !rfIsB64Field_(p.authKeyR2, 40, 48)) return { ok: false, error: 'DATOS_INVALIDOS' };
     a.saltP = p.saltP; a.hashAuth = rfHash_(p.authKey); a.recSalt = p.recSalt; a.hashRec = rfHash_(p.authKeyR2); a.it = RF_AUTH.iterations;
+    a.devices = []; // se revocan todos los equipos conocidos
+    const device = rfAddDevice_(a);
     rfSetJson_(RF_AUTH.accountProp, a);
-    rfClearFails_(RF_AUTH.recLockProp); rfClearFails_(RF_AUTH.lockProp);
+    rfClearFails_(RF_AUTH.lockProp);
     rfKillSessions_(''); rfAudit_('reset', true);
     const s = rfNewSession_();
-    return { ok: true, token: s.token, exp: s.exp };
+    return { ok: true, token: s.token, exp: s.exp, device: device };
   });
 }
 
 /* ---- acciones con sesión ---- */
 function rfChangePassword_(p) {
   return rfWithLock_(function () {
-    const ls = rfLockStatus_(RF_AUTH.lockProp);
+    /* La validación inicial ocurre antes de adquirir el bloqueo; una sesión pudo revocarse mientras esperaba. */
+    if (!rfSessionValid_(p.t)) return { ok: false, error: 'SESION_INVALIDA' };
+    // Una sesión ya autenticada no debe quedar bloqueada por intentos de login anónimos.
+    // Los fallos de verificación de clave anterior sí se limitan por sesión.
+    const changeLockProp = rfChangeLockProp_(p.t);
+    const ls = rfLockStatus_(changeLockProp);
     if (ls.locked) return { ok: false, error: 'BLOQUEADO', retryAfter: ls.retryAfter };
     const a = rfGetJson_(RF_AUTH.accountProp, null);
-    if (!a || !rfSafeEqual_(rfHash_(String(p.authKeyOld || '')), a.hashAuth)) { rfRegisterFail_(RF_AUTH.lockProp, RF_AUTH.lockBaseMs); rfAudit_('change_fail', false); return { ok: false, error: 'CREDENCIALES_INVALIDAS' }; }
+    if (!a || !rfSafeEqual_(rfHash_(String(p.authKeyOld || '')), a.hashAuth)) { rfRegisterFail_(changeLockProp, RF_AUTH.lockBaseMs); rfAudit_('change_fail', false); return { ok: false, error: 'CREDENCIALES_INVALIDAS' }; }
     if (!rfIsB64Field_(p.saltP, 16, 64) || !rfIsB64Field_(p.authKey, 40, 48)) return { ok: false, error: 'DATOS_INVALIDOS' };
     a.saltP = p.saltP; a.hashAuth = rfHash_(p.authKey);
     if (rfIsB64Field_(p.recSalt, 16, 64) && rfIsB64Field_(p.authKeyR, 40, 48)) { a.recSalt = p.recSalt; a.hashRec = rfHash_(p.authKeyR); }
     rfSetJson_(RF_AUTH.accountProp, a);
+    rfClearFails_(changeLockProp);
     rfClearFails_(RF_AUTH.lockProp);
     rfKillSessions_(rfSessHash_(String(p.t))); // se cierran las demás sesiones
     rfAudit_('change_password', true);
@@ -474,7 +518,11 @@ function rfChangePassword_(p) {
 }
 function rfLogout_(p, all) {
   return rfWithLock_(function () {
-    if (all) { rfKillSessions_(''); rfAudit_('logout_all', true); } else { rfProps_().deleteProperty(RF_AUTH.sessPrefix + rfSessHash_(String(p.t))); }
+    if (!rfSessionValid_(p.t)) return { ok: false, error: 'SESION_INVALIDA' };
+    if (all) {
+      rfKillSessions_(''); rfAudit_('logout_all', true);
+      const acc = rfGetJson_(RF_AUTH.accountProp, null); if (acc) { acc.devices = []; rfSetJson_(RF_AUTH.accountProp, acc); }
+    } else { rfDeleteSessionProp_(rfProps_(), RF_AUTH.sessPrefix + rfSessHash_(String(p.t))); }
     return { ok: true };
   });
 }

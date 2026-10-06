@@ -36,6 +36,7 @@
   function toast(msg, kind) {
     var host = document.getElementById('toasts');
     if (!host) return;
+    while (host.firstChild) host.removeChild(host.firstChild);
     var t = h('div', { class: 'toast ' + (kind || ''), role: 'status' }, msg);
     host.appendChild(t);
     setTimeout(function () { t.classList.add('out'); }, 3200);
@@ -184,6 +185,36 @@
   function callout(kind, title, body) { return h('div', { class: 'callout ' + kind, role: kind === 'bad' ? 'alert' : null }, title ? h('strong', null, title) : null, body ? h('span', null, ' ' + body) : null); }
   function empty(text) { return h('p', { class: 'empty-note' }, text); }
   function section(title, kids, cls) { return h('section', { class: 'card ' + (cls || '') }, title ? h('h2', { class: 'card-title' }, title) : null, kids); }
+  var FILE_MIME_BY_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', tif: 'image/tiff', tiff: 'image/tiff', pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+  function fileDrop(input, opts) {
+    opts = opts || {};
+    var zone = h('div', { class: 'file-drop', role: 'button', tabindex: '0', 'aria-label': opts.ariaLabel || opts.label || 'Arrastra o elige un archivo', 'data-kind': opts.kind || 'file' },
+      icon('file', 22), h('span', { class: 'file-drop-copy' }, h('strong', null, opts.label || 'Arrastra aquí el archivo'), h('span', null, opts.hint || 'También puedes pulsar para buscarlo en tu dispositivo.')));
+    function accepts(file) {
+      var ext = String(file.name || '').split('.').pop().toLowerCase(), mime = String(file.type || '').toLowerCase(), extMime = FILE_MIME_BY_EXT[ext] || '';
+      if (mime && extMime && mime !== extMime) return false;
+      var accepted = String(input && input.accept || '').split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+      if (!accepted.length) return true;
+      return accepted.some(function (token) {
+        if (token.charAt(0) === '.') return ext === token.slice(1) && (!mime || !extMime || mime === extMime);
+        if (/\/\*$/.test(token)) return !!extMime && extMime.indexOf(token.slice(0, -1)) === 0 && (!mime || mime === extMime);
+        return token === mime || token === extMime;
+      });
+    }
+    function receive(files) {
+      var all = Array.prototype.slice.call(files || []), valid = all.filter(accepts), rejected = all.length - valid.length;
+      if (rejected) toast(opts.invalidText || 'Uno o más archivos no son compatibles con esta sección. Elige el formato indicado.', 'bad');
+      if (valid.length && typeof opts.onFiles === 'function') opts.onFiles(opts.multiple ? valid : valid.slice(0, 1));
+    }
+    if (input) input.addEventListener('change', function () { receive(input.files); input.value = ''; });
+    zone.addEventListener('click', function () { if (input) input.click(); });
+    zone.addEventListener('keydown', function (ev) { if (input && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); input.click(); } });
+    zone.addEventListener('dragenter', function (ev) { if (ev.dataTransfer && Array.prototype.indexOf.call(ev.dataTransfer.types || [], 'Files') !== -1) { ev.preventDefault(); zone.classList.add('is-over'); } });
+    zone.addEventListener('dragover', function (ev) { if (ev.dataTransfer && Array.prototype.indexOf.call(ev.dataTransfer.types || [], 'Files') !== -1) { ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; zone.classList.add('is-over'); } });
+    zone.addEventListener('dragleave', function (ev) { if (!ev.relatedTarget || !zone.contains(ev.relatedTarget)) zone.classList.remove('is-over'); });
+    zone.addEventListener('drop', function (ev) { ev.preventDefault(); zone.classList.remove('is-over'); receive(ev.dataTransfer && ev.dataTransfer.files); });
+    return zone;
+  }
   function progressBar(done, total, label) {
     var pct = total ? Math.round(done * 100 / total) : 0;
     return h('div', { class: 'pbar', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': pct, 'aria-label': label || 'Avance' }, h('span', { style: { width: pct + '%' } }));
@@ -221,5 +252,5 @@
     };
   }
 
-  RF.ui = { choiceBox: choiceBox, promptSecret: promptSecret, busy: busy, icon: icon, ICONS: ICONS, toast: toast, confirmBox: confirmBox, bind: bind, field: field, labelWrap: labelWrap, btn: btn, exportBar: exportBar, badge: badge, callout: callout, empty: empty, section: section, progressBar: progressBar };
+  RF.ui = { choiceBox: choiceBox, promptSecret: promptSecret, busy: busy, icon: icon, ICONS: ICONS, toast: toast, confirmBox: confirmBox, bind: bind, field: field, labelWrap: labelWrap, btn: btn, exportBar: exportBar, badge: badge, callout: callout, empty: empty, section: section, fileDrop: fileDrop, progressBar: progressBar };
 })(typeof window !== 'undefined' ? window : globalThis);

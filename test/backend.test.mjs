@@ -105,19 +105,104 @@ test('cambiar la contraseña: pide la anterior, cierra las demás sesiones y la 
   assert.equal(login(e, nueva.authKey).ok, true);
   assert.equal(e.call({ action: 'challenge' }).saltP, nueva.saltP);
 });
-test('recuperación: solo con el código, cierra todas las sesiones y su intento fallido bloquea una hora', () => {
+
+test('cambiar contraseña revalida la sesión después de adquirir el bloqueo', () => {
+  const e = makeEnv({ RINDE_FACIL_SETUP_CODE: 'k' });
+  const original = e.ctx.rfSessionValid_;
+  let checks = 0;
+  e.ctx.rfSessionValid_ = token => {
+    const valid = original(token);
+    checks++;
+    if (checks === 1) e.P.delete('RF_SESS_' + e.ctx.rfSessHash_(token));
+    return valid;
+  };
+  const result = e.call(Object.assign({ action: 'changePassword', t: e.t, authKeyOld: ACC.authKey }, {
+    saltP: Buffer.alloc(16, 5).toString('base64'), authKey: b64of('clave-2')
+  }));
+  assert.deepEqual(result, { ok: false, error: 'SESION_INVALIDA' });
+  assert.equal(checks, 2, 'se valida en la entrada y otra vez dentro del bloqueo');
+  assert.equal(e.ctx.rfChallenge_().saltP, ACC.saltP, 'la cuenta no cambia después de revocar la sesión');
+});
+test('recuperación: solo con el código, cierra todas las sesiones y no se puede bloquear desde afuera', () => {
   const e = makeEnv({ RINDE_FACIL_SETUP_CODE: 'k' });
   setTime(e, T0);
   const nuevo = { saltP: Buffer.alloc(16, 3).toString('base64'), authKey: b64of('clave-3'), recSalt: Buffer.alloc(16, 4).toString('base64'), authKeyR2: b64of('rec-2') };
   assert.equal(e.call(Object.assign({ action: 'resetPassword', user: ACC.user, authKeyR: b64of('mal') }, nuevo)).error, 'CREDENCIALES_INVALIDAS');
   assert.equal(e.call(Object.assign({ action: 'resetPassword', user: ACC.user, authKeyR: ACC.authKey }, nuevo)).error, 'CREDENCIALES_INVALIDAS', 'la clave de la contraseña no sirve como código de recuperación');
+  for (let i = 0; i < 25; i++) assert.equal(e.call(Object.assign({ action: 'resetPassword', user: ACC.user, authKeyR: b64of('m' + i) }, nuevo)).error, 'CREDENCIALES_INVALIDAS', 'nunca «BLOQUEADO»: nadie puede cerrar la vía de rescate');
   const r = e.call(Object.assign({ action: 'resetPassword', user: ACC.user, authKeyR: ACC.authKeyR }, nuevo));
-  assert.equal(r.ok, true); assert.equal(e.call({ action: 'audit', t: e.t }).error, 'SESION_INVALIDA', 'las sesiones anteriores se cerraron');
+  assert.equal(r.ok, true); assert.match(r.device, /^[0-9a-f]{64}$/, 'entrega una credencial de equipo nueva');
+  assert.equal(e.call({ action: 'audit', t: e.t }).error, 'SESION_INVALIDA', 'las sesiones anteriores se cerraron');
   assert.equal(e.call({ action: 'audit', t: r.token }).ok, true);
   assert.equal(login(e, ACC.authKey).ok, false); assert.equal(login(e, nuevo.authKey).ok, true);
-  for (let i = 0; i < 5; i++) e.call(Object.assign({ action: 'resetPassword', user: ACC.user, authKeyR: b64of('m' + i) }, nuevo));
-  const b = e.call(Object.assign({ action: 'resetPassword', user: ACC.user, authKeyR: nuevo.authKeyR2 }, nuevo));
-  assert.equal(b.error, 'BLOQUEADO'); assert.ok(b.retryAfter > 3000);
+  assert.equal(login(e, nuevo.authKey, ACC.user).ok, true);
+  const rr = e.call({ action: 'login', user: ACC.user, authKey: nuevo.authKey, device: e.device }); assert.equal(rr.ok, true);
+});
+test('equipos conocidos: un desconocido no puede dejar a la comunidad fuera (hallazgo de Strix)', () => {
+  const e = makeEnv({ RINDE_FACIL_SETUP_CODE: 'k' });
+  setTime(e, T0);
+  assert.match(e.device, /^[0-9a-f]{64}$/, 'el alta entrega la credencial del primer equipo');
+  const ataque = () => login(e, b64of('adivinar-' + Math.random()));
+  for (let i = 0; i < 5; i++) assert.equal(ataque().error, 'CREDENCIALES_INVALIDAS');
+  assert.equal(login(e).error, 'BLOQUEADO', 'quien no tiene equipo conocido sigue bloqueado');
+  const ok = e.call({ action: 'login', user: ACC.user, authKey: ACC.authKey, device: e.device });
+  assert.equal(ok.ok, true, 'el equipo conocido entra aunque el ataque haya agotado los intentos globales');
+  assert.ok(!('device' in ok), 'no se entrega una credencial nueva si ya se tiene');
+  const mal = () => e.call({ action: 'login', user: ACC.user, authKey: b64of('otra'), device: e.device });
+  for (let i = 0; i < 5; i++) assert.equal(mal().error, 'CREDENCIALES_INVALIDAS');
+  assert.equal(mal().error, 'BLOQUEADO', 'el equipo conocido con clave equivocada también se frena, con su propio contador');
+  assert.equal(e.call({ action: 'login', user: ACC.user, authKey: ACC.authKey, device: e.device }).error, 'BLOQUEADO');
+  const otro = e.call({ action: 'login', user: ACC.user, authKey: ACC.authKey, device: '0'.repeat(64) });
+  assert.equal(otro.error, 'BLOQUEADO', 'una credencial inventada no cuenta como equipo conocido');
+  const raros = [undefined, null, 5, {}, [e.device], e.device.toUpperCase(), e.device.slice(1), e.device + 'a'];
+  raros.forEach(d => assert.equal(e.call({ action: 'login', user: ACC.user, authKey: ACC.authKey, device: d }).error, 'BLOQUEADO', JSON.stringify(d)));
+  setTime(e, T0 + 16 * 60000);
+  const nuevo = e.call({ action: 'login', user: ACC.user, authKey: ACC.authKey, wantDevice: true });
+  assert.equal(nuevo.ok, true); assert.match(nuevo.device, /^[0-9a-f]{64}$/, 'un equipo nuevo pide y recibe su credencial');
+  assert.notEqual(nuevo.device, e.device);
+  const guardado = JSON.stringify(Array.from(e.P.entries()));
+  assert.ok(!guardado.includes(e.device) && !guardado.includes(nuevo.device), 'el servidor guarda solo un hash de las credenciales de equipo');
+  assert.ok(!/device|equipo/i.test(JSON.stringify(e.call({ action: 'audit', t: nuevo.token }))) && !('device' in e.call({ action: 'challenge' })) && !('device' in e.call({ action: 'ping' })));
+});
+test('una sesión autenticada puede cambiar la contraseña aunque haya bloqueo global de login anónimo', () => {
+  const e = makeEnv({ RINDE_FACIL_SETUP_CODE: 'k' });
+  setTime(e, T0);
+  for (let i = 0; i < 5; i++) assert.equal(login(e, b64of('externo-' + i)).error, 'CREDENCIALES_INVALIDAS');
+  assert.equal(login(e).error, 'BLOQUEADO', 'el ataque anónimo sigue limitado');
+  const nueva = { saltP: Buffer.alloc(16, 6).toString('base64'), authKey: b64of('clave-cambio') };
+  const changed = e.call(Object.assign({ action: 'changePassword', t: e.t, authKeyOld: ACC.authKey }, nueva));
+  assert.equal(changed.ok, true, 'una sesión válida no depende del contador global de login anónimo');
+  assert.equal(e.call({ action: 'audit', t: e.t }).ok, true, 'la sesión actual permanece');
+  assert.equal(login(e, ACC.authKey).error, 'CREDENCIALES_INVALIDAS', 'la clave anterior ya no sirve');
+  assert.equal(login(e, nueva.authKey).ok, true, 'la clave nueva sí sirve');
+});
+test('los fallos de cambio de contraseña se limitan por sesión y se limpian al revocarla', () => {
+  const e = makeEnv({ RINDE_FACIL_SETUP_CODE: 'k' });
+  setTime(e, T0);
+  const abused = e.t;
+  const other = login(e).token;
+  for (let i = 0; i < 5; i++) {
+    assert.equal(e.call({ action: 'changePassword', t: abused, authKeyOld: b64of('mala-' + i), saltP: ACC.saltP, authKey: ACC.authKey }).error, 'CREDENCIALES_INVALIDAS');
+  }
+  assert.equal(e.call({ action: 'changePassword', t: abused, authKeyOld: ACC.authKey, saltP: ACC.saltP, authKey: ACC.authKey }).error, 'BLOQUEADO');
+  assert.equal(e.call({ action: 'audit', t: other }).ok, true, 'los fallos de una sesión no afectan otra sesión');
+  const changed = e.call({ action: 'changePassword', t: other, authKeyOld: ACC.authKey, saltP: ACC.saltP, authKey: b64of('clave-segura') });
+  assert.equal(changed.ok, true, 'otra sesión válida no queda bloqueada');
+  assert.equal(e.call({ action: 'audit', t: abused }).error, 'SESION_INVALIDA', 'el cambio revoca la sesión abusada');
+  assert.equal([...e.P.keys()].some(k => k.startsWith('RF_CHANGELOCK_')), false, 'no quedan bloqueos huérfanos tras revocar sesiones');
+});
+test('equipos conocidos: cerrar todas las sesiones los revoca y no pasan de 10', () => {
+  const e = makeEnv({ RINDE_FACIL_SETUP_CODE: 'k' });
+  let t = T0; const devs = [e.device];
+  for (let i = 0; i < 12; i++) { setTime(e, t += 1000); const r = e.call({ action: 'login', user: ACC.user, authKey: ACC.authKey, wantDevice: true }); devs.push(r.device); }
+  const cuenta = JSON.parse(e.P.get('RF_ACCOUNT')); assert.equal(cuenta.devices.length, 10);
+  for (let i = 0; i < 5; i++) login(e, b64of('x' + i));
+  assert.equal(e.call({ action: 'login', user: ACC.user, authKey: ACC.authKey, device: devs[0] }).error, 'BLOQUEADO', 'el más antiguo ya se descartó');
+  assert.equal(e.call({ action: 'login', user: ACC.user, authKey: ACC.authKey, device: devs[12] }).ok, true);
+  const s = e.call({ action: 'login', user: ACC.user, authKey: ACC.authKey, device: devs[12] }).token;
+  e.call({ action: 'logoutAll', t: s });
+  assert.equal(JSON.parse(e.P.get('RF_ACCOUNT')).devices.length, 0);
+  assert.equal(e.call({ action: 'login', user: ACC.user, authKey: ACC.authKey, device: devs[12] }).error, 'BLOQUEADO', 'revocadas');
 });
 test('registro de accesos: anota lo que pasó, sin claves, y no crece sin límite', () => {
   const e = makeEnv({ RINDE_FACIL_SETUP_CODE: 'k' });

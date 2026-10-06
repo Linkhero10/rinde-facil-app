@@ -77,11 +77,15 @@
     });
   }
   function save(state) {
-    chain = chain.then(function () {
-      var m = readMeta(); if (!m || !mem.dek) return null;
+    var current = chain.then(function () {
+      var m = readMeta();
+      if (!m) throw fail('SIN_BOVEDA');
+      if (!mem.dek) throw fail('BLOQUEADA');
       return put(m, mem.dek, state);
-    }).catch(function () { return null; });
-    return chain;
+    });
+    /* Propaga la falla al store; recupera solo la cola para que una escritura posterior pueda reintentarse. */
+    chain = current.then(function () {}, function () {});
+    return current;
   }
   function lock() { mem.dek = null; mem.password = null; }
   function readState() { var m = readMeta(); return m && mem.dek ? C.decJson(mem.dek, m.state, 'state') : Promise.resolve(null); }
@@ -97,8 +101,8 @@
       return C.deriveKeys(newPw, saltP, C.ITERATIONS).then(function (kn) { return C.wrapDek(raw, kn.wrapKey, 'wrapP').then(function (w) { m.saltP = saltP; m.it = C.ITERATIONS; m.wrapP = w; writeMeta(m); mem.password = newPw; return { saltP: saltP, authKey: kn.authKey }; }); });
     });
   }
-  /* «Olvidé mi contraseña»: el código de recuperación abre la clave de datos y se elige una contraseña nueva (y un código nuevo) */
-  function recover(code, newPw) {
+  /* Prepara una recuperación sin escribir ni rotar el código vigente; el servicio remoto puede rechazarse antes del commit local. */
+  function prepareRecovery(code, newPw) {
     var m = readMeta(); if (!m || !m.wrapR) return Promise.reject(fail('SIN_RECUPERACION', 'Este equipo no tiene código de recuperación. Restaura desde el Drive de la comunidad.'));
     try { throttle(); } catch (e) { return Promise.reject(e); }
     var problems = C.passwordProblems(newPw, m.user);
@@ -109,15 +113,23 @@
       var saltP = C.b64(C.rand(16)), saltR2 = C.b64(C.rand(16)), code2 = C.newRecoveryCode();
       return Promise.all([C.deriveKeys(newPw, saltP, C.ITERATIONS), C.deriveKeys(C.normalizeRecovery(code2), saltR2, C.ITERATIONS), C.importDek(r.raw)]).then(function (k) {
         return Promise.all([C.wrapDek(r.raw, k[0].wrapKey, 'wrapP'), C.wrapDek(r.raw, k[1].wrapKey, 'wrapR'), C.encJson(k[2], { authKeyR: k[1].authKey, recSalt: saltR2 }, 'secrets')]).then(function (w) {
-          m.saltP = saltP; m.it = C.ITERATIONS; m.wrapP = w[0]; m.saltR = saltR2; m.wrapR = w[1]; m.secrets = w[2]; writeMeta(m);
+          var nextMeta = Object.assign({}, m, { saltP: saltP, it: C.ITERATIONS, wrapP: w[0], saltR: saltR2, wrapR: w[1], secrets: w[2] });
           return C.decJson(k[2], m.state, 'state').then(function (state) {
-            mem.dek = k[2]; mem.user = m.user; mem.password = newPw; clearFails();
-            return { state: state, recoveryCode: code2, authKeyR: r.kr.authKey, authKeyR2: k[1].authKey, recSalt2: saltR2, saltP: saltP, authKey: k[0].authKey };
+            return { meta: nextMeta, dek: k[2], user: m.user, password: newPw,
+              result: { state: state, recoveryCode: code2, authKeyR: r.kr.authKey, authKeyR2: k[1].authKey, recSalt2: saltR2, saltP: saltP, authKey: k[0].authKey } };
           });
         });
       });
     });
   }
+  function commitRecovery(prepared) {
+    if (!prepared || !prepared.meta || !prepared.dek || !prepared.result) return Promise.reject(fail('RECUPERACION_INVALIDA'));
+    try { writeMeta(prepared.meta); } catch (e) { return Promise.reject(e); }
+    mem.dek = prepared.dek; mem.user = prepared.user; mem.password = prepared.password; clearFails();
+    return Promise.resolve(prepared.result);
+  }
+  /* «Olvidé mi contraseña»: API compatible que prepara y confirma localmente en una sola operación. */
+  function recover(code, newPw) { return prepareRecovery(code, newPw).then(commitRecovery); }
 
   /* fotos y archivos: se cifran antes de entrar a IndexedDB */
   function encryptBlob(blob) {
@@ -132,5 +144,5 @@
   function wipe() { lock(); try { ls().removeItem(KEY); ls().removeItem(FAILS); } catch (e) { /* sin almacenamiento */ } }
 
   RF.vault = { KEY: KEY, status: status, meta: readMeta, legacyState: legacyState, create: create, verifyReadable: verifyReadable, dropLegacy: dropLegacy, unlock: unlock, save: save, lock: lock, secrets: secrets, readState: readState,
-    changePassword: changePassword, recover: recover, encryptBlob: encryptBlob, decryptBlob: decryptBlob, wipe: wipe, isOpen: function () { return !!mem.dek; }, password: function () { return mem.password; }, user: function () { return mem.user; } };
+    changePassword: changePassword, prepareRecovery: prepareRecovery, commitRecovery: commitRecovery, recover: recover, encryptBlob: encryptBlob, decryptBlob: decryptBlob, wipe: wipe, isOpen: function () { return !!mem.dek; }, password: function () { return mem.password; }, user: function () { return mem.user; } };
 })(typeof window !== 'undefined' ? window : globalThis);

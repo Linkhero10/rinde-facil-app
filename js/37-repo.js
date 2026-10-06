@@ -39,26 +39,36 @@
   function projectName(id) { var s = RF.store.get(), p = s.projects.filter(function (x) { return x.id === id; })[0]; return p ? (p.name || 'Proyecto') : 'Todos los proyectos'; }
   function fromName(id) { return (FROM.filter(function (f) { return f.id === id; })[0] || {}).name || ''; }
   function openBlob(blobId, name) {
-    RF.blobs.get(blobId).then(function (b) { if (!b) { UI.toast('El archivo ya no está en este dispositivo. Si lo guardaste en el Drive, ábrelo desde allí.', 'bad'); return; } var url = URL.createObjectURL(b); var a = h('a', { href: url, target: '_blank', rel: 'noopener', download: /^(image|application\/pdf)/.test(b.type) ? null : name }); document.body.appendChild(a); a.click(); document.body.removeChild(a); });
+    RF.blobs.get(blobId).then(function (b) { if (!b) { UI.toast('El archivo ya no está en este dispositivo. Si lo guardaste en el Drive, ábrelo desde allí.', 'bad'); return; } var url = URL.createObjectURL(b); var a = h('a', { href: url, target: '_blank', rel: 'noopener', download: /^(image|application\/pdf)/.test(b.type) ? null : name }); document.body.appendChild(a); a.click(); document.body.removeChild(a); }, function (err) { UI.toast('No se pudo leer el archivo de este dispositivo (' + (err && err.message || err) + '). No se abrió ni se subió una ficha en su lugar.', 'bad'); });
   }
-  function fileButton(st, redraw, label) {
+  function fileButton(st, redraw, label, kind) {
     var inp = h('input', { type: 'file', accept: 'image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx', class: 'sr-only', 'aria-label': 'Elegir el archivo' });
-    inp.addEventListener('change', function () { var f = inp.files[0]; if (f) { st.file = f; redraw(); } });
     return h('div', { class: 'file-pick' }, inp, UI.btn(st.file ? 'Cambiar archivo' : (label || 'Elegir el archivo o sacar una foto'), { icon: 'file', cls: st.file ? 'ghost' : 'primary', onclick: function () { inp.click(); } }),
-      st.file ? h('span', { class: 'file-name' }, st.file.name + ' · ' + Math.max(1, Math.round(st.file.size / 1024)) + ' KB') : (st.rec && st.rec.fileName ? h('span', { class: 'file-name' }, 'Archivo guardado: ' + st.rec.fileName) : h('span', { class: 'hint' }, 'PDF, foto, Word o Excel. Hasta 8 MB para el Drive.')));
+      st.file ? h('span', { class: 'file-name' }, st.file.name + ' · ' + Math.max(1, Math.round(st.file.size / 1024)) + ' KB') : (st.rec && st.rec.fileName ? h('span', { class: 'file-name' }, 'Archivo guardado: ' + st.rec.fileName) : h('span', { class: 'hint' }, 'PDF, foto, Word o Excel. Hasta 8 MB para el Drive.')),
+      UI.fileDrop(inp, { kind: kind || 'official', label: 'Arrastra aquí el documento o pulsa para buscarlo', hint: 'No queda guardado hasta que pulses «Guardar». Elige el tipo antes de archivar.', invalidText: 'Formato no compatible aquí. Prueba con PDF, foto, Word o Excel.', onFiles: function (files) { if (files[0]) { st.file = files[0]; redraw(); } } }));
   }
 
   /* ---------- guardar el archivo en este dispositivo y, si corresponde, en el Drive ---------- */
   function storeFile(rec, file) {
     if (!file) return Promise.resolve();
-    rec.fileName = file.name; rec.mime = mimeOf(file.name, file.type); rec.size = file.size; rec.blobId = rec.blobId || ('rec-' + rec.id);
-    return RF.blobs.put(rec.blobId, file);
+    var blobId = rec.blobId || ('rec-' + rec.id);
+    return RF.blobs.put(blobId, file).then(function () {
+      rec.fileName = file.name; rec.mime = mimeOf(file.name, file.type); rec.size = file.size; rec.blobId = blobId;
+    });
+  }
+  function attachDriveResult(rec, result) {
+    if (!rec || !result || result.remote !== true || !result.fileId) return false;
+    rec.drive = { fileId: result.fileId, url: result.url || '', at: new Date().toISOString() };
+    return true;
   }
   function driveSave(kind, rec, file) {
     if (!RF.drive || !RF.drive.enabled()) return Promise.resolve(null);
     var go = function (blob) { return (kind === 'doc' ? RF.drive.saveExternal(rec, blob) : RF.drive.saveActa(rec, blob)); };
     if (file) return go(file);
-    return rec.blobId ? RF.blobs.get(rec.blobId).then(function (b) { return go(b || null); }) : go(null);
+    return rec.blobId ? RF.blobs.get(rec.blobId).then(function (b) {
+      if (!b) { var missing = new Error('ARCHIVO_LOCAL_NO_DISPONIBLE'); UI.toast('No se encontró el archivo original en este dispositivo. No se guardó una ficha como reemplazo.', 'bad'); throw missing; }
+      return go(b);
+    }, function (err) { UI.toast('No se pudo leer el archivo original (' + (err && err.message || err) + '). No se subió una ficha en su lugar.', 'bad'); throw err; }) : go(null);
   }
 
   /* ================= Documentos oficiales ================= */
@@ -103,7 +113,10 @@
           silent();
           var f = st.file; st.editing = null; st.file = null; paint();
           UI.toast('Documento guardado en este dispositivo.', 'ok');
-          if (RF.drive && RF.drive.auto()) driveSave('doc', rec, f).then(function (r) { if (r) { rec.drive = { fileId: r.fileId, url: r.url, at: new Date().toISOString() }; silent(); paint(); } }).catch(function () { });
+          if (RF.drive && RF.drive.auto()) driveSave('doc', rec, f).then(function (r) { if (attachDriveResult(rec, r)) { silent(); paint(); } }).catch(function () { });
+        }).catch(function (err) {
+          saveBtn.disabled = false;
+          UI.toast('No se guardó el documento porque no se pudo conservar su archivo en este dispositivo (' + (err.message || err) + ').', 'bad');
         });
       } });
       box.appendChild(UI.section(isNew ? 'Agregar un documento' : 'Editar el documento', [
@@ -112,7 +125,7 @@
           UI.field('Fecha del documento', rec, 'date', { type: 'date' }),
           UI.field('¿Quién lo envía?', rec, 'from', { type: 'select', noEmpty: true, options: FROM }),
           UI.field('¿A qué proyecto se refiere?', rec, 'projectId', { type: 'select', noEmpty: true, options: projOpts })),
-        h('div', { class: 'field wide' }, h('span', { class: 'lbl' }, 'El archivo'), fileButton(st, paint)),
+        h('div', { class: 'field wide' }, h('span', { class: 'lbl' }, 'El archivo'), fileButton(st, paint, null, 'official')),
         h('h3', { class: 'grp' }, '¿Cambia algo del PEA?'),
         UI.field('Este documento…', rec, 'peaChange', { type: 'select', noEmpty: true, cls: 'wide', options: PEA_OPTS, onChange: function () { paintAdvice(); } }), advice,
         UI.field('Nota (opcional)', rec, 'note', { type: 'textarea', rows: 2, cls: 'wide', ph: 'Ej: CORFO pide agregar una actividad de capacitación.' }),
@@ -142,7 +155,7 @@
           h('td', { 'data-label': 'Fecha' }, d.date ? U.fmtDateShort(d.date) : '—'),
           h('td', { 'data-label': 'Documento' }, h('strong', null, d.title || t.name), h('div', { class: 'muted small' }, t.name + ' · ' + fromName(d.from) + ' · ' + projectName(d.projectId))),
           h('td', { 'data-label': '¿Cambia el PEA?' }, d.peaChange === 'si' ? UI.badge('Sí', 'warn') : d.peaChange === 'nose' ? UI.badge('Por confirmar', 'info') : UI.badge('No', '')),
-          h('td', { 'data-label': 'En el Drive' }, d.drive && d.drive.url ? h('a', { href: d.drive.url, target: '_blank', rel: 'noopener' }, 'Abrir') : (RF.drive && RF.drive.enabled() ? UI.btn('Guardar', { cls: 'ghost small', onclick: function () { driveSave('doc', d, null).then(function (r) { if (r) { d.drive = { fileId: r.fileId, url: r.url, at: new Date().toISOString() }; silent(); paint(); } }).catch(function () { }); } }) : '—')),
+          h('td', { 'data-label': 'En el Drive' }, d.drive && d.drive.url ? h('a', { href: d.drive.url, target: '_blank', rel: 'noopener' }, 'Abrir') : (RF.drive && RF.drive.enabled() ? UI.btn('Guardar', { cls: 'ghost small', onclick: function () { driveSave('doc', d, null).then(function (r) { if (attachDriveResult(d, r)) { silent(); paint(); } }).catch(function () { }); } }) : '—')),
           h('td', { 'data-label': 'Acciones' }, h('div', { class: 'row-actions' },
             d.blobId ? UI.btn('Ver', { cls: 'ghost small', onclick: function () { openBlob(d.blobId, d.fileName); } }) : null,
             UI.btn('Editar', { cls: 'ghost small', onclick: function () { st.rec = d; st.editing = d.id; st.file = null; paint(); } }),
@@ -207,7 +220,10 @@
           if (isNew) repo().actas.push(a);
           silent(); var f = st.file; st.editing = null; st.file = null; paint();
           UI.toast('Acta guardada en este dispositivo.', 'ok');
-          if (RF.drive && RF.drive.auto()) driveSave('acta', a, f).then(function (r) { if (r) { a.drive = { fileId: r.fileId, url: r.url, at: new Date().toISOString() }; silent(); paint(); } }).catch(function () { });
+          if (RF.drive && RF.drive.auto()) driveSave('acta', a, f).then(function (r) { if (attachDriveResult(a, r)) { silent(); paint(); } }).catch(function () { });
+        }).catch(function (err) {
+          saveBtn.disabled = false;
+          UI.toast('No se guardó el acta porque no se pudo conservar su archivo en este dispositivo (' + (err.message || err) + ').', 'bad');
         });
       } });
       box.appendChild(UI.section(isNew ? 'Agregar un acta' : 'Editar el acta', [
@@ -218,7 +234,7 @@
           UI.field('Nombres (opcional)', a, 'names', { type: 'textarea', rows: 2, cls: 'wide' })), warn,
         h('h3', { class: 'grp' }, 'Lo que se conversó'), UI.field('Temas tratados', a, 'topics', { type: 'textarea', rows: 4, cls: 'wide' }),
         h('h3', { class: 'grp' }, 'Acuerdos y compromisos'), agBox,
-        h('h3', { class: 'grp' }, 'El acta firmada'), h('div', { class: 'field wide' }, fileButton(st, paint, 'Subir el acta (PDF o foto)')),
+        h('h3', { class: 'grp' }, 'El acta firmada'), h('div', { class: 'field wide' }, fileButton(st, paint, 'Subir el acta (PDF o foto)', 'acta')),
         UI.field('Nota (opcional)', a, 'note', { type: 'textarea', rows: 2, cls: 'wide' }),
         h('div', { class: 'row-actions' }, saveBtn, UI.btn('Cancelar', { cls: 'ghost', onclick: function () { st.editing = null; st.file = null; paint(); } }))]));
       return box;
@@ -243,7 +259,7 @@
           h('td', { 'data-label': 'Acta' }, h('strong', null, (MODES.filter(function (m) { return m.id === a.mode; })[0] || {}).name || 'Reunión'), h('div', { class: 'muted small' }, (a.place || 'Sin lugar') + ' · ' + (as.corfo || 0) + ' CORFO, ' + (as.comunidad || 0) + ' comunidad, ' + (as.oc || 0) + ' Organismo Colaborador'), low ? UI.badge('Asistencia bajo el mínimo', 'warn') : null),
           h('td', { 'data-label': 'Estado' }, UI.badge(st2, a.state === 'observada' ? 'bad' : a.state === 'revisada' ? 'ok' : 'info')),
           h('td', { 'data-label': 'Acuerdos' }, (a.agreements || []).filter(function (x) { return !x.done; }).length + ' pendientes de ' + (a.agreements || []).length),
-          h('td', { 'data-label': 'En el Drive' }, a.drive && a.drive.url ? h('a', { href: a.drive.url, target: '_blank', rel: 'noopener' }, 'Abrir') : (RF.drive && RF.drive.enabled() ? UI.btn('Guardar', { cls: 'ghost small', onclick: function () { driveSave('acta', a, null).then(function (r) { if (r) { a.drive = { fileId: r.fileId, url: r.url, at: new Date().toISOString() }; silent(); paint(); } }).catch(function () { }); } }) : '—')),
+          h('td', { 'data-label': 'En el Drive' }, a.drive && a.drive.url ? h('a', { href: a.drive.url, target: '_blank', rel: 'noopener' }, 'Abrir') : (RF.drive && RF.drive.enabled() ? UI.btn('Guardar', { cls: 'ghost small', onclick: function () { driveSave('acta', a, null).then(function (r) { if (attachDriveResult(a, r)) { silent(); paint(); } }).catch(function () { }); } }) : '—')),
           h('td', { 'data-label': 'Acciones' }, h('div', { class: 'row-actions' },
             a.blobId ? UI.btn('Ver acta', { cls: 'ghost small', onclick: function () { openBlob(a.blobId, a.fileName); } }) : null,
             UI.btn('Editar', { cls: 'ghost small', onclick: function () { st.rec = a; st.editing = a.id; st.file = null; paint(); } }),
@@ -258,5 +274,5 @@
     return page('Actas de mesas de trabajo', 'Guarda las actas de las mesas entre CORFO, la comunidad y el Organismo Colaborador, y sigue sus compromisos.', root);
   } };
 
-  RF.repo = { DOC_TYPES: DOC_TYPES, TYPE_BY_ID: TYPE_BY_ID, mimeOf: mimeOf, docsDoc: docsDoc, actasDoc: actasDoc, actaDoc: actaDoc };
+  RF.repo = { DOC_TYPES: DOC_TYPES, TYPE_BY_ID: TYPE_BY_ID, mimeOf: mimeOf, docsDoc: docsDoc, actasDoc: actasDoc, actaDoc: actaDoc, attachDriveResult: attachDriveResult };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -20,21 +20,21 @@ Guía paso a paso para que las comunidades del Salar de Atacama rindan el conven
 
 ## Cómo abrirla
 
-Es una app estática (sin instalación): cualquier servidor de archivos sirve.
+Es una app estática (sin instalación). Para probarla en este equipo, usa el servidor incluido: agrega headers anti-iframe y solo escucha en `127.0.0.1`.
 
 ```
-python -m http.server 8790 --directory "D:\SMI\Productos\Rinde fácil\app"
+python tools/serve.py --port 8790
 ```
 
-Abre `http://127.0.0.1:8790/index.html`. En celular funciona igual y se puede «Agregar a la pantalla de inicio» (tiene manifiesto y modo sin conexión para los archivos de la app).
+Abre `http://127.0.0.1:8790/index.html`. Ese servidor de loopback sirve solo al equipo actual; para probar desde un celular hace falta una publicación HTTPS. En el hosting público se puede «Agregar a la pantalla de inicio» (tiene manifiesto y modo sin conexión para los archivos de la app). El hosting debe devolver `Content-Security-Policy: frame-ancestors 'none'` y `X-Frame-Options: DENY`; la CSP del `<meta>` no reemplaza esos headers.
 
 ## Servicio en la nube (OCR y copias)
 
 `backend/WebApi.gs` va en el proyecto de Apps Script de **cada comunidad** (junto a `CloudOcrAdapter.gs` del bundle de Rinde fácil). Decisión vigente (25-sep-2026): cada comunidad tiene su propio Google Workspace; nada pasa por un servidor central.
 
-Instalación y actualización paso a paso: [docs/INSTALAR_SERVICIO.md](docs/INSTALAR_SERVICIO.md). En corto: pegar `WebApi.gs`, crear la propiedad `RINDE_FACIL_SETUP_CODE` (código de un solo uso), implementar como aplicación web (**ejecutar como yo**, acceso **cualquier persona**), pegar la dirección `/exec` en la app y crear la cuenta del servicio con ese código.
+Instalación y actualización paso a paso: [docs/INSTALAR_SERVICIO.md](docs/INSTALAR_SERVICIO.md). En corto: pegar `WebApi.gs`, crear la propiedad `RINDE_FACIL_SETUP_CODE` (código de un solo uso) e implementar como aplicación web (**ejecutar como yo**, acceso **cualquier persona**). Por seguridad, crear el servicio no basta: el endpoint `/exec` debe ser verificado fuera de banda e incluido en una versión aprobada de la app; la lista está vacía ahora y no se puede conectar una cuenta real todavía.
 
-**Acceso (versión 3):** al abrir la app se pide el **nombre de la comunidad** (usuario) y una **contraseña** que elige la comunidad. Ya no existe la clave compartida. La contraseña no sale del equipo; los datos locales van cifrados (AES‑256‑GCM) y hay un código de recuperación de 26 caracteres. Modelo de amenazas, controles, pruebas y riesgos que quedan: [docs/SEGURIDAD.md](docs/SEGURIDAD.md). Privacidad y retención: [docs/PRIVACIDAD_Y_RETENCION.md](docs/PRIVACIDAD_Y_RETENCION.md). Cambio de administradores: [docs/TRASPASO_ADMINISTRACION.md](docs/TRASPASO_ADMINISTRACION.md).
+**Acceso (versión 3):** al abrir la app se pide el **nombre de la comunidad** (usuario) y una **contraseña** que elige la comunidad. Ya no existe la clave compartida. La contraseña no se envía en claro, pero se deriva una clave de acceso reutilizable que se envía solo al endpoint exacto aprobado para esta versión. La lista de endpoints aprobados está vacía actualmente: la nube permanece bloqueada hasta verificar y fijar una dirección oficial. Los datos locales van cifrados (AES‑256‑GCM) y hay un código de recuperación de 26 caracteres. Ver [docs/confianza-servicio.md](docs/confianza-servicio.md) y [docs/SEGURIDAD.md](docs/SEGURIDAD.md). Privacidad y retención: [docs/PRIVACIDAD_Y_RETENCION.md](docs/PRIVACIDAD_Y_RETENCION.md). Cambio de administradores: [docs/TRASPASO_ADMINISTRACION.md](docs/TRASPASO_ADMINISTRACION.md).
 
 ## Pruebas
 
