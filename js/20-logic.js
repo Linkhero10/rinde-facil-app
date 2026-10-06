@@ -63,6 +63,7 @@
   function evaluateExpense(exp, project, community, allExpenses) {
     var issues = [];
     function add(level, id, msg, field) { issues.push({ level: level, id: id, msg: msg, field: field || null, expenseId: exp.id }); }
+    if (exp.actId && !allActivities(project).some(function (a) { return a.act.id === exp.actId; })) add('error', 'actividad_invalida', 'La actividad asociada ya no existe. Reasigna este gasto.', 'actId');
     var dt = D.DOC_BY_ID[exp.docType] || {};
     var glosa = String(exp.glosa || '');
 
@@ -138,10 +139,30 @@
   /* ---------- totales ---------- */
   function totalsByCuenta(project) {
     var out = {};
-    D.CUENTAS.forEach(function (c) { out[c.id] = { presupuestado: 0, aprobado: num(project.budgetApproved && project.budgetApproved[c.id]), rendido: 0, cantidad: 0 }; });
-    (project.budgetLines || []).forEach(function (l) { if (out[l.cuenta]) out[l.cuenta].presupuestado += num(l.monto); });
+    D.CUENTAS.forEach(function (c) { out[c.id] = { presupuestado: 0, corfo: 0, propio: 0, aprobado: num(project.budgetApproved && project.budgetApproved[c.id]), rendido: 0, cantidad: 0 }; });
+    (project.budgetLines || []).forEach(function (l) { if (out[l.cuenta]) { out[l.cuenta].presupuestado += num(l.monto); out[l.cuenta][l.fuente === 'propio' ? 'propio' : 'corfo'] += num(l.monto); } });
     (project.expenses || []).forEach(function (e) { if (out[e.cuenta]) { out[e.cuenta].rendido += num(e.montoRendir); out[e.cuenta].cantidad++; } });
     return out;
+  }
+  function activityReferences(project, ids) {
+    var refs = [];
+    ['expenses', 'budgetLines'].forEach(function (k) { (project[k] || []).forEach(function (r) { if (ids.indexOf(r.actId) >= 0) refs.push({ kind: k, id: r.id }); }); });
+    function scan(value) {
+      if (!value || typeof value !== 'object') return;
+      if (ids.indexOf(value.actId) >= 0) refs.push({ kind: 'formulario', id: value.id || value.actId });
+      Object.keys(value).forEach(function (k) { if (k !== 'actId') scan(value[k]); });
+    }
+    scan(project.forms);
+    return refs;
+  }
+  function removeActivity(project, id) {
+    if (activityReferences(project, [id]).length) throw new Error('Reasigna primero los gastos, líneas de presupuesto o formularios asociados a esta actividad.');
+    (project.gantt.stages || []).forEach(function (s) { s.acts = (s.acts || []).filter(function (a) { return a.id !== id; }); });
+  }
+  function removeStage(project, id) {
+    var stage = (project.gantt.stages || []).filter(function (s) { return s.id === id; })[0];
+    if (stage && activityReferences(project, (stage.acts || []).map(function (a) { return a.id; })).length) throw new Error('Reasigna primero los gastos, líneas de presupuesto o formularios asociados a esta etapa.');
+    project.gantt.stages = (project.gantt.stages || []).filter(function (s) { return s.id !== id; });
   }
   function adminByMonth(project) {
     var m = {};
@@ -330,11 +351,12 @@
     if (!acts.length) add(g3, 'info', 'Aún no has armado la Carta Gantt.', { tool: 'gantt' });
     D.CUENTAS.forEach(function (c) {
       var x = t[c.id];
-      if (x.aprobado > 0 && x.presupuestado > x.aprobado) add(g3, 'error', c.name + ': tu presupuesto (' + U.fmtCLP(x.presupuestado) + ') supera lo aprobado (' + U.fmtCLP(x.aprobado) + ').', { tool: 'presupuesto' });
-      else if (x.aprobado > 0 && x.presupuestado > 0 && Math.abs(x.presupuestado - x.aprobado) > R.TOLERANCIA_IVA) add(g3, 'warn', c.name + ': presupuestaste ' + U.fmtCLP(x.presupuestado) + ' de ' + U.fmtCLP(x.aprobado) + ' aprobados.', { tool: 'presupuesto' });
+      if (x.aprobado > 0 && x.corfo > x.aprobado) add(g3, 'error', c.name + ': tu presupuesto CORFO (' + U.fmtCLP(x.corfo) + ') supera lo aprobado (' + U.fmtCLP(x.aprobado) + ').', { tool: 'presupuesto' });
+      else if (x.aprobado > 0 && x.corfo > 0 && Math.abs(x.corfo - x.aprobado) > R.TOLERANCIA_IVA) add(g3, 'warn', c.name + ': presupuestaste ' + U.fmtCLP(x.corfo) + ' CORFO de ' + U.fmtCLP(x.aprobado) + ' aprobados.', { tool: 'presupuesto' });
     });
     var sinAct = (project.budgetLines || []).filter(function (l) { return !l.actId; }).length;
     if (sinAct) add(g3, 'info', sinAct + ' línea(s) de presupuesto sin actividad asociada.', { tool: 'presupuesto' });
+    (project.budgetLines || []).forEach(function (l) { if (l.actId && !acts.some(function (a) { return a.act.id === l.actId; })) add(g3, 'error', 'Una línea de presupuesto referencia una actividad inexistente. Reasígnala.', { tool: 'presupuesto' }); });
     if (!g3.items.length) add(g3, 'ok', 'Carta Gantt y presupuesto sin problemas.');
 
     /* 4. Gastos */
@@ -423,7 +445,7 @@
   RF.logic = {
     expectedMontoRendir: expectedMontoRendir, requirements: requirements, evaluateExpense: evaluateExpense, effectiveHas: effectiveHas, cotizacionOk: cotizacionOk,
     totalsByCuenta: totalsByCuenta, adminByMonth: adminByMonth, expensesByActivity: expensesByActivity, budgetByActivity: budgetByActivity,
-    allActivities: allActivities, ganttIssues: ganttIssues, activityDays: activityDays,
+    allActivities: allActivities, ganttIssues: ganttIssues, activityDays: activityDays, activityReferences: activityReferences, removeActivity: removeActivity, removeStage: removeStage,
     peaDeadline: peaDeadline, aclaracionDeadline: aclaracionDeadline,
     itemProgress: itemProgress, applies: applies, needsAnswered: needsAnswered, effectiveNeeds: effectiveNeeds, progress: progress, skippedPhases: skippedPhases, reconcile: reconcile
   };

@@ -226,11 +226,12 @@
     return pullState().then(function (p) {
       if (!p.ok) return { ok: false, text: p.error === 'SIN_COPIA' ? 'Todavía no hay una copia en la nube.' : 'No se pudo leer la copia (' + p.error + ').' };
       var msg = (opts && opts.pullOnly ? 'Hay una copia en la nube. ' : 'Otro equipo guardó una copia más nueva. ') + '¿Qué hacemos?';
-      return RF.ui.choiceBox(msg, [{ id: 'merge', label: 'Combinar las dos (recomendado): se suman los gastos, documentos y actas nuevos', primary: true }, { id: 'replace', label: 'Usar la de la nube y descartar lo de este equipo' }].concat(opts && opts.pullOnly ? [] : [{ id: 'overwrite', label: 'Guardar lo de este equipo encima de la nube' }])).then(function (c) {
+      return RF.ui.choiceBox(msg, [{ id: 'merge', label: 'Combinar registros nuevos; si hay cambios incompatibles, se detiene para revisarlos', primary: true }, { id: 'replace', label: 'Usar la de la nube y descartar lo de este equipo' }].concat(opts && opts.pullOnly ? [] : [{ id: 'overwrite', label: 'Guardar lo de este equipo encima de la nube' }])).then(function (c) {
         if (!c) return { ok: false, text: 'No se hizo ningún cambio.' };
         if (c === 'overwrite') return pushState(true).then(function (r) { return { ok: r.ok, text: r.ok ? 'La nube quedó con lo de este equipo.' : 'No se pudo guardar.' }; });
         if (c === 'replace') { RF.store.importJSON(JSON.stringify(p.remote)); RF.store.update(function (s) { s.cloud.rev = p.rev; s.cloud.conflict = false; }, { silent: true }); return { ok: true, text: 'Se cargó la copia de la nube.' }; }
-        var added = RF.store.mergeRemote(p.remote);
+        var added;
+        try { added = RF.store.mergeRemote(p.remote); } catch (e) { if (e.code !== 'MERGE_CONFLICT') throw e; return { ok: false, conflict: true, text: e.message }; }
         RF.store.update(function (s) { s.cloud.rev = p.rev; }, { silent: true });
         return pushState(false).then(function (r) { return { ok: r.ok, text: 'Se combinaron las copias (' + added + ' elementos nuevos).' + (r.ok ? ' La nube quedó al día.' : ' Falta guardar en la nube: vuelve a pulsar «Guardar copia».') }; });
       });

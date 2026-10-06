@@ -75,7 +75,7 @@ print(json.dumps({'sheets':wb.sheetnames,'cells':cells},ensure_ascii=False,defau
   return JSON.parse(r.stdout);
 }
 
-const stub = await startStub(8791);
+const stub = await startStub(0);
 async function routeTestService(page) {
   await page.route(TEST_API_URL, async route => {
     const req = route.request();

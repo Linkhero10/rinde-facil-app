@@ -179,26 +179,49 @@
       try { state = migrate(JSON.parse(e.newValue)); dirty = false; listeners.slice().forEach(function (l) { l(state); }); } catch (err) { /* copia dañada: se ignora */ }
     });
   }
-  /* Combina una copia que viene de afuera con lo de este equipo: se unen proyectos, gastos, cotizaciones, observaciones, líneas de presupuesto,
-     documentos y actas por su id. Si algo está en las dos, gana lo de este equipo. Los valores sueltos (nombre, fechas, marcas) no se tocan. */
+  /* Sin una base común no se puede decidir qué edición gana. Preparar todo en una copia;
+     cualquier divergencia ambigua aborta antes de modificar el estado local. */
+  function equalData(a, b) {
+    if (a === b) return true;
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
+    var ak = Object.keys(a).sort(), bk = Object.keys(b).sort();
+    return ak.length === bk.length && ak.every(function (k, i) { return k === bk[i] && equalData(a[k], b[k]); });
+  }
+  function conflict(path) { throw Object.assign(new Error('No se pueden combinar automáticamente las copias: diferencias en ' + path + '. Guarda ambas copias y revisa los cambios, o elige explícitamente cuál conservar.'), { code: 'MERGE_CONFLICT', path: path }); }
   function unionById(local, remote) {
-    var have = {}; (local || []).forEach(function (x) { if (x && x.id) have[x.id] = true; });
-    var add = (remote || []).filter(function (x) { return x && x.id && !have[x.id]; });
-    return { list: (local || []).concat(add), added: add.length };
+    var have = new Map(), list = [], added = 0;
+    (local || []).forEach(function (x) { if (!x || !x.id || have.has(x.id)) conflict('identificadores locales'); have.set(x.id, x); list.push(x); });
+    var seen = new Set();
+    (remote || []).forEach(function (x) { if (!x || !x.id || seen.has(x.id)) conflict('identificadores remotos'); seen.add(x.id); if (have.has(x.id)) { if (!equalData(have.get(x.id), x)) conflict('registro ' + x.id); } else { list.push(x); added++; } });
+    return { list: list, added: added };
   }
   function mergeRemote(remote) {
-    var added = 0, r = migrate(remote);
-    update(function (s) {
-      var haveP = {}; s.projects.forEach(function (p) { haveP[p.id] = p; });
+    function checkProjects(projects) {
+      var ids = new Set();
+      (projects || []).forEach(function (p) { if (!p || !p.id || ids.has(p.id)) conflict('identificadores de proyectos'); ids.add(p.id); });
+    }
+    checkProjects(remote && remote.projects); checkProjects(get().projects);
+    var added = 0, r = migrate(U.safeParse(JSON.stringify(remote))), s = migrate(U.safeParse(JSON.stringify(get())));
+    var mergeLists = ['expenses', 'cotizaciones', 'observations', 'budgetLines', 'needsCustom'];
+    Object.keys(r).concat(Object.keys(s)).forEach(function (k) { if (['projects', 'repo', 'cloud', 'ui', 'activeProjectId'].indexOf(k) < 0 && !equalData(s[k], r[k])) conflict(k); });
+    (function () {
+      var haveP = new Map(); s.projects.forEach(function (p) { haveP.set(p.id, p); });
       r.projects.forEach(function (rp) {
-        var lp = haveP[rp.id];
+        var lp = haveP.get(rp.id);
         if (!lp) { s.projects.push(rp); added++; return; }
-        ['expenses', 'cotizaciones', 'observations', 'budgetLines', 'needsCustom'].forEach(function (k) { var u = unionById(lp[k], rp[k]); lp[k] = u.list; added += u.added; });
-        Object.keys(rp.done || {}).forEach(function (k) { if (!lp.done[k]) lp.done[k] = rp.done[k]; });
+        Object.keys(rp).concat(Object.keys(lp)).forEach(function (k) { if (mergeLists.concat(['forms', 'done']).indexOf(k) < 0 && !equalData(lp[k], rp[k])) conflict('proyecto ' + rp.id + '/' + k); });
+        mergeLists.forEach(function (k) { var u = unionById(lp[k], rp[k]); lp[k] = u.list; added += u.added; });
+        Object.keys(rp.forms || {}).forEach(function (k) {
+          if (Array.isArray(rp.forms[k]) && (!lp.forms[k] || Array.isArray(lp.forms[k]))) { var u = unionById(lp.forms[k], rp.forms[k]); lp.forms[k] = u.list; added += u.added; }
+          else if (!equalData(lp.forms[k], rp.forms[k])) conflict('formulario ' + k);
+        });
+        Object.keys(lp.forms || {}).forEach(function (k) { if (!Object.prototype.hasOwnProperty.call(rp.forms, k)) conflict('formulario ' + k); });
+        Object.keys(rp.done || {}).forEach(function (k) { if (Object.prototype.hasOwnProperty.call(lp.done, k) && !equalData(lp.done[k], rp.done[k])) conflict('marca ' + k); lp.done[k] = rp.done[k]; });
       });
       var d = unionById(s.repo.docs, r.repo.docs), a = unionById(s.repo.actas, r.repo.actas);
       s.repo.docs = d.list; s.repo.actas = a.list; added += d.added + a.added;
-    });
+    })();
+    update(function (current) { current.projects = s.projects; current.repo = s.repo; });
     return added;
   }
   function isDone(p, tid, i) { return !!(p && p.done[tid + ':' + i]); }

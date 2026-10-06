@@ -431,7 +431,11 @@ mark.search-hit{scroll-margin:120px}
 .pw-row{display:flex;gap:8px;align-items:stretch}
 .pw-row input{flex:1;min-width:0}
 .pw-eye{min-width:44px;min-height:44px;border:1px solid var(--line);background:var(--card-2);color:var(--ink-2);border-radius:4px;cursor:pointer}
-.pw-hints{margin:0;padding-left:18px;color:var(--muted);font-size:14px}
+.pw-hints{margin:0;padding-left:20px;list-style:disc;font-size:15px;line-height:1.6}
+.pw-check{padding:0}
+.pw-check.is-met,.pw-match.is-met{color:var(--ok)}
+.pw-check.is-missing,.pw-match.is-missing{color:var(--bad)}
+.pw-match{font-size:15px;line-height:1.5;color:var(--muted)}
 .linklike{border:0;background:none;padding:0;color:var(--action);text-decoration:underline;cursor:pointer;font:inherit;text-align:left}
 .recovery-code{font:600 22px/1.5 var(--mono);letter-spacing:.08em;word-break:break-all;padding:16px;border:2px dashed var(--action);border-radius:4px;background:var(--card-2);user-select:all}
 .sec-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}

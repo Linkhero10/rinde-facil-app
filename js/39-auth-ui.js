@@ -8,7 +8,7 @@
   /* ---------- piezas ---------- */
   function passField(label, opts) {
     opts = opts || {};
-    var input = h('input', { type: 'password', autocomplete: opts.autocomplete || 'current-password', required: true, id: opts.id || null, 'aria-describedby': opts.describedby || null, spellcheck: 'false', autocapitalize: 'off' });
+    var input = h('input', { type: 'password', autocomplete: opts.autocomplete || 'current-password', required: opts.required !== false, id: opts.id || null, 'aria-describedby': opts.describedby || null, spellcheck: 'false', autocapitalize: 'off' });
     var eye = h('button', { type: 'button', class: 'pw-eye', 'aria-label': 'Mostrar u ocultar la contraseña', onclick: function () { input.type = input.type === 'password' ? 'text' : 'password'; } }, UI.icon('eye', 16));
     return { input: input, node: h('label', { class: 'field' }, h('span', { class: 'lbl' }, label), h('div', { class: 'pw-row' }, input, eye), opts.hint ? h('span', { class: 'hint' }, opts.hint) : null) };
   }
@@ -26,6 +26,48 @@
   }
   function errBox() { return h('div', { class: 'auth-err', role: 'alert' }); }
   function showErr(box, msg) { U.clear(box); if (msg) box.appendChild(UI.callout('bad', '', msg)); }
+  function passwordChecklist(passwordInput, communityInput, id) {
+    var list = h('ul', { class: 'pw-hints', id: id, 'aria-label': 'Requisitos de la contraseña' }), parts = [];
+    function communityName() { return communityInput && communityInput.value !== undefined ? communityInput.value : (communityInput || ''); }
+    function update() {
+      C.passwordChecks(passwordInput.value, communityName()).forEach(function (check, i) {
+        var part = parts[i];
+        part.row.className = 'pw-check ' + (check.valid ? 'is-met' : 'is-missing');
+        part.row.textContent = check.label;
+        part.row.setAttribute('aria-label', check.label + (check.valid ? ': cumplido' : ': pendiente'));
+      });
+    }
+    C.passwordChecks('', '').forEach(function (check) {
+      var row = h('li', { class: 'pw-check is-missing' }, check.label);
+      parts.push({ row: row });
+      list.appendChild(row);
+    });
+    passwordInput.addEventListener('input', update);
+    if (communityInput && communityInput.addEventListener) communityInput.addEventListener('input', update);
+    update();
+    return { node: list, update: update };
+  }
+  function passwordConfirmation(passwordInput, confirmation, id) {
+    var feedback = h('span', { class: 'pw-match', id: id, 'aria-live': 'polite' });
+    var attempted = false;
+    function update() {
+      var typed = confirmation.input.value.length > 0;
+      var matches = typed && passwordInput.value === confirmation.input.value;
+      feedback.className = 'pw-match' + (typed || attempted ? (matches ? ' is-met' : ' is-missing') : '');
+      feedback.textContent = !typed ? 'Vuelve a escribir tu contraseña.' : matches ? 'Las contraseñas coinciden.' : 'Las contraseñas todavía no coinciden.';
+      confirmation.input.setAttribute('aria-invalid', (typed || attempted) && !matches ? 'true' : 'false');
+    }
+    function validate() {
+      attempted = true; update();
+      if (!confirmation.input.value || passwordInput.value !== confirmation.input.value) { confirmation.input.focus(); return false; }
+      return true;
+    }
+    confirmation.node.appendChild(feedback);
+    passwordInput.addEventListener('input', update);
+    confirmation.input.addEventListener('input', update);
+    update();
+    return { update: update, validate: validate, reset: function () { attempted = false; update(); } };
+  }
 
   /* ---------- código de recuperación ---------- */
   function recoveryScreen(code, then, warning) {
@@ -43,19 +85,19 @@
   /* ---------- crear cuenta (o proteger los datos que ya había) ---------- */
   function createScreen(legacy, onDone) {
     var name = textField('Nombre de la comunidad', { hint: 'Este es el «usuario» con el que entras.', value: (legacy && legacy.community && legacy.community.name) || '' });
-    var p1 = passField('Contraseña', { autocomplete: 'new-password', hint: 'Al menos 10 caracteres. Una frase de tres o cuatro palabras funciona bien.' });
-    var p2 = passField('Repite la contraseña', { autocomplete: 'new-password' });
-    var err = errBox(), hints = h('ul', { class: 'pw-hints', 'aria-live': 'polite' });
-    function upd() { U.clear(hints); C.passwordProblems(p1.input.value, name.input.value).forEach(function (m) { hints.appendChild(h('li', null, m)); }); }
-    p1.input.addEventListener('input', upd); name.input.addEventListener('input', upd);
+    var reqId = 'create-password-requirements';
+    var p1 = passField('Contraseña', { autocomplete: 'new-password', describedby: reqId, hint: 'Al menos 10 caracteres. Una frase de tres o cuatro palabras funciona bien.' });
+    var p2 = passField('Repite la contraseña', { autocomplete: 'new-password', required: false, describedby: 'create-password-match' });
+    var matchHint = passwordConfirmation(p1.input, p2, 'create-password-match');
+    var err = errBox(), hints = passwordChecklist(p1.input, name.input, reqId);
     var form = h('form', { class: 'auth-form', novalidate: true, onsubmit: function (ev) {
       ev.preventDefault(); showErr(err, '');
       var nm = name.input.value.trim();
       if (nm.length < 3) return showErr(err, 'Escribe el nombre de la comunidad.');
       var pr = C.passwordProblems(p1.input.value, nm); if (pr.length) return showErr(err, pr[0]);
-      if (p1.input.value !== p2.input.value) return showErr(err, 'Las dos contraseñas no son iguales.');
+      if (!matchHint.validate()) return;
       work(A.createAccount(nm, p1.input.value), 'Creando tu cuenta…').then(function (r) { onDone(r); }).catch(function (e) { showErr(err, e.message); });
-    } }, name.node, p1.node, hints, p2.node, err, h('button', { type: 'submit', class: 'btn primary big' }, legacy ? 'Proteger mis datos' : 'Crear cuenta'));
+    } }, name.node, p1.node, hints.node, p2.node, err, h('button', { type: 'submit', class: 'btn primary big' }, legacy ? 'Proteger mis datos' : 'Crear cuenta'));
     return shell(legacy ? 'Protege los datos de tu comunidad' : 'Crea la cuenta de tu comunidad',
       legacy ? 'Tus datos de antes se van a guardar cifrados con una contraseña. Elige una que puedas recordar; sin ella nadie podrá abrirlos, ni siquiera nosotros.' : 'La contraseña protege lo que guardas en este equipo: gastos, fotos y documentos. Nadie más puede abrirlo sin ella.',
       [form, h('p', { class: 'hint' }, 'Los datos se guardan cifrados en este equipo y, si conectas el servicio de tu comunidad, en el Drive de tu comunidad.'), h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('connect'); } }, 'Ya tengo un servicio de mi comunidad y este equipo es nuevo')]);
@@ -79,11 +121,17 @@
   /* ---------- recuperar ---------- */
   function recoverScreen() {
     var code = textField('Código de recuperación', { autocomplete: 'off', hint: 'Los 26 caracteres que guardaste al crear la cuenta.' });
-    var p1 = passField('Contraseña nueva', { autocomplete: 'new-password' }), p2 = passField('Repite la contraseña nueva', { autocomplete: 'new-password' });
+    var meta = V.meta() || {}, reqId = 'recover-password-requirements';
+    var communityName = meta.display || meta.user || '';
+    var p1 = passField('Contraseña nueva', { autocomplete: 'new-password', describedby: reqId });
+    var p2 = passField('Repite la contraseña nueva', { autocomplete: 'new-password', required: false, describedby: 'recover-password-match' });
+    var matchHint = passwordConfirmation(p1.input, p2, 'recover-password-match');
+    var hints = passwordChecklist(p1.input, communityName, reqId);
     var err = errBox();
     var form = h('form', { class: 'auth-form', onsubmit: function (ev) {
       ev.preventDefault(); showErr(err, '');
-      if (p1.input.value !== p2.input.value) return showErr(err, 'Las dos contraseñas no son iguales.');
+      var problems = C.passwordProblems(p1.input.value, communityName); if (problems.length) return showErr(err, problems[0]);
+      if (!matchHint.validate()) return;
       work(A.recover(code.input.value, p1.input.value), 'Recuperando…').then(function (r) {
         var warning = r.serviceTrustBlocked ? 'La bóveda de este equipo se recuperó, pero la dirección guardada del servicio no está aprobada en esta versión. No se envió el código ni se modificó el acceso remoto. Pide verificar y aprobar la dirección antes de conectar.'
           : r.serverReset === false ? 'La bóveda de este equipo ya cambió y se generó el código nuevo que aparece abajo, pero el servicio remoto no confirmó el restablecimiento. El Drive todavía puede exigir la contraseña anterior. No borres esta sesión ni pierdas el código; vuelve a intentar cuando el servicio esté disponible.'
@@ -93,7 +141,7 @@
         if (e && e.code === 'LOCAL_RECOVERY_COMMIT_FAILED_AFTER_REMOTE' && e.recoveryCode) A.goto('recovery', { code: e.recoveryCode, warning: e.message });
         else showErr(err, e.message);
       });
-    } }, code.node, p1.node, p2.node, err, h('button', { type: 'submit', class: 'btn primary big' }, 'Cambiar contraseña'));
+    } }, code.node, p1.node, hints.node, p2.node, err, h('button', { type: 'submit', class: 'btn primary big' }, 'Cambiar contraseña'));
     return shell('Recuperar el acceso', 'Con el código de recuperación puedes elegir una contraseña nueva sin perder tus datos.', [form, h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('lock'); } }, 'Volver')]);
   }
 
@@ -140,7 +188,7 @@
       var m = V.meta() || {}, tk = A.token();
       var rows = [
         ['Datos de este equipo cifrados (AES-256)', true, 'Sin la contraseña o el código de recuperación no se pueden abrir.'],
-        ['Código de recuperación', !!m.wrapR, m.wrapR ? 'Existe. Si lo perdiste, cambia la contraseña y se genera uno nuevo.' : 'Este equipo no tiene uno (se conectó a un servicio ya creado).'],
+        ['Código de recuperación', !!m.wrapR, m.wrapR ? 'Existe. Cambiar la contraseña conserva ese código; guárdalo en un lugar seguro.' : 'Este equipo no tiene uno (se conectó a un servicio ya creado).'],
         ['Servicio de la comunidad', RF.cloud.configured(), RF.cloud.configured() ? (tk ? 'Sesión abierta.' : 'Sesión cerrada; se abrirá al usarlo.') : (s.cloud.apiUrl ? 'Dirección no aprobada; no se envían datos.' : 'No conectado.')],
         ['Cierre por inactividad', true, (Number(s.ui.idleMinutes) || 15) + ' minutos']
       ];
@@ -158,19 +206,27 @@
       } }) : null)]));
 
     /* cambiar contraseña */
-    var o = passField('Contraseña actual'), n1 = passField('Contraseña nueva', { autocomplete: 'new-password', hint: 'Al menos 10 caracteres.' }), n2 = passField('Repite la contraseña nueva', { autocomplete: 'new-password' });
+    var accountMeta = V.meta() || {}, reqId = 'change-password-requirements';
+    var o = passField('Contraseña actual');
+    var n1 = passField('Contraseña nueva', { autocomplete: 'new-password', describedby: reqId, hint: 'Al menos 10 caracteres.' });
+    var n2 = passField('Repite la contraseña nueva', { autocomplete: 'new-password', required: false, describedby: 'change-password-match' });
+    var matchHint = passwordConfirmation(n1.input, n2, 'change-password-match');
+    var newPasswordHints = passwordChecklist(n1.input, accountMeta.display || accountMeta.user || '', reqId);
     root.appendChild(UI.section('Cambiar la contraseña', [h('form', { class: 'auth-form', onsubmit: function (ev) {
       ev.preventDefault();
-      if (n1.input.value !== n2.input.value) return msg('bad', 'Las dos contraseñas nuevas no son iguales.');
+      var problems = C.passwordProblems(n1.input.value, accountMeta.display || accountMeta.user || '');
+      if (problems.length) return msg('bad', problems[0]);
+      if (!matchHint.validate()) return;
       var old = o.input.value, nw = n1.input.value;
       work(A.changePassword(old, nw), 'Cambiando…').then(function (r) {
         o.input.value = n1.input.value = n2.input.value = '';
+        newPasswordHints.update(); matchHint.reset();
         if (r.remoteChanged) msg('ok', 'La contraseña cambió en este equipo y el servicio confirmó el cambio; las demás sesiones se cerraron.');
         else if (r.remoteTrustBlocked) msg('warn', 'La contraseña cambió solo en este equipo. La dirección del servicio no está aprobada en esta versión; no se envió la contraseña ni se cambió nada en la nube.');
         else if (r.remoteAccountMissing) msg('warn', 'La contraseña cambió solo en este equipo. El servicio está configurado, pero todavía no tiene una cuenta creada.');
         else msg('warn', 'La contraseña cambió solo en este equipo. No hay un servicio conectado; sus datos remotos no se modificaron.');
       }).catch(function (e) { msg('bad', e.message); });
-    } }, o.node, n1.node, n2.node, h('button', { type: 'submit', class: 'btn' }, 'Cambiar contraseña'))]));
+    } }, o.node, n1.node, newPasswordHints.node, n2.node, h('button', { type: 'submit', class: 'btn' }, 'Cambiar contraseña'))]));
     root.appendChild(out);
 
     /* registro de accesos */

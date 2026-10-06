@@ -1,0 +1,97 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { loadApp } from './load.mjs';
+
+function app() {
+  const files = fs.readdirSync(new URL('../js/', import.meta.url)).filter(f => /^(00|0[1-5]|1\d|2\d|33)-.*\.js$/.test(f)).sort();
+  return loadApp(files.concat(['34-tools-gastos.js', '36-drive.js']), { RF: { ui: {}, tools: {} } });
+}
+function state(RF) {
+  const s = RF.store.defaults(), p = RF.store.newProject('Proyecto');
+  p.id = 'p1'; s.projects = [p]; s.activeProjectId = p.id; RF.store.attach(s);
+  return RF.store.get();
+}
+test('F2 permanece explícito y no produce exceso del aporte CORFO', () => {
+  const RF = app(), p = state(RF).projects[0];
+  p.budgetApproved.operacion = 100;
+  p.budgetLines = [{ id: 'b1', cuenta: 'operacion', fuente: 'corfo', monto: 100 }, { id: 'b2', cuenta: 'operacion', fuente: 'propio', monto: 200 }];
+  const t = RF.logic.totalsByCuenta(p).operacion;
+  assert.equal(t.presupuestado, 300); assert.equal(t.corfo, 100); assert.equal(t.propio, 200);
+  const items = RF.logic.reconcile(p, {}, '2026-10-06', []).groups.flatMap(g => g.items);
+  assert.ok(!items.some(i => /supera lo aprobado|presupuestaste/.test(i.msg)));
+});
+test('rendición septiembre excluye octubre e informa cuántos gastos omitió', () => {
+  const RF = app(), p = state(RF).projects[0];
+  p.periodoInicio = '2026-09-01'; p.periodoFin = '2026-09-30';
+  p.expenses = ['2026-09-15', '2026-10-01'].map((fecha, i) => ({ id: 'e' + i, fecha, cuenta: 'operacion', docType: 'boleta', folio: 'folio-' + i, total: 10, montoRendir: 10, has: {} }));
+  const doc = RF.rendicion.rendicionDoc(p, {});
+  assert.equal(doc.blocks[0].rows.length, 1);
+  assert.equal(doc.blocks[0].rows[0][8], 'folio-0');
+  assert.match(doc.footer, /1.*fuera del período/);
+  assert.equal(p.expenses.length, 2);
+  p.periodoFin = '';
+  assert.throws(() => RF.rendicion.rendicionDoc(p, {}), /período.*válido/);
+});
+test('no elimina actividad ni etapa con gastos o presupuesto asociados', () => {
+  const RF = app(), p = state(RF).projects[0];
+  p.gantt.stages = [{ id: 's1', acts: [{ id: 'a1' }, { id: 'a2' }] }];
+  p.expenses = [{ id: 'e1', actId: 'a1' }]; p.budgetLines = [{ id: 'b1', actId: 'a2' }];
+  const before = JSON.stringify(p);
+  assert.throws(() => RF.logic.removeActivity(p, 'a1'), /Reasigna/);
+  assert.throws(() => RF.logic.removeStage(p, 's1'), /Reasigna/);
+  assert.equal(JSON.stringify(p), before);
+  p.expenses = []; p.budgetLines = []; RF.logic.removeActivity(p, 'a1');
+  assert.equal(p.gantt.stages[0].acts.length, 1);
+});
+test('validación detecta actId inexistente en gasto y presupuesto', () => {
+  const RF = app(), p = state(RF).projects[0];
+  p.expenses = [{ id: 'e1', actId: 'missing', docType: 'boleta', has: {} }];
+  p.budgetLines = [{ id: 'b1', actId: 'missing' }];
+  assert.ok(RF.logic.evaluateExpense(p.expenses[0], p, {}, []).issues.some(i => i.id === 'actividad_invalida'));
+  assert.ok(RF.logic.reconcile(p, {}, '2026-10-06', []).groups.flatMap(g => g.items).some(i => /presupuesto.*inexistente/.test(i.msg)));
+});
+for (const kind of ['gantt', 'expense', 'forms', 'name']) {
+  test('conflicto ' + kind + ' no muta estado ni envía copia', async () => {
+    const RF = app(), s = state(RF), p = s.projects[0];
+    p.expenses = [{ id: 'e1', total: 10 }]; p.forms = { anexo: { data: { texto: 'local' } } };
+    const remote = structuredClone(s), rp = remote.projects[0];
+    if (kind === 'gantt') rp.gantt.stages = [{ id: 's2', acts: [] }];
+    if (kind === 'expense') rp.expenses[0].total = 20;
+    if (kind === 'forms') rp.forms.anexo.data.texto = 'remoto';
+    if (kind === 'name') rp.name = 'Otro';
+    rp.expenses.push({ id: 'e2', total: 30 });
+    const before = JSON.stringify(s); let pushes = 0;
+    RF.cloud.post = async action => { if (action === 'loadState') return { ok: true, state: JSON.stringify(remote), rev: 2 }; pushes++; return { ok: true }; };
+    RF.ui.choiceBox = async () => 'merge';
+    const result = await RF.drive.resolveConflict();
+    assert.equal(result.ok, false); assert.match(result.text, /copias|Combinar|combinar/);
+    assert.equal(pushes, 0); assert.equal(JSON.stringify(s), before);
+  });
+}
+test('merge combina IDs nuevos y formularios por ID sin pisar registros', () => {
+  const RF = app(), s = state(RF), p = s.projects[0];
+  p.forms = { informeA: [{ id: 'f1', data: { texto: 'local' } }] };
+  const remote = structuredClone(s);
+  remote.projects[0].forms.informeA.push({ id: 'f2', data: { texto: 'remoto' } });
+  remote.projects[0].expenses.push({ id: 'e2' });
+  RF.store.mergeRemote(remote);
+  assert.equal(RF.store.get().projects[0].forms.informeA.length, 2);
+  assert.equal(RF.store.get().projects[0].expenses.length, 1);
+});
+test('merge rechaza proyectos con identificadores ausentes o duplicados sin mutar', () => {
+  const RF = app(), s = state(RF), before = JSON.stringify(s);
+  const remote = structuredClone(s);
+  remote.projects.push(structuredClone(remote.projects[0]));
+  assert.throws(() => RF.store.mergeRemote(remote), /identificadores/);
+  assert.equal(JSON.stringify(RF.store.get()), before);
+  remote.projects = [{ name: 'Sin identificador' }];
+  assert.throws(() => RF.store.mergeRemote(remote), /identificadores/);
+  assert.equal(JSON.stringify(RF.store.get()), before);
+});
+test('merge compara contenido de registros sin depender del orden de claves', () => {
+  const RF = app(), s = state(RF);
+  s.projects[0].expenses = [{ id: 'e1', total: 10 }];
+  const remote = structuredClone(s); remote.projects[0].expenses = [{ total: 10, id: 'e1' }];
+  assert.doesNotThrow(() => RF.store.mergeRemote(remote));
+});

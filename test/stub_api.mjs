@@ -30,5 +30,8 @@ export function startStub(port = 8791) {
       setTimeout(() => { res.writeHead(200, cors); res.end(JSON.stringify(out)); }, p.action === 'ocr' ? store.ocrDelay : 0);
     });
   });
-  return new Promise(resolve => server.listen(port, '127.0.0.1', () => resolve({ server, store, url: 'http://127.0.0.1:' + port + '/exec' })));
+  return new Promise(resolve => server.listen(port, '127.0.0.1', () => {
+    const address = server.address();
+    resolve({ server, store, url: 'http://127.0.0.1:' + address.port + '/exec' });
+  }));
 }

@@ -27,15 +27,20 @@
 
   /* ---------- rendición en formato SGP ---------- */
   function rendicionDoc(project, community) {
+    var hasPeriod = project.periodoInicio || project.periodoFin;
+    if (hasPeriod && (!project.periodoInicio || !project.periodoFin || project.periodoInicio > project.periodoFin)) throw new Error('Completa un período de rendición válido antes de exportar.');
+    var selected = (project.expenses || []).filter(function (e) { return !hasPeriod || (e.fecha && e.fecha >= project.periodoInicio && e.fecha <= project.periodoFin); });
+    var excluded = (project.expenses || []).length - selected.length;
     var res = L.reconcile(project, community, U.todayISO(), RF.store.get().holidays);
     var ev = {}; res.evals.forEach(function (x) { ev[x.e.id] = x.r; });
-    var bad = res.evals.filter(function (x) { return x.r.status === 'error'; }).length;
-    var rows = (project.expenses || []).slice().sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); }).map(function (e) {
+    var bad = res.evals.filter(function (x) { return selected.indexOf(x.e) >= 0 && x.r.status === 'error'; }).length;
+    var rows = selected.slice().sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); }).map(function (e) {
       var per = e.fecha ? e.fecha.slice(0, 7) + '-01' : '';
       return [project.code || project.name, (D.CUENTA_BY_ID[e.cuenta] || {}).sgp || '', 'CORFO', e.item || '', per, num(e.montoRendir), (D.FORMAS_PAGO.filter(function (f) { return f.id === e.formaPago; })[0] || {}).name || '', (D.DOC_BY_ID[e.docType] || {}).name || '', e.folio, e.rutProveedor ? U.rutFormat(e.rutProveedor) : '', e.proveedor, e.glosa, STATUS_LABEL[(ev[e.id] || {}).status] || ''];
     });
-    return { title: (bad ? 'BORRADOR · ' : '') + 'Rendición de gastos', subtitle: (project.name || '') + (project.code ? ' · ' + project.code : '') + (project.periodoInicio ? ' · período ' + U.fmtDateShort(project.periodoInicio) + ' al ' + U.fmtDateShort(project.periodoFin) : ''), sheet: 'Rendición', footer: 'Generado con Rinde Fácil. Sirve para ingresar cada gasto en SGP, uno a uno, con los datos exactos del documento.' + (bad ? ' ATENCIÓN: hay ' + bad + ' gasto(s) con errores; corrígelos antes de enviar.' : ''), blocks: [
-      { t: 'table', head: ['Proyecto', 'Cuenta', 'Fuente', 'Ítem', 'Período', 'Monto rendido ($)', 'Forma de pago', 'Tipo de documento', 'N° documento', 'RUT proveedor', 'Proveedor', 'Glosa', 'Estado'], types: ['text', 'text', 'text', 'text', 'date', 'money', 'text', 'text', 'text', 'text', 'text', 'text', 'text'], rows: rows, foot: ['Total', '', '', '', '', 'SUM', '', '', '', '', '', '', ''] }
+    return { title: (bad ? 'BORRADOR · ' : '') + 'Rendición de gastos', subtitle: (project.name || '') + (project.code ? ' · ' + project.code : '') + (project.periodoInicio ? ' · período ' + U.fmtDateShort(project.periodoInicio) + ' al ' + U.fmtDateShort(project.periodoFin) : ''), sheet: 'Rendición', footer: 'Generado con Rinde Fácil. Sirve para ingresar cada gasto en SGP, uno a uno, con los datos exactos del documento.' + (bad ? ' ATENCIÓN: hay ' + bad + ' gasto(s) con errores; corrígelos antes de enviar.' : '') + ' ' + excluded + ' gasto(s) fuera del período o sin fecha excluidos; siguen guardados en el proyecto.', blocks: [
+      { t: 'table', head: ['Proyecto', 'Cuenta', 'Fuente', 'Ítem', 'Período', 'Monto rendido ($)', 'Forma de pago', 'Tipo de documento', 'N° documento', 'RUT proveedor', 'Proveedor', 'Glosa', 'Estado'], types: ['text', 'text', 'text', 'text', 'date', 'money', 'text', 'text', 'text', 'text', 'text', 'text', 'text'], rows: rows, foot: ['Total', '', '', '', '', 'SUM', '', '', '', '', '', '', ''] },
+      { t: 'p', text: excluded + ' gasto(s) fuera del período o sin fecha se excluyeron; siguen guardados en el proyecto.' }
     ] };
   }
   function expedienteDoc(project, community) {

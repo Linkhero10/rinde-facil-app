@@ -99,7 +99,7 @@
       if (!g.stages.length) body.appendChild(UI.empty('Aún no hay etapas. Agrega la primera: por ejemplo «Preparación», «Ejecución» o «Cierre».'));
       g.stages.forEach(function (st, si) {
         var tb = h('tbody');
-        (st.acts || []).forEach(function (a, ai) {
+        (st.acts || []).forEach(function (a) {
           var days = h('output', { class: 'calc' }, L.activityDays(a) != null ? L.activityDays(a) + ' d' : '');
           var upd = function () { var d = L.activityDays(a); days.textContent = d != null && d > 0 ? d + ' d' : ''; issues.refresh(); paintMonths(); };
           tb.appendChild(h('tr', null,
@@ -108,11 +108,11 @@
             h('td', { 'data-label': 'Término' }, UI.bind(a, 'end', { type: 'date', aria: 'Término', onChange: upd })),
             h('td', { 'data-label': 'Días' }, days),
             h('td', { 'data-label': 'Resultado o hito' }, UI.bind(a, 'result', { type: 'text', ph: 'Qué se logra', aria: 'Resultado', onChange: function () { } })),
-            h('td', { class: 'act' }, h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar actividad', title: 'Quitar actividad', onclick: function () { st.acts.splice(ai, 1); RF.store.update(function () { }, { silent: true }); paint(); } }, UI.icon('trash', 18)))));
+            h('td', { class: 'act' }, h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar actividad', title: 'Quitar actividad', onclick: function () { try { L.removeActivity(p, a.id); } catch (e) { UI.toast(e.message, 'bad'); return; } RF.store.update(function () { }, { silent: true }); paint(); } }, UI.icon('trash', 18)))));
         });
         body.appendChild(h('div', { class: 'stage-card' },
           h('div', { class: 'stage-head' }, h('span', { class: 'stage-n' }, 'Etapa ' + (si + 1)), UI.bind(st, 'name', { type: 'text', ph: 'Nombre de la etapa', aria: 'Nombre de la etapa', onChange: function () { issues.refresh(); paintMonths(); } }),
-            h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar etapa', title: 'Quitar etapa', onclick: function () { UI.confirmBox('¿Quitar esta etapa con sus actividades?', 'Quitar').then(function (ok) { if (!ok) return; g.stages.splice(si, 1); RF.store.update(function () { }, { silent: true }); paint(); }); } }, UI.icon('trash', 18))),
+            h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar etapa', title: 'Quitar etapa', onclick: function () { UI.confirmBox('¿Quitar esta etapa con sus actividades?', 'Quitar').then(function (ok) { if (!ok) return; try { L.removeStage(p, st.id); } catch (e) { UI.toast(e.message, 'bad'); return; } RF.store.update(function () { }, { silent: true }); paint(); }); } }, UI.icon('trash', 18))),
           h('div', { class: 'table-scroll' }, h('table', { class: 'edit-grid' }, h('thead', null, h('tr', null, ['Actividad', 'Inicio', 'Término', 'Días', 'Resultado o hito', ''].map(function (x) { return h('th', null, x); }))), tb)),
           UI.btn('Agregar actividad', { icon: 'plus', cls: 'ghost', onclick: function () { st.acts = st.acts || []; st.acts.push({ id: U.uid('a'), name: '', start: '', end: '', result: '' }); RF.store.update(function () { }, { silent: true }); paint(); } })));
       });
@@ -149,11 +149,11 @@
       U.clear(sum);
       var t = L.totalsByCuenta(p), months = U.monthsRange(p.start, p.end).length || 0;
       var rows = D.CUENTAS.map(function (cu) {
-        var x = t[cu.id]; var over = x.aprobado > 0 && x.presupuestado > x.aprobado;
-        return h('tr', { class: over ? 'row-bad' : '' }, h('th', { scope: 'row' }, cu.name), h('td', { class: 'r' }, U.fmtCLP(x.presupuestado)), h('td', { class: 'r' }, x.aprobado ? U.fmtCLP(x.aprobado) : '—'), h('td', { class: 'r' }, x.aprobado ? U.fmtCLP(x.aprobado - x.presupuestado) : '—'));
+        var x = t[cu.id]; var over = x.aprobado > 0 && x.corfo > x.aprobado;
+        return h('tr', { class: over ? 'row-bad' : '' }, h('th', { scope: 'row' }, cu.name), h('td', { class: 'r' }, U.fmtCLP(x.corfo)), h('td', { class: 'r' }, U.fmtCLP(x.propio)), h('td', { class: 'r' }, U.fmtCLP(x.presupuestado)), h('td', { class: 'r' }, x.aprobado ? U.fmtCLP(x.aprobado) : '—'), h('td', { class: 'r' }, x.aprobado ? U.fmtCLP(x.aprobado - x.corfo) : '—'));
       });
-      sum.appendChild(h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid' }, h('thead', null, h('tr', null, ['Cuenta', 'Presupuestado', 'Aprobado', 'Diferencia'].map(function (x, i) { return h('th', { class: i ? 'r' : '' }, x); }))), h('tbody', null, rows))));
-      var over = D.CUENTAS.filter(function (cu) { return t[cu.id].aprobado > 0 && t[cu.id].presupuestado > t[cu.id].aprobado; });
+      sum.appendChild(h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid' }, h('thead', null, h('tr', null, ['Cuenta', 'F1 · CORFO', 'F2 · Aporte propio', 'Total', 'Aprobado CORFO', 'Disponible CORFO'].map(function (x, i) { return h('th', { class: i ? 'r' : '' }, x); }))), h('tbody', null, rows))));
+      var over = D.CUENTAS.filter(function (cu) { return t[cu.id].aprobado > 0 && t[cu.id].corfo > t[cu.id].aprobado; });
       over.forEach(function (cu) { sum.appendChild(UI.callout('bad', '', cu.name + ': te pasas de lo aprobado.')); });
       var cap = D.REGLAS.ADMIN_TOPE_MENSUAL * months;
       if (months && t.administracion.presupuestado > cap) sum.appendChild(UI.callout('bad', '', 'Administración: el tope es ' + U.fmtCLP(D.REGLAS.ADMIN_TOPE_MENSUAL) + ' al mes (' + U.fmtCLP(cap) + ' en ' + months + ' meses).'));

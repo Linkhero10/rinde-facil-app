@@ -12,7 +12,7 @@ Estado: **NO LISTA PARA CUENTAS reales conectadas a Apps Script**. El cliente ah
 
 ## 2. Cómo funciona el acceso
 
-* **Usuario** = nombre de la comunidad (sin distinguir mayúsculas ni tildes). **Contraseña** = la que elija la comunidad (mínimo 10 caracteres; se rechazan las de lista común y las que repiten el nombre).
+* **Usuario** = nombre de la comunidad (sin distinguir mayúsculas ni tildes). **Contraseña** = la que elija la comunidad (mínimo 10 caracteres; debe ser distinta del nombre de la comunidad). La confirmación debe coincidir antes de guardar.
 * La contraseña escrita no se envía en claro; con PBKDF2‑SHA256 y HKDF se deriva una *clave de acceso* que sí viaja al servicio aprobado, y otra clave de cifrado que se queda en el equipo. La clave de acceso actual es reutilizable como verificador de inicio de sesión; por eso la app bloquea toda dirección no aprobada antes de enviarla.
 * Los datos del equipo se guardan cifrados con AES‑256‑GCM. La clave de datos (DEK) se guarda envuelta por la contraseña y, aparte, por el **código de recuperación** de 128 bits que se muestra una sola vez al crear la cuenta.
 * Las fotos en IndexedDB y la cola de envíos sin conexión también van cifradas; el nombre del proyecto y del archivo no quedan a la vista en la cola.
@@ -80,5 +80,16 @@ Estado: **NO LISTA PARA CUENTAS reales conectadas a Apps Script**. El cliente ah
 * **Siguiente paso recomendado:** repetir una pasada contra el servicio ya desplegado en Apps Script (con una cuenta de prueba aparte), para confirmar que se comporta como el simulador.
 
 ## 7. ¿Hace falta un servidor de base de datos?
+
+### Integridad de las copias y de la rendición (revisión local)
+
+- Combinar copias agrega registros con IDs nuevos en gastos, cotizaciones, observaciones, presupuesto, necesidades, documentos, actas y listas de formularios. Registros con el mismo ID deben tener el mismo contenido. Se validan IDs ausentes o duplicados en las listas combinadas y en proyectos.
+- Sin una versión base común, una diferencia en Gantt, formularios individuales, datos del proyecto u otros campos de contenido no combinables bloquea la combinación. Toda la propuesta se prepara en una copia: un conflicto no modifica el estado local, la revisión de nube ni envía `saveState`. El mensaje propone guardar ambas copias y revisar; las opciones explícitas de reemplazar o sobrescribir siguen siendo decisiones de la persona.
+- Configuración del dispositivo (`ui`, proyecto seleccionado) y conexión (`cloud`) se conservan localmente; no se mezclan desde el otro dispositivo. Un merge no resuelve automáticamente eliminaciones históricas: una ausencia en una lista de IDs puede significar una eliminación o un registro todavía no recibido. Requiere revisión humana si hubo eliminaciones.
+- El presupuesto muestra F1 CORFO, F2 propio y total por separado. El exceso respecto de lo aprobado por CORFO se compara solo con F1. No se modificó el tope normativo de administración.
+- Con período de rendición completo, la exportación incluye solo gastos fechados dentro de sus límites, informa los excluidos y conserva todos los registros originales. Un período incompleto o invertido bloquea la exportación.
+- Quitar actividad o etapa exige primero reasignar los gastos, líneas de presupuesto y formularios asociados. La validación detecta referencias inexistentes en gastos y presupuesto.
+
+Evidencia automatizada: `test/integrity.test.mjs` (cálculos, septiembre/octubre, referencias, combinación, no mutación y ausencia de envío ante conflicto). Estas pruebas locales no demuestran el comportamiento de Apps Script desplegado.
 
 **No, para el piloto.** Cada comunidad guarda todo en su propio Drive y en su equipo; no existe un lugar central que pueda filtrarse en bloque. Un servidor propio solo tendría sentido si se quisiera un panel que junte varias comunidades (versión SaaS); ahí habría que agregar cuentas por comunidad, cifrado en el servidor, copias de seguridad, registro de accesos y un responsable legal de los datos, y este documento se rehace.

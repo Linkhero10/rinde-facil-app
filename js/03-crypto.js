@@ -77,18 +77,23 @@
     return String(s || '').toUpperCase().replace(/[^0-9A-Z]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1').replace(/U/g, 'V');
   }
 
-  /* contraseña: largo y lo más común; se prefieren frases largas a claves «raras» */
-  var COMMON = ['contrasena', 'contraseña', 'password', 'passw0rd', '1234567890', '12345678910', 'qwertyuiop', 'asdfghjkl', 'comunidad', 'atacama', 'atacameno', 'atacameña', 'chile2026', 'chile2025', 'corfo', 'rindefacil', 'rinde facil', 'novandina', 'lickanantay', 'sanpedro', 'sanpedrodeatacama', '0123456789', 'abcdefghij', 'iloveyou', 'bienvenido', 'bienvenida', 'administrador', 'tesorero', 'tesorera', 'presidente', 'presidenta'];
+  /* Contraseña: longitud mínima y un valor distinto al nombre de la comunidad. */
+  function passwordChecks(pw, community) {
+    var p = String(pw == null ? '' : pw), hasPassword = p.length > 0;
+    var n = normUser(p).replace(/[^a-z0-9]/g, ''), c = normUser(community || '').replace(/[^a-z0-9]/g, '');
+    var checks = [
+      { id: 'length', label: 'Al menos 10 caracteres', valid: Array.from(p).length >= 10 },
+      { id: 'community', label: 'Distinta del nombre de tu comunidad', valid: hasPassword && (!c || n !== c) }
+    ];
+    return checks;
+  }
   function passwordProblems(pw, community) {
-    var out = [], p = String(pw || ''), n = normUser(p).replace(/[^a-z0-9]/g, ''), c = normUser(community || '').replace(/[^a-z0-9]/g, '');
-    if (p.length < 10) out.push('Usa al menos 10 caracteres. Una frase corta de 3 o 4 palabras sirve y es fácil de recordar.');
-    if (/^(.)\1+$/.test(p)) out.push('No uses el mismo carácter repetido.');
-    if (COMMON.some(function (w) { return n.indexOf(normUser(w).replace(/[^a-z0-9]/g, '')) >= 0 && n.length <= normUser(w).length + 4; })) out.push('Es una contraseña muy común. Elige otra.');
-    if (c && n.indexOf(c) >= 0 && n.length <= c.length + 4) out.push('No uses solo el nombre de la comunidad.');
-    if (/^[0-9]+$/.test(p) || /^[a-zA-Z]+$/.test(p) && p.length < 14 && !/\s/.test(p)) out.push('Mezcla palabras, números o espacios (por ejemplo, tres palabras con un número).');
+    var out = [], p = String(pw == null ? '' : pw), checks = passwordChecks(p, community);
+    if (!checks[0].valid) out.push('Usa al menos 10 caracteres. Una frase corta de 3 o 4 palabras sirve y es fácil de recordar.');
+    if (p && !checks[1].valid) out.push('No uses exactamente el nombre de la comunidad como contraseña.');
     return out;
   }
 
   RF.crypto = { ITERATIONS: ITERATIONS, available: function () { return !!subtle; }, b64: b64, ub64: ub64, rand: rand, normUser: normUser, deriveKeys: deriveKeys, newDek: newDek, importDek: importDek,
-    wrapDek: wrapDek, unwrapDek: unwrapDek, encJson: encJson, decJson: decJson, encBytes: encBytes, decBytes: decBytes, newRecoveryCode: newRecoveryCode, normalizeRecovery: normalizeRecovery, passwordProblems: passwordProblems };
+    wrapDek: wrapDek, unwrapDek: unwrapDek, encJson: encJson, decJson: decJson, encBytes: encBytes, decBytes: decBytes, newRecoveryCode: newRecoveryCode, normalizeRecovery: normalizeRecovery, passwordProblems: passwordProblems, passwordChecks: passwordChecks };
 })(typeof window !== 'undefined' ? window : globalThis);

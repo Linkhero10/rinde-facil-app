@@ -12,13 +12,26 @@ const LS = loadApp.lastCtx.localStorage;
 function reset() { RF.vault.wipe(); }
 const dump = () => RF.vault.meta() ? JSON.stringify(RF.vault.meta()) : '';
 
-test('la política de contraseñas rechaza lo débil y acepta una frase', () => {
+test('la política permite frases y cualquier tipo de caracteres con 10 o más', () => {
   const P = RF.crypto.passwordProblems;
   assert.ok(P('corta', 'X').length > 0);
-  assert.ok(P('1234567890', 'X').length > 0);
-  assert.ok(P('contraseña', 'X').length > 0);
-  assert.ok(P('comunidadatacama', 'Comunidad Atacama').length > 0, 'no basta el nombre de la comunidad');
+  assert.equal(P('1234567890', 'X').length, 0);
+  assert.ok(P('Comunidad Atacama', 'Comunidad Atacama').length > 0, 'bloquea usar exactamente el nombre de la comunidad');
+  assert.equal(P('9876043215', 'X').length, 0, 'no exige mezclar letras y números');
+  assert.equal(P('bcdEFGHijk', 'X').length, 0, 'no exige números ni símbolos');
+  assert.equal(P('zzzzzzzzzz', 'X').length, 0, 'no rechaza una frase por una regla de composición');
+  assert.equal(P('Una palabra password larga', 'X').length, 0, 'no bloquea una palabra común dentro de una frase distinta');
+  assert.equal(P('Mi Comunidad Atacama extendida', 'Comunidad Atacama').length, 0, 'no bloquea el nombre de la comunidad dentro de una frase');
   assert.equal(P(PW, 'Comunidad Atacameña').length, 0);
+});
+test('el checklist contiene solo longitud y nombre de la comunidad', () => {
+  const checks = RF.crypto.passwordChecks('Frase larga sin números', 'Comunidad Norte');
+  assert.equal(JSON.stringify(checks.map(x => x.id)), '["length","community"]');
+  assert.equal(JSON.stringify(checks.map(x => x.valid)), '[true,true]');
+  const invalid = RF.crypto.passwordChecks('Comunidad Norte', 'Comunidad Norte');
+  assert.equal(JSON.stringify(invalid.map(x => x.valid)), '[true,false]');
+  assert.equal(RF.crypto.passwordProblems('😀'.repeat(9), 'X').length, 1);
+  assert.equal(RF.crypto.passwordProblems('😀'.repeat(10), 'X').length, 0);
 });
 test('crear la bóveda: nada legible en el almacenamiento, y se abre solo con la contraseña correcta', async () => {
   reset();
