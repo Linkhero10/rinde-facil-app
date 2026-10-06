@@ -325,7 +325,7 @@
   /* ================= Nube y copias ================= */
   TOOLS.nube = { title: 'Nube y copias', icon: 'cloud', desc: 'Conecta el servicio de tu comunidad, guarda en la nube y haz copias.', render: function () {
     var s = RF.store.get(), root = h('div'), out = h('div');
-    function msg(kind, t) { U.clear(out); if (kind !== 'ok') out.appendChild(UI.callout(kind, '', t)); }
+    function msg(kind, t) { U.clear(out); if (kind !== 'ok' && t) out.appendChild(UI.callout(kind, '', t)); }
     function reportResolution(res) {
       if (!res) { msg('bad', 'No se recibió respuesta al resolver la copia.'); return; }
       if (res.ok || res.text === 'No se hizo ningún cambio.') { msg('ok', ''); return; }
@@ -373,7 +373,7 @@
     root.appendChild(UI.section('Servicio de la comunidad', [h('div', { class: 'form-grid' },
       UI.field('Dirección del servicio (termina en /exec)', s.cloud, 'apiUrl', { type: 'text', cls: 'wide', ph: 'https://script.google.com/macros/s/…/exec' })),
       h('div', { class: 'row-actions' },
-        UI.btn('Probar conexión', { icon: 'link', cls: 'primary', onclick: function () { U.clear(out); RF.cloud.ping().then(function (r) { if (r && r.ok) { msg(r.ocr ? 'ok' : 'warn', r.ocr ? '' : 'El servicio responde, pero la lectura de fotos no está configurada.'); paintSetup(r); } else msg('bad', 'El servicio respondió con un error: ' + ((r && r.error) || 'desconocido')); }).catch(function (e) { msg('bad', e.message === 'NO_CONFIGURADO' ? 'Pega primero la dirección del servicio (empieza con https://).' : 'No se pudo conectar (' + e.message + ').'); }); } }),
+        UI.btn('Probar conexión', { icon: 'link', cls: 'primary', onclick: function () { U.clear(out); RF.cloud.ping().then(function (r) { if (r && r.ok) { msg(r.ocr ? 'info' : 'warn', r.ocr ? 'Conexión correcta: el servicio responde' + (r.version ? ' (versión ' + r.version + ')' : '') + ', la lectura de fotos está disponible' + (r.account ? ' y la cuenta del servicio existe.' : ', pero todavía no tiene cuenta creada.') : 'El servicio responde, pero la lectura de fotos no está configurada.'); /* es el resultado de una acción pedida: se muestra aunque sea correcto */ paintSetup(r); } else msg('bad', 'El servicio respondió con un error: ' + ((r && r.error) || 'desconocido')); }).catch(function (e) { msg('bad', e.message === 'NO_CONFIGURADO' ? 'Pega primero la dirección del servicio (empieza con https://).' : 'No se pudo conectar (' + e.message + ').'); }); } }),
         UI.btn('Guardar copia en la nube', { icon: 'cloud', onclick: function () { U.clear(out); RF.drive.pushState().then(function (r) { if (r.ok && r.remote) msg('ok', ''); else if (r.queued) msg('warn', 'La copia quedó pendiente en este dispositivo; todavía no está en Drive.'); else if (r.conflict) RF.drive.resolveConflict().then(reportResolution); else msg('bad', 'No se pudo guardar: ' + (r.error || 'error')); }).catch(function (e) { msg('bad', 'No se pudo guardar (' + e.message + ').'); }); } }),
         UI.btn('Traer la copia de la nube', { icon: 'download', onclick: function () { U.clear(out); RF.drive.resolveConflict({ pullOnly: true }).then(reportResolution).catch(function (e) { msg('bad', 'No se pudo traer (' + e.message + ').'); }); } })),
       s.cloud.conflict ? UI.callout('warn', 'Hay una copia más nueva en la nube.', ' Otro equipo guardó cambios. Pulsa «Guardar copia en la nube» para combinarlas sin perder nada.') : null,
