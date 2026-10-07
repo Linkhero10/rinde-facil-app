@@ -307,7 +307,7 @@ await step('9. Anexo 4: días y montos se calculan; Word, PDF y texto salen', as
   await page.getByRole('button', { name: 'Word' }).first().click();
   const f = tmp('anexo4.docx'); await saveDownload(page, f);
   ok(fs.readFileSync(f, 'utf8').includes('Juana Pérez'), 'el Word trae el nombre');
-  await page.getByRole('button', { name: 'PDF' }).first().click();
+  await page.getByRole('button', { name: 'PDF', exact: true }).first().click();
   await page.waitForSelector('.print-overlay iframe');
   const txt = await page.frameLocator('.print-overlay iframe').locator('body').textContent();
   ok(/Certificado de viático/.test(txt) && /120\.000/.test(txt), 'la vista previa del PDF muestra el certificado');
@@ -322,7 +322,7 @@ await step('10. Anexo 5 calcula el monto a rendir y el Excel trae la fórmula de
   await go('#/h/anexo5');
   await page.waitForSelector('.form-tool');
   const row = page.locator('.edit-grid').first().locator('tbody tr').first();
-  await row.locator('input[data-key="concepto"]').fill('Luz');
+  await row.locator('select[data-key="concepto"]').selectOption('Luz');
   await row.locator('input[data-key="monto"]').fill('100000');
   await row.locator('input[data-key="pct"]').fill('30');
   await page.waitForTimeout(200);
@@ -614,7 +614,7 @@ await step('15c. Qué necesitará tu proyecto: solo se muestran los trámites qu
   ok(/Te tocan\s*\d+\s*de\s*\d+ trámites/.test((await page.textContent('.tool-page')).replace(/\s+/g, ' ')), 'cuenta los trámites que le tocan');
   const f4After = await page.locator('.side .acc-head', { hasText: 'Gastos y respaldos' }).textContent();
   ok(f4Before !== f4After, 'la barra lateral cambia: ' + f4Before + ' → ' + f4After);
-  await go('#/t/TRM-010');
+  await go('#/t/TRM-025');
   ok(/no te toca por ahora/i.test(await page.textContent('.view')), 'el trámite de administración avisa que no toca');
   await go('#/t/TRM-011');
   ok(!/no te toca por ahora/i.test(await page.textContent('.view')), 'el de viáticos sí toca');
@@ -1024,6 +1024,55 @@ await step('15q. F29 mes a mes, pasos que se marcan solos, ficha desde el gasto 
   /* historial */
   await go('#/h/historial');
   ok(/Creó la ficha c/i.test(await page.textContent('.tool-page')) || /F29/.test(await page.textContent('.tool-page')) || /Sacó|Guardó|Revisó/.test(await page.textContent('.tool-page')), 'el historial muestra lo que se hizo');
+  await go('#/h/gastos');
+});
+
+await step('15r. Anexos como documentos en la ruta (con firma en la app y casilla «listo»), viaje, obras, fase 5 corta, menú sin saltos y «no me aplica» en verde', async () => {
+  /* el Anexo 1 es el documento mismo: nombres con listas, firma dibujada y no se da por listo sin firma */
+  await go('#/t/TRM-021');
+  ok(/Anexo 1 · Declaración por no utilización de IVA CF/.test(await page.textContent('.view-title')), 'el trámite tiene el nombre del documento');
+  ok(await page.locator('.embed-doc select').count() >= 3, 'comunidad, quien firma y proyecto son listas para elegir');
+  const casilla = page.locator('.steps .step input[type="checkbox"]').first();
+  await casilla.click();
+  ok(!(await casilla.isChecked()) && /falta la firma/i.test(await page.textContent('body')), 'sin firma no se puede marcar listo');
+  const pad = page.locator('canvas.sign-pad').first(); await pad.scrollIntoViewIfNeeded(); const bb = await pad.boundingBox();
+  await page.mouse.move(bb.x + 30, bb.y + 50); await page.mouse.down(); await page.mouse.move(bb.x + 120, bb.y + 90, { steps: 6 }); await page.mouse.move(bb.x + 200, bb.y + 40, { steps: 6 }); await page.mouse.up();
+  await page.waitForSelector('img.sign-img', { timeout: 5000 });
+  ok(await page.evaluate(() => /^data:image\/png/.test(RF.store.project().forms.anexo1.data.firmas.rep)), 'la firma quedó guardada como imagen');
+  await casilla.check();
+  ok(await casilla.isChecked(), 'con la firma ya se puede marcar listo');
+  /* el menú lateral no salta arriba al marcar un paso */
+  await page.evaluate(() => { const s = document.getElementById('side'); s.scrollTop = 300; });
+  const antes = await page.evaluate(() => document.getElementById('side').scrollTop);
+  const dim0 = await page.evaluate(() => { const e = document.getElementById('side'); return [e.scrollHeight, e.clientHeight]; });
+  await casilla.uncheck(); await page.waitForTimeout(500);
+  const despues = await page.evaluate(() => document.getElementById('side').scrollTop);
+  const dim1 = await page.evaluate(() => { const e = document.getElementById('side'); return [e.scrollHeight, e.clientHeight]; });
+  ok(antes > 0 && despues > antes * 0.5, 'el menú lateral no vuelve arriba al marcar un paso (en el navegador real conserva la posición exacta): ' + antes + ' → ' + despues + ' ' + JSON.stringify({ dim0, dim1 }));
+  /* «no me aplica»: verde y sin tilde */
+  await go('#/t/TRM-022');
+  await page.locator('.na-check input').check(); await page.waitForTimeout(250);
+  const ck = page.locator('a.side-item[href="#/t/TRM-022"] .ck');
+  ok(await ck.evaluate(el => el.classList.contains('na-ok')) && await ck.locator('svg').count() === 0, '«no me aplica» queda en verde sin tilde');
+  await page.locator('.na-check input').uncheck();
+  /* Anexo 4: nombre primero; días e inicio calculan el término */
+  await go('#/t/TRM-024');
+  await page.getByRole('button', { name: 'Nuevo certificado' }).click();
+  ok(await page.locator('.embed-doc .field').first().textContent().then(t => /Nombre completo de quien viaja/.test(t)), 'lo primero es el nombre completo');
+  await page.locator('.edit-grid input[data-key="desde"]').fill('2026-10-01');
+  await page.locator('.edit-grid input[data-key="dias"]').fill('3');
+  ok(await page.locator('.edit-grid input[data-key="hasta"]').inputValue() === '2026-10-03', 'inicio + días calculan el término');
+  /* permisos y fotos de obras y registro de viaje existen como herramientas */
+  await go('#/h/obras');
+  ok(/Permisos y documentos de la obra/.test(await page.textContent('.tool-page')) && /Fotos de la obra/.test(await page.textContent('.tool-page')), 'permisos y fotos van por separado');
+  await go('#/h/viaje');
+  await page.getByRole('button', { name: 'Nuevo viaje' }).click();
+  ok(await page.locator('select[data-key="rol"]').count() >= 1 || await page.locator('.edit-grid select').count() >= 1, 'el registro de viaje pide el rol con una lista');
+  /* fase 5: el informe y sus fichas viven en un solo trámite */
+  await go('#/f/F5');
+  ok(await page.locator('.item-list li').count() === 4, 'la fase 5 quedó en 4 trámites');
+  await go('#/t/TRM-016');
+  ok(await page.locator('details.ficha-embed').count() === 5, 'el informe trae sus 5 fichas dentro');
   await go('#/h/gastos');
 });
 

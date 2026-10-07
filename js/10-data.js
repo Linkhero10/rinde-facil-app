@@ -14,8 +14,8 @@
     { id: 'F1', n: 1, name: 'Convenio y primer dinero', short: 'Convenio', blurb: 'Firmar, abrir la cuenta y recibir el 30 %.', items: ['P-01', 'P-02', 'P-03'] },
     { id: 'F2', n: 2, name: 'El PEA', short: 'PEA', blurb: 'Armar el plan de tus proyectos y enviarlo a CORFO.', items: ['TRM-027', 'TRM-030', 'TRM-028'] },
     { id: 'F3', n: 3, name: 'Configurar en SGP', short: 'SGP', blurb: 'Cargar etapas, actividades y presupuesto.', items: ['TRM-002', 'TRM-001'] },
-    { id: 'F4', n: 4, name: 'Gastos y respaldos', short: 'Gastos', blurb: 'Gastar bien y guardar cada respaldo.', items: ['TRM-006', 'TRM-007', 'TRM-008', 'TRM-009', 'TRM-010', 'TRM-011', 'TRM-021', 'TRM-022', 'TRM-023', 'TRM-024', 'TRM-025'] },
-    { id: 'F5', n: 5, name: 'Rendir y responder', short: 'Rendir', blurb: 'Enviar la rendición, el informe técnico y responder a CORFO.', items: ['TRM-013', 'TRM-014', 'TRM-016', 'TRM-017', 'TRM-018', 'TRM-019', 'TRM-020', 'TRM-015'] },
+    { id: 'F4', n: 4, name: 'Gastos y respaldos', short: 'Gastos', blurb: 'Gastar bien y guardar cada respaldo.', items: ['TRM-006', 'TRM-007', 'TRM-008', 'TRM-009', 'TRM-011', 'TRM-021', 'TRM-022', 'TRM-023', 'TRM-024', 'TRM-025'] },
+    { id: 'F5', n: 5, name: 'Rendir y responder', short: 'Rendir', blurb: 'Enviar la rendición, el informe técnico y responder a CORFO.', items: ['TRM-013', 'TRM-014', 'TRM-016', 'TRM-015'] },
     { id: 'F6', n: 6, name: 'Cierre', short: 'Cierre', blurb: 'Pedir los aportes que faltan.', items: ['TRM-029'] }
   ];
   var AYUDA = ['TRM-026'];

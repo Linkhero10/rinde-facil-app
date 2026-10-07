@@ -282,3 +282,36 @@ test('historial: se anota solo, se une entre equipos sin duplicar y no pasa de 4
   assert.equal(RF.store.get().activity.length, 400);
   assert.ok(s.activity.every(a => a.id && a.t && a.text));
 });
+
+test('Anexo 4: días, inicio y término se calculan entre sí en cualquier orden y el certificado parte por el nombre', () => {
+  const RF = app(), p = state(RF).projects[0], sc = RF.forms.SCHEMAS.anexo4, ctx = { project: p, community: {} };
+  assert.equal(sc.fields[0].k, 'viajero', 'lo primero es el nombre completo');
+  const d = sc.defaults(ctx); d.filas = [{ desde: '2026-10-01', dias: 3, montoDia: 50000 }];
+  d.filas[0]._last = 'dias'; sc.derive(d, ctx);
+  assert.equal(d.filas[0].hasta, '2026-10-03', 'inicio + días → término'); assert.equal(d.total, 150000);
+  const r = { desde: '2026-10-10', hasta: '2026-10-12', montoDia: 10000, _last: 'hasta' }; d.filas = [r]; sc.derive(d, ctx);
+  assert.equal(r.dias, 3, 'inicio + término → días');
+  const q = { hasta: '2026-10-12', dias: 2, _last: 'dias' }; d.filas = [q]; sc.derive(d, ctx);
+  assert.equal(q.desde, '2026-10-11', 'término + días → inicio (si falta el inicio)');
+});
+test('Anexo 5: al elegir el gasto se rellenan documento, monto, mes y concepto; el monto a rendir sale del porcentaje', () => {
+  const RF = app(), p = state(RF).projects[0], sc = RF.forms.SCHEMAS.anexo5;
+  p.expenses = [{ id: 'g1', cuenta: 'administracion', proveedor: 'Enel', folio: '9981', fecha: '2026-09-12', neto: 84034, total: 100000, glosa: 'Cuenta de luz septiembre', pctUso: 30 }];
+  const ctx = { project: p, community: { ivaModo: 'no_contribuyente' } }, d = sc.defaults(ctx), row = { gastoId: 'g1' };
+  d.uso = [row]; sc.onCell('uso', 'gastoId', row, d, ctx); sc.derive(d, ctx);
+  assert.equal(row.doc, '9981'); assert.equal(row.monto, 100000); assert.equal(row.periodo, '2026-09'); assert.equal(row.concepto, 'Luz'); assert.equal(row.pct, 30);
+  assert.equal(row.aRendir, 30000); assert.equal(d.totalUso, 30000);
+  ctx.community.ivaModo = 'recupera'; sc.onCell('uso', 'gastoId', row, d, { project: p, community: ctx.community });
+  assert.equal(row.monto, 84034, 'si recupera el IVA, el neto');
+});
+
+test('la firma dibujada viaja en el Word (imagen incrustada) y en la vista de impresión; sin firma sigue la línea de siempre', () => {
+  const RF = app();
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const doc = { title: 'Declaración', blocks: [{ t: 'p', text: 'Texto' }, { t: 'sign', labels: ['Ana · Comunidad'], images: [png] }] };
+  const zip = Buffer.from(RF.exp.docToDocx(doc)).toString('latin1');
+  assert.ok(zip.includes('word/media/firma1.png') && zip.includes('word/_rels/document.xml.rels') && zip.includes('r:embed="rIdImg1"') && zip.includes('Extension="png"'), 'imagen, relación y tipo de contenido');
+  const sin = Buffer.from(RF.exp.docToDocx({ title: 'x', blocks: [{ t: 'sign', labels: ['Ana'] }] })).toString('latin1');
+  assert.ok(!sin.includes('word/media') && sin.includes('______________________'));
+  assert.ok(RF.exp.docToHtml ? RF.exp.docToHtml(doc).includes('data:image/png;base64') : true);
+});

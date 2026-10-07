@@ -220,7 +220,7 @@
         if (b.foot) h += '<tfoot><tr>' + b.foot.map(function (v, i) { var ty = b.types && b.types[i]; var val = v === 'SUM' ? sumCol(b.rows, i) : v; return '<th' + (ty === 'money' || ty === 'pct' || ty === 'num' ? ' class="r"' : '') + '>' + e(fmtCell(val, ty)) + '</th>'; }).join('') + '</tr></tfoot>';
         h += '</table>';
       }
-      else if (b.t === 'sign') { h += '<div class="sign">' + b.labels.map(function (l) { return '<div><span></span>' + e(l) + '</div>'; }).join('') + '</div>'; }
+      else if (b.t === 'sign') { h += '<div class="sign">' + b.labels.map(function (l, i) { var img = b.images && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(b.images[i] || '') ? '<img src="' + b.images[i] + '" alt="Firma" style="display:block;height:56px;margin:0 auto 2px">' : ''; return '<div>' + img + '<span></span>' + e(l) + '</div>'; }).join('') + '</div>'; }
     });
     if (doc.footer) h += '<p class="foot">' + e(doc.footer) + '</p>';
     return h;
@@ -239,7 +239,14 @@
   }
   /* .docx de verdad: párrafos, títulos y tablas con los mismos datos que el resto de las salidas */
   function docToDocx(doc) {
-    var W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    var W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+    var media = [];
+    function imgPara(dataUrl) { /* firma dibujada: PNG dentro del documento */
+      var m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || ''); if (!m) return '';
+      var bin = atob(m[1]), bytes = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      media.push(bytes); var n = media.length, cx = 1800000, cy = 720000;
+      return '<w:p><w:pPr><w:spacing w:before="200" w:after="0"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="' + cx + '" cy="' + cy + '"/><wp:docPr id="' + n + '" name="Firma ' + n + '"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="' + n + '" name="firma' + n + '.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdImg' + n + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>';
+    }
     function run(t, o) { o = o || {}; return '<w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>' + (o.b ? '<w:b/>' : '') + (o.i ? '<w:i/>' : '') + (o.color ? '<w:color w:val="' + o.color + '"/>' : '') + '<w:sz w:val="' + (o.sz || 22) + '"/></w:rPr><w:t xml:space="preserve">' + xmlEsc(t) + '</w:t></w:r>'; }
     function para(text, o) {
       o = o || {};
@@ -268,14 +275,19 @@
       else if (b.t === 'note') body += para(b.text, { i: true, sz: 20, color: '555555' });
       else if (b.t === 'kv') body += table(null, (b.rows || []).map(function (r) { return [r[0], r[1] === undefined ? '' : r[1]]; }), null, null, wide);
       else if (b.t === 'table') body += table(b.head || [], b.rows || [], b.foot, b.types, wide);
-      else if (b.t === 'sign') body += para('', { after: 400 }) + para((b.labels || []).map(function (l) { return '______________________  ' + l; }).join('        '));
+      else if (b.t === 'sign') body += (b.images && b.images.some(Boolean) ? b.images.map(imgPara).join('') : para('', { after: 400 })) + para((b.labels || []).map(function (l) { return '______________________  ' + l; }).join('        '));
     });
     if (doc.footer) body += para(doc.footer, { i: true, sz: 18, color: '555555', before: 240 });
     var sect = wide ? '<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="1000" w:right="1000" w:bottom="1000" w:left="1000"/></w:sectPr>' : '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1200" w:right="1100" w:bottom="1200" w:left="1100"/></w:sectPr>';
     var documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ' + W + '><w:body>' + body + sect + '</w:body></w:document>';
     var ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>';
     var rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
-    return zipStore([{ name: '[Content_Types].xml', data: utf8(ct) }, { name: '_rels/.rels', data: utf8(rels) }, { name: 'word/document.xml', data: utf8(documentXml) }]);
+    var files = [{ name: '[Content_Types].xml', data: utf8(ct.replace('<Default Extension="rels"', media.length ? '<Default Extension="png" ContentType="image/png"/><Default Extension="rels"' : '<Default Extension="rels"')) }, { name: '_rels/.rels', data: utf8(rels) }, { name: 'word/document.xml', data: utf8(documentXml) }];
+    if (media.length) {
+      files.push({ name: 'word/_rels/document.xml.rels', data: utf8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + media.map(function (_, i) { return '<Relationship Id="rIdImg' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/firma' + (i + 1) + '.png"/>'; }).join('') + '</Relationships>') });
+      media.forEach(function (bytes, i) { files.push({ name: 'word/media/firma' + (i + 1) + '.png', data: bytes }); });
+    }
+    return zipStore(files);
   }
   var DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   function fileName(base, ext) {

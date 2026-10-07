@@ -129,7 +129,7 @@
   if (RF.drive && RF.drive.onSync) RF.drive.onSync(function (r) {
     if (r && r.conflict) { setChip('Dos equipos cambiaron lo mismo. Revisa «Nube y copias» (Herramientas › Gastos)', 'warn'); return; }
     if (chip.kind === 'warn' && /Dos equipos/.test(chip.text)) setChip('', '');
-    if (r && r.merged !== undefined) { if (r.merged) { RF.ui.toast('Se trajeron cambios hechos en otro equipo (' + r.merged + ' nuevos).', 'ok'); if (RF.activity) RF.activity.log('sync', 'Trajo ' + r.merged + ' cambios nuevos hechos en otro equipo.'); } render(); }
+    if (r && r.merged) { { RF.ui.toast('Se trajeron cambios hechos en otro equipo (' + r.merged + ' nuevos).', 'ok'); if (RF.activity) RF.activity.log('sync', 'Trajo ' + r.merged + ' cambios nuevos hechos en otro equipo.'); } render(); }
   });
   /* botón pequeño, siempre arriba a la derecha: guarda en Drive lo que esté listo y nunca se guardó */
   var driveTimer = null, driveState = { busy: false, text: '' };

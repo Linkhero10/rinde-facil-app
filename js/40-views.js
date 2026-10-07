@@ -16,7 +16,7 @@
     { id: 'G-plan', name: 'Planificar', tools: ['necesidades', 'proyecto', 'gantt', 'presupuesto', 'pea', 'reitem', 'cotizaciones'] },
     { id: 'G-rend', name: 'Rendir', tools: ['gastos', 'f29', 'revision', 'resumen', 'observaciones'] },
     { id: 'G-form', name: 'Anexos y formularios', tools: ['anexo1', 'anexo2', 'anexo3', 'anexo4', 'anexo5', 'informe', 'consulta', 'solicitud'] },
-    { id: 'G-doc', name: 'Documentos y actas', tools: ['documentos', 'actas', 'historial', 'compartir'] },
+    { id: 'G-doc', name: 'Documentos y actas', tools: ['documentos', 'obras', 'actas', 'historial', 'compartir'] },
     { id: 'G-ayu', name: 'Ayudas', tools: ['plazos', 'verificador', 'cuentas', 'nofinanciable'] }
   ];
   function isOpen(key, dflt) { var o = RF.store.get().ui.open; return o[key] == null ? !!dflt : !!o[key]; }
@@ -94,7 +94,7 @@
       f.items.forEach(function (id) {
         var t = RF.tramites.byId[id], ip = L.itemProgress(p || { done: {} }, id), cur = route.name === 'tramite' && route.id === id;
         var a = h('a', { href: '#/t/' + id, class: 'side-item' + (cur ? ' current' : '') + (ip.complete ? ' done' : ''), 'aria-current': cur ? 'page' : null },
-          h('span', { class: 'ck ' + (ip.complete ? 'on' : ip.done ? 'part' : '') }, ip.complete ? UI.icon('check', 14) : ''), h('span', { class: 'si-t' }, t.title), ip.na ? h('span', { class: 'na' }, ip.auto ? 'no te toca' : 'no aplica') : null);
+          h('span', { class: 'ck ' + (ip.na && !ip.auto ? 'na-ok' : ip.complete ? 'on' : ip.done ? 'part' : '') }, ip.complete && !(ip.na && !ip.auto) ? UI.icon('check', 14) : ''), h('span', { class: 'si-t' }, t.title), ip.na ? h('span', { class: 'na' }, ip.auto ? 'no te toca' : 'no aplica') : null);
         if (ip.auto && !cur) hiddenKids.push(a); else kids.push(a);
       });
       if (hiddenKids.length) kids.push(h('details', { class: 'side-hidden' }, h('summary', null, 'No te tocan por ahora (' + hiddenKids.length + ')'), hiddenKids));
@@ -183,7 +183,8 @@
   /* botones bajo un paso que pide llenar un documento: «Rellenar» (por casillas) y «Ver formato» (cómo queda el documento) */
   var FORMY = /^(anexo|informe|pea|gantt|presupuesto|cotizaciones|reitem|solicitud|consulta)/;
   function stepDocs(tid, i, shown) {
-    var ids = (RF.needs.STEP_TOOLS[tid + ':' + i] || []).filter(function (x) { return !shown[x]; }); if (!ids.length) return null;
+    var tr = RF.tramites.byId[tid], optional = !!(tr && tr.opt && tr.opt[i]);
+    var ids = (RF.needs.STEP_TOOLS[tid + ':' + i] || []).filter(function (x) { return optional || !shown[x]; }); if (!ids.length) return null;
     ids.forEach(function (x) { shown[x] = true; });
     var kids = [];
     ids.forEach(function (x) {
@@ -213,6 +214,24 @@
     if (t.need && t.need.length) root.appendChild(UI.section('Qué necesitas', [h('ul', { class: 'need-list' }, t.need.map(function (n) { return h('li', null, n); }))]));
     /* a tener en cuenta (texto, no se marca) */
     if ((t.notes && t.notes.length) || (t.related && t.related.length)) root.appendChild(h('section', { class: 'card notes-card' }, h('h2', { class: 'card-title' }, 'Ten en cuenta'), h('ul', { class: 'notes-list' }, (t.notes || []).map(function (n) { return typeof n === 'string' ? h('li', null, n) : h('li', null, n.t, n.tag ? h('span', { class: 'st-opt' }, n.tag) : null, n.a ? h('a', { class: 'btn small ghost', href: n.a[1] }, n.a[0]) : null); })), (t.related || []).length ? h('p', { class: 'hint' }, 'Relacionado: ', t.related.map(function (rid, k) { var rt = RF.tramites.byId[rid]; return rt ? [k ? ' · ' : '', h('a', { href: '#/t/' + rid }, rt.title)] : null; })) : null));
+    /* el documento mismo, para llenarlo aquí */
+    if (t.embed && p) {
+      var fctx = RF.forms.ctxNow();
+      t.embed.forEach(function (fid) { var sc = RF.forms.SCHEMAS[fid]; root.appendChild(h('section', { class: 'embed-doc', 'aria-label': sc.title }, sc.repeat ? RF.forms.renderRepeat(fid, fctx) : RF.forms.renderSingle(fid, fctx))); });
+      if (t.embedFichas) {
+        var FICHA_NEEDS = { informeA: ['actividades', 'insumos', 'viaticos'], informeB: ['estudios'], informeC: ['obras', 'activos', 'inmuebles'], informeD: ['sueldos', 'honorarios'], informeE: [] }, eff = L.effectiveNeeds(p, RF.store.get().community);
+        root.appendChild(h('h2', { class: 'sec-title' }, 'Fichas de lo que hiciste'));
+        root.appendChild(h('p', { class: 'hint' }, 'Una ficha por actividad, estudio, activo o persona. Se abren solas las que te tocan según lo que marcaste.'));
+        t.embedFichas.forEach(function (fid) {
+          var sc = RF.forms.SCHEMAS[fid], keys = FICHA_NEEDS[fid] || [], has = (p.forms && Array.isArray(p.forms[fid]) ? p.forms[fid].length : 0) > 0, applies = !L.needsAnswered(p) || !keys.length || keys.some(function (k) { return eff[k]; });
+          var det = h('details', { class: 'card ficha-embed', open: has || (applies && fid === 'informeA') }, h('summary', null, sc.title, applies ? null : h('span', { class: 'st-opt' }, 'Solo si aplica'), has ? h('span', { class: 'st-opt' }, 'Ya tiene fichas') : null));
+          var filled = false;
+          function fill() { if (filled) return; filled = true; det.appendChild(RF.forms.renderRepeat(fid, fctx)); }
+          if (det.open) fill(); det.addEventListener('toggle', function () { if (det.open) fill(); });
+          root.appendChild(det);
+        });
+      }
+    }
     /* pasos */
     var stepsBox = h('ol', { class: 'steps' }), shownTools = {};
     var counter = h('span', { class: 'steps-count' });
@@ -221,7 +240,9 @@
       var au = p ? L.autoStep(p, id, i) : null, manual = !!(p && RF.store.isDone(p, id, i));
       var cb = h('input', { type: 'checkbox', id: 'st-' + i, checked: manual || !!(au && au.done), disabled: !p || !!(au && au.done && !manual) });
       var li = h('li', { class: 'step' + (cb.checked ? ' done' : '') }, h('label', { for: 'st-' + i }, cb, h('span', { class: 'st-n' }, String(i + 1)), h('span', { class: 'st-t' }, txt), t.opt && t.opt[i] ? h('span', { class: 'st-opt' }, t.opt[i]) : null));
-      cb.addEventListener('change', function () { RF.store.setDone(id, i, cb.checked); li.classList.toggle('done', cb.checked); updCount(); refreshSide(); });
+      cb.addEventListener('change', function () {
+        if (cb.checked && t.gate && t.gate.indexOf(i) >= 0 && t.embed) { var errs = RF.forms.errors(t.embed, RF.forms.ctxNow()); if (errs.length) { cb.checked = false; UI.toast('Todavía falta: ' + errs[0] + '.', 'bad'); return; } }
+        RF.store.setDone(id, i, cb.checked); li.classList.toggle('done', cb.checked); updCount(); refreshSide(); });
       if (au) li.appendChild(h('div', { class: 'step-auto ' + (au.done ? 'ok' : 'wait') }, h('span', { class: 'st-opt' }, au.done ? 'Se marcó sola' : manual ? 'Marcado a mano' : 'Se marca sola'), ' ', au.done ? 'Porque ' + au.why : au.why, au.tool && RF.tools[au.tool] && !au.done ? [' ', h('a', { href: '#/h/' + au.tool }, 'Ir a ' + RF.tools[au.tool].title)] : null));
       var sd = stepDocs(id, i, shownTools); if (sd) li.appendChild(sd);
       stepsBox.appendChild(li);
@@ -237,7 +258,7 @@
     else if (t.src) root.appendChild(h('p', { class: 'hint' }, 'Fuente: ' + t.src.join(' · ')));
     return root;
   }
-  function refreshSide() { var old = document.getElementById('side'); if (!old) return; var neu = sidebar(RF.app.route()); old.parentNode.replaceChild(neu, old); if (document.body.classList.contains('menu-open')) { /* mantener */ } RF.app.applyThemeLabel(); }
+  function refreshSide() { var old = document.getElementById('side'); if (!old) return; var keep = old.scrollTop, neu = sidebar(RF.app.route()); old.parentNode.replaceChild(neu, old); if (RF.app.fitSide) RF.app.fitSide(); neu.scrollTop = keep; [0, 60, 200].forEach(function (ms) { setTimeout(function () { var cur = document.getElementById('side'); if (cur && cur === neu && Math.abs(cur.scrollTop - keep) > 2) cur.scrollTop = keep; }, ms); }); if (document.body.classList.contains('menu-open')) { /* mantener */ } RF.app.applyThemeLabel(); }
 
   RF.views = { toolContext: toolContext, toolTag: toolTag, TOOL_GROUPS: TOOL_GROUPS, sidebar: sidebar, home: homeView, fase: faseView, tramite: tramiteView, ORDER: ORDER, faseOf: faseOf, refreshSide: refreshSide };
 })(typeof window !== 'undefined' ? window : globalThis);

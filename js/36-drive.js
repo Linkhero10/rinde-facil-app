@@ -328,11 +328,26 @@
       return send({ project: (project && project.name) || projectName(), category: 'comprobante', fileName: 'F29-' + rec.mes + ext, mimeType: blob.type || 'application/pdf', base64: b64, issueDate: rec.mes + '-01' }, 'F29 de ' + rec.mes, false, null);
     });
   }
+  /* permisos y fotos de obras: carpeta propia del Drive (Obras - permisos / Obras - fotos), sin ficha de texto ni OCR */
+  function saveObra(rec, folder, fileName, blob) {
+    if (!enabled()) return Promise.reject(new Error('NO_CONFIGURADO'));
+    return RF.cloud.blobToBase64(blob).then(function (b64) {
+      return send({ category: 'oficial', subfolder: folder, fileName: fileName, mimeType: blob.type || 'image/jpeg', base64: b64, issueDate: (rec.at || '').slice(0, 10) || undefined }, fileName, false, null);
+    });
+  }
+  /* anexo firmado (foto o PDF): va a la carpeta «Anexos» del proyecto */
+  function saveSigned(rec, sc, project, blob) {
+    if (!enabled()) return Promise.reject(new Error('NO_CONFIGURADO'));
+    var ext = /pdf/.test(blob.type) ? '.pdf' : /png/.test(blob.type) ? '.png' : /webp/.test(blob.type) ? '.webp' : '.jpg';
+    var tag = String(sc.title || 'Anexo').split('·')[0].trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return RF.cloud.blobToBase64(blob).then(function (b64) { return send({ project: (project && project.name) || projectName(), category: 'anexos', fileName: tag + '-firmado-' + U.todayISO() + ext, mimeType: blob.type || 'image/jpeg', base64: b64, issueDate: U.todayISO() }, tag + ' firmado', false, null); });
+  }
   /* ---------- «Guardar todo en Drive»: lo que está listo en la plataforma pero nunca se guardó ---------- */
   function realExpense(e) { return !!(e && e.fecha && (e.proveedor || e.total || e.folio)); }
   function pendingItems() {
     var out = [], st = RF.store.get();
     (st.projects || []).forEach(function (p) {
+      (p.obras || []).forEach(function (r) { if (r && r.blobId && !r.driveUrl) out.push({ kind: 'obra', r: r, p: p, e: { id: r.id } }); });
       (p.f29 || []).forEach(function (r) { if (r && r.file && r.file.blobId && !r.file.driveUrl) out.push({ kind: 'f29', r: r, p: p, e: { id: r.id } }); });
       (p.expenses || []).forEach(function (e) {
         if (!realExpense(e)) return;
@@ -353,6 +368,9 @@
     var chain = Promise.resolve();
     items.forEach(function (it) {
       chain = chain.then(function () {
+        if (it.kind === 'obra') {
+          return RF.blobs.get(it.r.blobId).then(function (blob) { if (!blob) { fail++; return null; } return RF.obras.saveToDrive(it.r, it.p, blob).then(function (r) { if (r && r.remote) { it.r.driveUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); done++; } else fail++; }, function () { fail++; }); }, function () { fail++; });
+        }
         if (it.kind === 'f29') {
           return RF.blobs.get(it.r.file.blobId).then(function (blob) { if (!blob) { fail++; return null; } return saveF29(it.r, it.p, blob).then(function (r) { if (r && r.remote) { it.r.file.driveUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); done++; } else fail++; }, function () { fail++; }); }, function () { fail++; });
         }
@@ -516,5 +534,5 @@
     });
   }
 
-  RF.drive = { saveAttachment: saveAttachment, describeSave: describeSave, friendlySaves: friendlySaves, flushOutbox: flushOutbox, enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, saveFicha: saveFicha, archiveExpense: archiveExpense, fichaText: fichaText, backupState: backupState, syncNow: syncNow, onSync: onSync, saveF29: saveF29, pendingItems: pendingItems, pendingCount: pendingCount, saveAll: saveAll, onSaveAll: onSaveAll, markSynced: markSynced, pushState: pushState, pullState: pullState, resolveConflict: resolveConflict, saveExternal: saveExternal, saveActa: saveActa, docMeta: docMeta, actaMeta: actaMeta, setup: setup, categoryFor: categoryFor, errText: errText };
+  RF.drive = { saveAttachment: saveAttachment, describeSave: describeSave, friendlySaves: friendlySaves, flushOutbox: flushOutbox, enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, saveFicha: saveFicha, archiveExpense: archiveExpense, fichaText: fichaText, backupState: backupState, syncNow: syncNow, onSync: onSync, saveF29: saveF29, saveObra: saveObra, saveSigned: saveSigned, pendingItems: pendingItems, pendingCount: pendingCount, saveAll: saveAll, onSaveAll: onSaveAll, markSynced: markSynced, pushState: pushState, pullState: pullState, resolveConflict: resolveConflict, saveExternal: saveExternal, saveActa: saveActa, docMeta: docMeta, actaMeta: actaMeta, setup: setup, categoryFor: categoryFor, errText: errText };
 })(typeof window !== 'undefined' ? window : globalThis);

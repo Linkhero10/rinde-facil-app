@@ -423,6 +423,7 @@
   formTool('informeE', 'form', 'Actividades que no calzan en las otras fichas.', 'Descripción, proveedor, montos y fechas.');
   formTool('consulta', 'help', 'Redacta tu duda con los hechos, la norma y el impacto.', 'Mejor preguntar antes de gastar. Guarda la respuesta en tu expediente.');
   formTool('prorroga', 'file', 'Pide más tiempo para entregar el PEA (una vez, hasta 30 días).', 'Se pide antes de que venza el plazo de 90 días. Explica el motivo: tiene que ser una solicitud fundada.');
+  formTool('viaje', 'form', 'Anota quién viaja, su rol y por qué es necesario.', 'Un registro por viaje. Sirve para justificar ante CORFO que el viaje era esencial y acompaña los certificados de viático (Anexo 4).');
   formTool('solicitud', 'file', 'Borrador de la solicitud cuando CORFO cierre tu rendición.', 'Se pide después de que CORFO finaliza la revisión de tu rendición.');
   formTool('peaGeneral', 'form', 'PEA · información general.', '');
   formTool('peaProyecto', 'form', 'PEA · un formulario por proyecto.', '');

@@ -106,6 +106,8 @@
     plazos: ['Plazos', 'Días hábiles', 'Feriados', 'PEA de 90 días', 'Aclarar observaciones'],
     verificador: ['¿Se puede pagar esto?', 'Verificar un gasto'],
     cuentas: ['¿En qué cuenta va?', 'Recursos humanos', 'Gastos operacionales', 'Inversión', 'Administración'],
+    obras: ['Permisos y fotos de obras', 'Fotos y permisos de construcciones y activos, aparte de las boletas'],
+    viaje: ['Registro del viaje', 'Quién viaja, su rol y por qué es necesario'],
     historial: ['Historial de cambios', 'Quién hizo qué y cuándo'],
     f29: ['Formulario 29, F29, IVA mensual', 'Sube el F29 de cada mes y compáralo con tus facturas'],
     nofinanciable: ['Gastos no financiables', 'Lo que no se puede pagar con el aporte'],

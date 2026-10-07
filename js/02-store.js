@@ -16,7 +16,7 @@
       id: U.uid('p'), name: name || 'Mi proyecto', code: '', convenio: 'corfo-2026-09', tipo: 'inversion',
       start: '', end: '', desembolso1: '', periodoInicio: '', periodoFin: '',
       budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: 0 },
-      done: {}, gantt: { stages: [] }, budgetLines: [], expenses: [], f29: [], forms: {}, pea: { general: {}, proyecto: {} },
+      done: {}, gantt: { stages: [] }, budgetLines: [], expenses: [], f29: [], obras: [], forms: {}, pea: { general: {}, proyecto: {} },
       observations: [], cotizaciones: [], reitem: { rows: [], motivo: '' }, notes: '',
       needs: {}, needsSet: false, peaAprobado: false, peaAprobadoAt: '', needsPea: null, needsAdded: [], needsCustom: [], show: {}, createdAt: new Date().toISOString()
     };
@@ -46,7 +46,7 @@
       var np = Object.assign(newProject(p && p.name), p);
       np.budgetApproved = Object.assign({ rrhh: 0, operacion: 0, inversion: 0, administracion: 0 }, p.budgetApproved || {});
       np.gantt = p.gantt && Array.isArray(p.gantt.stages) ? p.gantt : { stages: [] };
-      ['budgetLines', 'expenses', 'observations', 'cotizaciones', 'f29'].forEach(function (k) { if (!Array.isArray(np[k])) np[k] = []; });
+      ['budgetLines', 'expenses', 'observations', 'cotizaciones', 'f29', 'obras'].forEach(function (k) { if (!Array.isArray(np[k])) np[k] = []; });
       np.forms = p.forms && typeof p.forms === 'object' ? p.forms : {};
       np.done = p.done && typeof p.done === 'object' ? p.done : {};
       np.pea = Object.assign({ general: {}, proyecto: {} }, p.pea || {});
@@ -203,7 +203,7 @@
     return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + stable(v[k]); }).join(',') + '}';
   }
   function fp(v) { var str = stable(v), h = 2166136261; for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
-  var LISTS = ['expenses', 'cotizaciones', 'observations', 'budgetLines', 'needsCustom', 'f29'];
+  var LISTS = ['expenses', 'cotizaciones', 'observations', 'budgetLines', 'needsCustom', 'f29', 'obras'];
   /* foto de lo que hay ahora, dato por dato: se guarda tras cada sincronización y permite distinguir «lo cambié yo» de «lo cambió el otro equipo» */
   function snapshotBase(st) {
     var b = {};

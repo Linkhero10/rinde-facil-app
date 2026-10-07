@@ -42,17 +42,31 @@
 
   var SCHEMAS = {};
 
+  function stateOf() { return RF.store.get(); }
+  function commNames() { var n = v(stateOf().community.name); return n ? [n] : []; }
+  function repNames() { var n = v(stateOf().community.legalRep); return n ? [n] : []; }
+  function projectNames() { return (stateOf().projects || []).map(function (p) { return p.name; }).filter(Boolean); }
+  var CARGOS = ['Presidente(a)', 'Representante legal', 'Tesorero(a)', 'Secretario(a)', 'Director(a)'];
+  /* al elegir el proyecto se rellenan su código y el período que se rinde */
+  function projectFill(k, d) {
+    if (k !== 'proyectoNombre') return;
+    var pr = (stateOf().projects || []).filter(function (p) { return p.name === d.proyectoNombre; })[0]; if (!pr) return;
+    if (pr.code) d.proyectoCodigo = pr.code;
+    if ('periodoInicio' in d && pr.periodoInicio) d.periodoInicio = pr.periodoInicio;
+    if ('periodoFin' in d && pr.periodoFin) d.periodoFin = pr.periodoFin;
+  }
   /* ============ ANEXO 1 ============ */
   SCHEMAS.anexo1 = {
-    id: 'anexo1', title: 'Anexo 1 · Declaración por no utilización de IVA CF', repeat: false, sheet: 'Anexo 1',
+    id: 'anexo1', title: 'Anexo 1 · Declaración por no utilización de IVA CF', repeat: false, sheet: 'Anexo 1', signers: [{ k: 'rep', l: 'Firma de quien representa a la comunidad' }], anexoN: 1,
     defaults: function (ctx) { return { ciudad: '', fecha: U.todayISO(), repNombre: v(com(ctx).legalRep), repRut: v(com(ctx).repRut), comunidad: v(com(ctx).name), comunidadRut: v(com(ctx).rut), proyectoNombre: v(proj(ctx).name), proyectoCodigo: v(proj(ctx).code), periodoInicio: v(proj(ctx).periodoInicio), periodoFin: v(proj(ctx).periodoFin) }; },
     fields: [
-      { k: 'ciudad', l: 'Ciudad', t: 'text', ph: 'Ej: San Pedro de Atacama' }, { k: 'fecha', l: 'Fecha', t: 'date' },
-      { k: 'repNombre', l: 'Nombre de quien representa a la comunidad', t: 'text' }, { k: 'repRut', l: 'Cédula de identidad', t: 'rut' },
-      { k: 'comunidad', l: 'Nombre de la comunidad', t: 'text' }, { k: 'comunidadRut', l: 'RUT de la comunidad', t: 'rut' },
-      { k: 'proyectoNombre', l: 'Nombre del proyecto', t: 'text' }, { k: 'proyectoCodigo', l: 'Código del proyecto', t: 'text', ph: '22CDR-######' },
-      { k: 'periodoInicio', l: 'Período que rindes: desde', t: 'date' }, { k: 'periodoFin', l: 'hasta', t: 'date' }
+      { k: 'comunidad', l: 'Comunidad que declara', t: 'choice', options: commNames }, { k: 'comunidadRut', l: 'RUT de la comunidad', t: 'rut' },
+      { k: 'repNombre', l: 'Quién la representa y firma', t: 'choice', options: repNames }, { k: 'repRut', l: 'Cédula de identidad de quien firma', t: 'rut' },
+      { k: 'proyectoNombre', l: 'Proyecto', t: 'choice', options: projectNames }, { k: 'proyectoCodigo', l: 'Código del proyecto', t: 'text', ph: '22CDR-######', hint: 'Se rellena solo al elegir el proyecto.' },
+      { k: 'periodoInicio', l: 'Período que rindes: desde', t: 'date' }, { k: 'periodoFin', l: 'hasta', t: 'date' },
+      { k: 'ciudad', l: 'Ciudad donde firmas', t: 'text', ph: 'Ej: San Pedro de Atacama' }, { k: 'fecha', l: 'Fecha de la declaración', t: 'date' }
     ],
+    onChange: function (k, d) { projectFill(k, d); },
     check: function (d) { var o = []; if (!d.periodoInicio || !d.periodoFin) o.push({ level: 'warn', msg: 'Falta el período de la rendición.' }); if (!d.repNombre) o.push({ level: 'warn', msg: 'Falta quien representa a la comunidad.' }); return o; },
     doc: function (d) {
       var f = U.fmtDate;
@@ -68,17 +82,18 @@
 
   /* ============ ANEXO 2 ============ */
   SCHEMAS.anexo2 = {
-    id: 'anexo2', title: 'Anexo 2 · IVA CF no relacionado con los proyectos', repeat: false, sheet: 'Anexo 2',
+    id: 'anexo2', title: 'Anexo 2 · IVA CF no relacionado con los proyectos', repeat: false, sheet: 'Anexo 2', signers: [{ k: 'rep', l: 'Firma de quien representa a la comunidad' }], anexoN: 2,
     defaults: function (ctx) { return { ciudad: '', fecha: U.todayISO(), repNombre: v(com(ctx).legalRep), repCargo: '', proyectoNombre: v(proj(ctx).name), proyectoCodigo: v(proj(ctx).code), periodoInicio: v(proj(ctx).periodoInicio), periodoFin: v(proj(ctx).periodoFin), filas: [] }; },
     fields: [
-      { k: 'ciudad', l: 'Ciudad', t: 'text' }, { k: 'fecha', l: 'Fecha', t: 'date' },
-      { k: 'repNombre', l: 'Nombre de quien representa a la comunidad', t: 'text' }, { k: 'repCargo', l: 'Cargo o relación con la comunidad', t: 'text' },
-      { k: 'proyectoNombre', l: 'Nombre del proyecto', t: 'text' }, { k: 'proyectoCodigo', l: 'Código del proyecto', t: 'text' },
+      { k: 'repNombre', l: 'Quién representa a la comunidad y firma', t: 'choice', options: repNames }, { k: 'repCargo', l: 'Su cargo o relación con la comunidad', t: 'choice', options: CARGOS },
+      { k: 'proyectoNombre', l: 'Proyecto', t: 'choice', options: projectNames }, { k: 'proyectoCodigo', l: 'Código del proyecto', t: 'text', hint: 'Se rellena solo al elegir el proyecto.' },
       { k: 'periodoInicio', l: 'Período que rindes: desde', t: 'date' }, { k: 'periodoFin', l: 'hasta', t: 'date' },
       { k: 'filas', l: 'Facturas cuyo IVA no es de este proyecto', t: 'table', add: 'Agregar factura', cols: [
         { k: 'nFactura', l: 'N° de factura', t: 'text' }, { k: 'fecha', l: 'Fecha de emisión', t: 'date' }, { k: 'bruto', l: 'Valor bruto', t: 'money' }, { k: 'neto', l: 'Valor neto', t: 'money' },
-        { k: 'detalle', l: 'Detalle de la compra o servicio', t: 'text' }, { k: 'contexto', l: 'Contexto en que se hizo', t: 'text' }] }
+        { k: 'detalle', l: 'Qué se compró o contrató', t: 'text' }, { k: 'contexto', l: 'Para qué se hizo (otra actividad de la comunidad)', t: 'text' }] },
+      { k: 'ciudad', l: 'Ciudad donde firmas', t: 'text' }, { k: 'fecha', l: 'Fecha de la declaración', t: 'date' }
     ],
+    onChange: function (k, d) { projectFill(k, d); },
     check: function (d) { var o = []; if (!d.filas || !d.filas.length) o.push({ level: 'warn', msg: 'Agrega al menos una factura.' }); (d.filas || []).forEach(function (r, i) { if (r.bruto && r.neto && num(r.neto) > num(r.bruto)) o.push({ level: 'error', msg: 'Fila ' + (i + 1) + ': el neto no puede ser mayor que el bruto.' }); }); return o; },
     doc: function (d) {
       var f = U.fmtDate;
@@ -95,7 +110,7 @@
 
   /* ============ ANEXO 3 (uno por pago en efectivo) ============ */
   SCHEMAS.anexo3 = {
-    id: 'anexo3', title: 'Anexo 3 · Declaración jurada simple (pago en efectivo)', repeat: true, sheet: 'Anexo 3', addLabel: 'Nueva declaración', itemName: function (d) { return (d.proveedorNombre || 'Sin nombre') + (d.monto ? ' · ' + U.fmtCLP(d.monto) : ''); },
+    id: 'anexo3', title: 'Anexo 3 · Declaración jurada simple (pago en efectivo)', repeat: true, sheet: 'Anexo 3', signers: [{ k: 'prov', l: 'Firma de quien recibió el pago' }], anexoN: 3, addLabel: 'Nueva declaración', itemName: function (d) { return (d.proveedorNombre || 'Sin nombre') + (d.monto ? ' · ' + U.fmtCLP(d.monto) : ''); },
     defaults: function (ctx) { return { ciudad: '', fecha: U.todayISO(), proveedorNombre: '', proveedorRut: '', monto: '', repNombre: v(com(ctx).legalRep), documentos: '', gastoId: '' }; },
     fields: [
       { k: 'gastoId', l: 'Gasto en efectivo al que corresponde (opcional)', t: 'expenseSelect', filter: function (e) { return e.formaPago === 'efectivo'; } },
@@ -121,23 +136,60 @@
     }
   };
 
+  /* ============ Registro del viaje (ayuda de la app, no es un anexo de CORFO) ============ */
+  var ROLES_VIAJE = ['Representante legal', 'Integrante de la directiva', 'Socio o socia de la comunidad', 'Persona contratada en el proyecto', 'Asesor o proveedor del servicio', 'Otro'];
+  SCHEMAS.viaje = {
+    id: 'viaje', title: 'Registro del viaje: quién viaja y por qué', repeat: true, sheet: 'Registro de viaje', addLabel: 'Nuevo viaje', itemName: function (d) { return d.destino || 'Viaje sin destino'; },
+    defaults: function () { return { actId: '', destino: '', desde: '', hasta: '', motivo: '', anticipacion: false, asistentes: [{}] }; },
+    fields: [
+      { k: 'actId', l: 'Actividad de tu Carta Gantt a la que pertenece el viaje', t: 'actSelect' },
+      { k: 'destino', l: 'A dónde viajan', t: 'text', ph: 'Ej: Calama' }, { k: 'desde', l: 'Sale el', t: 'date' }, { k: 'hasta', l: 'Vuelve el', t: 'date' },
+      { k: 'motivo', l: 'Por qué el viaje es esencial para la actividad', t: 'textarea', rows: 3, ph: 'Ej: Reunión con el proveedor para firmar el contrato de la maquinaria.' },
+      { k: 'asistentes', l: 'Quiénes viajan', t: 'table', add: 'Agregar persona', cols: [
+        { k: 'nombre', l: 'Nombre completo', t: 'text' }, { k: 'rut', l: 'RUT', t: 'text' }, { k: 'rol', l: 'Rol', t: 'select', options: ROLES_VIAJE.map(function (r) { return { id: r, name: r }; }) }, { k: 'porque', l: 'Por qué es necesaria su presencia', t: 'text' }] },
+      { k: 'anticipacion', l: 'Los pasajes se compraron con 15 días de anticipación y en clase económica', t: 'check' }
+    ],
+    check: function (d) {
+      var o = []; if (!d.destino) o.push({ level: 'warn', msg: 'Falta el destino.' }); if (!d.motivo) o.push({ level: 'warn', msg: 'Explica por qué el viaje es esencial: es lo que pide el Manual.' });
+      (d.asistentes || []).forEach(function (a, i) { if (!a.nombre) o.push({ level: 'warn', msg: 'Persona ' + (i + 1) + ': falta el nombre.' }); else if (!a.rol || !a.porque) o.push({ level: 'warn', msg: a.nombre + ': falta su rol o por qué es necesaria su presencia.' }); });
+      if (d.desde && d.hasta && d.hasta < d.desde) o.push({ level: 'error', msg: 'La vuelta es anterior a la salida.' });
+      if (!d.anticipacion) o.push({ level: 'info', msg: 'El Manual pide comprar pasajes con 15 días de anticipación, en clase económica. Si no fue así, explícalo en el motivo.' });
+      return o;
+    },
+    doc: function (d, ctx) {
+      return { title: 'Registro del viaje', subtitle: v(d.destino), sheet: 'Registro de viaje', footer: 'Borrador generado con Rinde Fácil. No es un anexo oficial de CORFO: sirve para justificar el viaje y respaldar los certificados de viático (Anexo 4).', blocks: [
+        { t: 'kv', rows: [['Comunidad', v(com(ctx).name)], ['Proyecto', v(proj(ctx).name)], ['Destino', d.destino], ['Salida', d.desde ? U.fmtDate(d.desde) : ''], ['Regreso', d.hasta ? U.fmtDate(d.hasta) : ''], ['Por qué el viaje es esencial', d.motivo], ['Pasajes', d.anticipacion ? 'Comprados con 15 días de anticipación, en clase económica.' : 'Sin confirmar.']] },
+        { t: 'table', head: ['Nombre completo', 'RUT', 'Rol', 'Por qué es necesaria su presencia'], types: ['text', 'text', 'text', 'text'], rows: (d.asistentes || []).map(function (a) { return [a.nombre, a.rut, a.rol, a.porque]; }) }] };
+    }
+  };
+
   /* ============ ANEXO 4 (uno por viajero) ============ */
   SCHEMAS.anexo4 = {
-    id: 'anexo4', title: 'Anexo 4 · Certificado de viático', repeat: true, sheet: 'Anexo 4', addLabel: 'Nuevo certificado', itemName: function (d) { return (d.viajero || 'Sin nombre') + (d.total ? ' · ' + U.fmtCLP(d.total) : ''); },
-    defaults: function (ctx) { return { ciudad: '', fecha: U.todayISO(), comunidad: v(com(ctx).name), proyectoCodigo: v(proj(ctx).code), proyectoNombre: v(proj(ctx).name), viajero: '', repNombre: v(com(ctx).legalRep), medioPago: 'transferencia', fechaPago: '', filas: [{}], total: 0 }; },
+    id: 'anexo4', title: 'Anexo 4 · Certificado de viático', repeat: true, sheet: 'Anexo 4', signers: [{ k: 'viajero', l: 'Firma de quien viaja' }, { k: 'rep', l: 'Firma de quien representa a la comunidad' }], anexoN: 4, addLabel: 'Nuevo certificado', itemName: function (d) { return (d.viajero || 'Falta el nombre') + (d.total ? ' · ' + U.fmtCLP(d.total) : ''); },
+    defaults: function (ctx) { return { viajero: '', comunidad: v(com(ctx).name), proyectoCodigo: v(proj(ctx).code), proyectoNombre: v(proj(ctx).name), ciudad: '', fecha: U.todayISO(), repNombre: v(com(ctx).legalRep), medioPago: 'transferencia', fechaPago: '', filas: [{}], total: 0 }; },
+    autoCols: ['dias', 'desde', 'hasta'],
     fields: [
-      { k: 'ciudad', l: 'Ciudad', t: 'text' }, { k: 'fecha', l: 'Fecha', t: 'date' },
-      { k: 'comunidad', l: 'Comunidad que paga el viático', t: 'text' }, { k: 'proyectoCodigo', l: 'Código del proyecto', t: 'text' }, { k: 'proyectoNombre', l: 'Nombre del proyecto', t: 'text' },
-      { k: 'viajero', l: 'Quién viaja (nombre completo)', t: 'text' },
+      { k: 'viajero', l: 'Nombre completo de quien viaja', t: 'text', ph: 'Ej: María Pérez González', hint: 'Escríbelo primero: es el nombre con que se guarda el certificado.' },
+      { k: 'comunidad', l: 'Comunidad que paga el viático', t: 'choice', options: commNames },
+      { k: 'proyectoNombre', l: 'Proyecto', t: 'choice', options: projectNames }, { k: 'proyectoCodigo', l: 'Código del proyecto', t: 'text', hint: 'Se rellena solo al elegir el proyecto.' },
       { k: 'filas', l: 'Viajes', t: 'table', add: 'Agregar viaje', cols: [
-        { k: 'destino', l: 'Destino', t: 'text' }, { k: 'desde', l: 'Inicio', t: 'date' }, { k: 'hasta', l: 'Término', t: 'date' }, { k: 'dias', l: 'Días', t: 'number' }, { k: 'montoDia', l: 'Monto por día', t: 'money' }, { k: 'monto', l: 'Monto del viático', t: 'calc', fmt: 'money' }] },
+        { k: 'destino', l: 'Destino del viaje', t: 'text', tip: 'El lugar al que viajó la persona. No es la ciudad donde se firma el certificado: esa va más abajo.' },
+        { k: 'dias', l: 'N° de días', t: 'number' }, { k: 'desde', l: 'Inicio', t: 'date' }, { k: 'hasta', l: 'Término', t: 'date', tip: 'Si escribes el inicio y los días, el término se calcula solo. Si escribes inicio y término, se calculan los días.' },
+        { k: 'montoDia', l: 'Monto por día', t: 'money' }, { k: 'monto', l: 'Monto del viático', t: 'calc', fmt: 'money' }] },
       { k: 'total', l: 'Total del viático', t: 'calc', fmt: 'money' },
       { k: 'medioPago', l: 'Cómo recibió el pago', t: 'select', options: [{ id: 'transferencia', name: 'Transferencia bancaria' }, { id: 'efectivo', name: 'Efectivo' }] }, { k: 'fechaPago', l: 'Fecha del pago', t: 'date' },
-      { k: 'repNombre', l: 'Quien representa a la comunidad', t: 'text' }
+      { k: 'repNombre', l: 'Quién representa a la comunidad y firma', t: 'choice', options: repNames },
+      { k: 'ciudad', l: 'Ciudad donde se firma el certificado', t: 'text', hint: 'No es el destino del viaje.' }, { k: 'fecha', l: 'Fecha del certificado', t: 'date' }
     ],
+    onChange: function (k, d) { projectFill(k, d); },
     derive: function (d) {
       (d.filas || []).forEach(function (r) {
-        if (r.desde && r.hasta && r.hasta >= r.desde && (r.dias === '' || r.dias === undefined || r._autoDias)) { r.dias = U.diffDays(r.desde, r.hasta) + 1; r._autoDias = true; }
+        var last = r._last, dd = Number(r.dias) || 0;
+        if (last === 'hasta' && r.desde && r.hasta && r.hasta >= r.desde) r.dias = U.diffDays(r.desde, r.hasta) + 1;
+        else if ((last === 'dias' || last === 'desde') && r.desde && dd > 0) r.hasta = U.addDays(r.desde, dd - 1);
+        else if (r.desde && r.hasta && r.hasta >= r.desde && !dd) r.dias = U.diffDays(r.desde, r.hasta) + 1;
+        else if (r.desde && dd > 0 && !r.hasta) r.hasta = U.addDays(r.desde, dd - 1);
+        else if (!r.desde && r.hasta && dd > 0) r.desde = U.addDays(r.hasta, -(dd - 1));
         r.monto = Math.round((Number(r.dias) || 0) * num(r.montoDia));
       });
       d.total = U.sum(d.filas || [], function (r) { return r.monto; });
@@ -157,19 +209,40 @@
   };
 
   /* ============ ANEXO 5 ============ */
-  var A5COLS = [
-    { k: 'concepto', l: 'Concepto del gasto', t: 'text' }, { k: 'comunidad', l: 'Nombre comunidad', t: 'text' }, { k: 'periodo', l: 'Período mensual', t: 'month' },
-    { k: 'doc', l: 'N° del documento', t: 'text' }, { k: 'monto', l: 'Monto del documento (neto si recuperas IVA)', t: 'money' }, { k: 'pct', l: '% de uso', t: 'pct' }, { k: 'aRendir', l: 'Monto a rendir al proyecto', t: 'calc', fmt: 'money' }];
+  var CONCEPTOS_USO = ['Luz', 'Agua', 'Internet', 'Teléfono', 'Gas', 'Arriendo', 'Gastos de oficina (impresiones, correos, notaría)', 'Otro'];
+  var CONCEPTOS_HH = ['Contador', 'Secretaria', 'Contraparte administrativa-financiera', 'Otro'];
+  function a5Gastos(ctx) { return [{ id: '', name: 'Elige el gasto' }].concat(((ctx.project && ctx.project.expenses) || []).filter(function (e) { return e.cuenta === 'administracion' && (e.proveedor || e.total); }).map(function (e) { return { id: e.id, name: (e.proveedor || 'Sin proveedor') + ' · ' + (e.folio || 's/n') + ' · ' + U.fmtCLP(e.total) }; })); }
+  function a5Cols(kind) {
+    var lista = kind === 'uso' ? CONCEPTOS_USO : CONCEPTOS_HH;
+    return [
+      { k: 'gastoId', l: 'Gasto', t: 'select', options: a5Gastos, tip: 'Elige el gasto que anotaste en «Gastos y rendición» (cuenta Administración): el N° de documento, el monto y el mes se rellenan solos.' },
+      { k: 'concepto', l: 'Concepto', t: 'select', options: lista.map(function (x) { return { id: x, name: x }; }), tip: 'Qué es el gasto. Si no está en la lista, elige «Otro» y escríbelo en la columna siguiente.' },
+      { k: 'conceptoOtro', l: 'Si es «Otro», cuál', t: 'text' },
+      { k: 'periodo', l: 'Mes', t: 'month' }, { k: 'doc', l: 'N° del documento', t: 'text' },
+      { k: 'monto', l: 'Monto del documento ($)', t: 'money', tip: 'Si recuperas el IVA, el monto neto; si no, el total.' },
+      { k: 'pct', l: kind === 'uso' ? '% que usa el proyecto' : '% de su tiempo en el proyecto', t: 'pct', tip: kind === 'uso' ? 'Qué parte del gasto corresponde a este proyecto. Ej: la cuenta de luz es de $100.000 y el proyecto usa el 30 %: se rinden $30.000.' : 'Qué parte del tiempo de la persona o servicio se dedica a este proyecto. Ej: el contador cobra $80.000 y dedica el 20 % al proyecto: se rinden $16.000.' },
+      { k: 'aRendir', l: 'Monto a rendir al proyecto', t: 'calc', fmt: 'money' }];
+  }
+  var CONCEPTO_GUESS = [[/luz|electric/i, 'Luz'], [/agua/i, 'Agua'], [/internet|wifi|fibra/i, 'Internet'], [/telef|celular|movil/i, 'Teléfono'], [/\bgas\b/i, 'Gas'], [/arriendo|alquiler/i, 'Arriendo'], [/conta/i, 'Contador'], [/secretar/i, 'Secretaria']];
   SCHEMAS.anexo5 = {
     id: 'anexo5', title: 'Anexo 5 · Memoria de cálculo de gastos de administración', repeat: false, sheet: 'Anexo 5',
-    defaults: function (ctx) { return { proyectoNombre: v(proj(ctx).name), uso: [{ comunidad: v(com(ctx).name) }], hh: [], totalUso: 0, totalHH: 0 }; },
+    defaults: function (ctx) { return { proyectoNombre: v(proj(ctx).name), comunidadNombre: v(com(ctx).name), uso: [{}], hh: [], totalUso: 0, totalHH: 0 }; },
+    autoCols: ['concepto', 'periodo', 'doc', 'monto', 'pct'],
     fields: [
-      { k: 'proyectoNombre', l: 'Proyecto (según el PEA)', t: 'text' },
-      { k: 'uso', l: 'Por valor de uso del proyecto', t: 'table', add: 'Agregar gasto', cols: A5COLS },
-      { k: 'totalUso', l: 'Total por valor de uso', t: 'calc', fmt: 'money' },
-      { k: 'hh', l: 'Por cantidad de horas hombre (HH)', t: 'table', add: 'Agregar persona o servicio', cols: A5COLS.map(function (c) { return c.k === 'pct' ? { k: 'pct', l: '% de participación', t: 'pct' } : c; }) },
-      { k: 'totalHH', l: 'Total por horas hombre', t: 'calc', fmt: 'money' }
+      { k: 'proyectoNombre', l: 'Proyecto (según el PEA)', t: 'choice', options: projectNames },
+      { k: 'uso', l: 'Gastos que se reparten según el uso (luz, agua, internet, arriendo…)', t: 'table', add: 'Agregar gasto', cols: a5Cols('uso') },
+      { k: 'totalUso', l: 'Total por uso', t: 'calc', fmt: 'money' },
+      { k: 'hh', l: 'Gastos que se reparten según las horas de trabajo dedicadas al proyecto (contador, secretaria…)', t: 'table', add: 'Agregar persona o servicio', cols: a5Cols('hh'), hint: 'El Manual los llama «horas HH» (horas hombre).' },
+      { k: 'totalHH', l: 'Total por horas de trabajo', t: 'calc', fmt: 'money' }
     ],
+    onCell: function (fk, ck, row, data, ctx) {
+      if (ck !== 'gastoId') return;
+      var e = ((ctx.project && ctx.project.expenses) || []).filter(function (x) { return x.id === row.gastoId; })[0]; if (!e) return;
+      row.doc = e.folio || row.doc || ''; row.monto = ctx.community && ctx.community.ivaModo === 'recupera' && num(e.neto) ? num(e.neto) : num(e.total); row.periodo = String(e.fecha || '').slice(0, 7) || row.periodo;
+      if (e.pctUso !== '' && e.pctUso != null && Number(e.pctUso) > 0) row.pct = Number(e.pctUso);
+      if (!row.concepto) { var txt = [e.glosa, e.proveedor, e.nombreComercial].join(' '); CONCEPTO_GUESS.forEach(function (g) { if (!row.concepto && g[0].test(txt)) row.concepto = g[1]; }); }
+    },
+    onChange: function (k, d) { projectFill(k, d); },
     derive: function (d) {
       ['uso', 'hh'].forEach(function (k) { (d[k] || []).forEach(function (r) { r.aRendir = Math.round(num(r.monto) * (Number(r.pct) || 0) / 100); }); });
       d.totalUso = U.sum(d.uso || [], function (r) { return r.aRendir; }); d.totalHH = U.sum(d.hh || [], function (r) { return r.aRendir; });
@@ -182,12 +255,12 @@
       return o;
     },
     doc: function (d) {
-      var mk = function (rows) { return rows.map(function (r) { return [r.concepto, r.comunidad, r.periodo, r.doc, num(r.monto), r.pct === '' || r.pct == null ? '' : Number(r.pct), r.aRendir]; }); };
+      var mk = function (rows) { return rows.map(function (r) { return [r.concepto === 'Otro' ? v(r.conceptoOtro, 'Otro') : r.concepto, v(r.comunidad, d.comunidadNombre), r.periodo, r.doc, num(r.monto), r.pct === '' || r.pct == null ? '' : Number(r.pct), r.aRendir]; }); };
       var head = ['Concepto del gasto', 'Nombre comunidad', 'Período mensual', 'N° del documento', 'Monto del documento de respaldo ($)', '% de uso', 'Monto a rendir al proyecto ($)'];
       var types = ['text', 'text', 'text', 'text', 'money', 'pct', 'money'];
       return { title: 'Memoria de cálculo para gastos de administración', subtitle: 'Por valor de uso · Proyecto «' + v(d.proyectoNombre, '[proyecto]') + '» de acuerdo con el Programa de Ejecución de Actividades', sheet: 'Anexo 5', footer: foot('el Anexo N° 5') + ' Monto del documento de respaldo: si recuperas el IVA CF, ingresa el valor neto.', blocks: [
         { t: 'h', text: 'Por valor de uso del proyecto' }, { t: 'table', head: head, types: types, rows: mk(d.uso || []), foot: ['TOTAL', '', '', '', '', '', 'SUM'] },
-        { t: 'h', text: 'Por cantidad de horas hombre (HH)' }, { t: 'table', head: head.map(function (x) { return x === '% de uso' ? '% de participación' : x; }), types: types, rows: mk(d.hh || []), foot: ['TOTAL', '', '', '', '', '', 'SUM'] }
+        { t: 'h', text: 'Por cantidad de horas HH' }, { t: 'table', head: head.map(function (x) { return x === '% de uso' ? '% de participación' : x; }), types: types, rows: mk(d.hh || []), foot: ['TOTAL', '', '', '', '', '', 'SUM'] }
       ] };
     }
   };
@@ -408,6 +481,21 @@
   };
 
   /* ============ Motor de formularios (interfaz) ============ */
+  /* lo que impide dar por listo un documento: errores de revisión y falta de firma */
+  function errors(ids, ctx) {
+    var out = [];
+    (ids || []).forEach(function (id) {
+      var sc = SCHEMAS[id]; if (!sc) return;
+      if (sc.repeat) {
+        var list = getList(ctx.project, id);
+        if (!list.length) { out.push('crea al menos un documento de «' + sc.title + '»'); return; }
+        list.forEach(function (f) { var nm = sc.itemName(f.data); (sc.check ? sc.check(f.data, ctx) : []).concat(signIssues(sc, f.data)).forEach(function (i) { if (i.level === 'error') out.push(nm + ': ' + i.msg); }); });
+      } else {
+        var d = getSingle(ctx.project, id); (sc.check ? sc.check(d, ctx) : []).concat(signIssues(sc, d)).forEach(function (i) { if (i.level === 'error') out.push(i.msg); });
+      }
+    });
+    return out;
+  }
   var PRESELECT = {};
   /* crea una ficha con datos de un gasto (si ya existe una de ese gasto o de esa persona, la abre) y devuelve su id */
   function ficha(project, id, match, patch) {
@@ -422,7 +510,11 @@
     return project.forms[id].data;
   }
   function getList(project, id) { if (!Array.isArray(project.forms[id])) project.forms[id] = []; return project.forms[id]; }
-  function docOf(id, data, ctx) { var sc = SCHEMAS[id]; if (sc.derive) sc.derive(data, ctx); return sc.doc(data, ctx); }
+  function docOf(id, data, ctx) {
+    var sc = SCHEMAS[id]; if (sc.derive) sc.derive(data, ctx); var doc = sc.doc(data, ctx);
+    if (sc.signers && data.firmas) (doc.blocks || []).forEach(function (b) { if (b.t === 'sign') b.images = sc.signers.map(function (x) { return data.firmas[x.k] || ''; }); });
+    return doc;
+  }
 
   function renderFieldSet(sc, data, ctx, onAny) {
     var wrap = h('div', { class: 'form-grid' });
@@ -437,6 +529,19 @@
     sc.fields.forEach(function (f) {
       var el;
       if (f.t === 'table') { el = renderTable(sc, f, data, ctx, changed, refreshers); wrap.appendChild(h('div', { class: 'field wide' }, h('span', { class: 'lbl' }, f.l), el)); return; }
+      if (f.t === 'choice') { /* lista de opciones con «Otro (escribir)»: nada de teclear el nombre de un proyecto y equivocarse en una letra */
+        var copts = (typeof f.options === 'function' ? f.options(ctx) : f.options || []).filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+        var csel = h('select', { 'aria-label': f.l }, copts.map(function (o) { return h('option', { value: o }, o); }), h('option', { value: '__otro' }, 'Otro (escribir)'));
+        var ctxt = h('input', { type: 'text', placeholder: 'Escríbelo aquí', 'aria-label': f.l + ' (otro)' });
+        var cur = data[f.k] == null ? '' : String(data[f.k]);
+        if (cur && copts.indexOf(cur) >= 0) csel.value = cur; else if (cur) { csel.value = '__otro'; ctxt.value = cur; } else if (copts.length) { csel.value = copts[0]; data[f.k] = copts[0]; } else csel.value = '__otro';
+        function showTxt() { ctxt.hidden = csel.value !== '__otro'; }
+        showTxt();
+        csel.addEventListener('change', function () { showTxt(); data[f.k] = csel.value === '__otro' ? ctxt.value : csel.value; changed(f.k); });
+        ctxt.addEventListener('input', function () { data[f.k] = ctxt.value; changed(f.k); });
+        wrap.appendChild(UI.labelWrap(f.l, h('div', { class: 'choice-wrap' }, csel, ctxt), f.hint, f.cls));
+        return;
+      }
       if (f.t === 'custom') {
         var holder = h('div', { class: 'field wide' }, h('span', { class: 'lbl' }, f.l)), body = h('div');
         var paintC = function () { U.clear(body); body.appendChild(sc.custom[f.k](data, ctx)); };
@@ -470,7 +575,7 @@
       function reg(fn) { refreshers.push(fn); mine.push(fn); }
       U.clear(box);
       var tbl = h('table', { class: 'edit-grid' });
-      tbl.appendChild(h('thead', null, h('tr', null, f.cols.map(function (c) { return h('th', null, c.l); }), h('th', { class: 'act' }, ''))));
+      tbl.appendChild(h('thead', null, h('tr', null, f.cols.map(function (c) { return h('th', null, c.l, c.tip ? UI.tip(c.tip, 'Qué significa ' + c.l) : null); }), h('th', { class: 'act' }, ''))));
       var tb = h('tbody');
       data[f.k].forEach(function (row, ri) {
         var tr = h('tr');
@@ -482,8 +587,10 @@
             reg(upd); upd(); td.appendChild(o);
           } else {
             var type = c.t === 'month' ? 'month' : c.t;
-            var inp = UI.bind(row, c.k, { type: type === 'month' ? 'text' : type, aria: c.l, ph: c.t === 'month' ? 'AAAA-MM' : '', onChange: function () { if (c.k === 'dias') row._autoDias = false; changed(f.k); } });
-            if (c.k === 'dias') reg(function () { if (document.activeElement !== inp) inp.value = row.dias == null ? '' : row.dias; }); /* valor calculado, pero editable */
+            var copt = typeof c.options === 'function' ? c.options(ctx) : c.options;
+            var inp = UI.bind(row, c.k, { type: type === 'month' ? 'text' : type, aria: c.l, options: copt, noEmpty: copt ? false : undefined, empty: copt ? 'Elige…' : undefined, ph: c.t === 'month' ? 'AAAA-MM' : '', onChange: function () { row._last = c.k; if (sc.onCell) sc.onCell(f.k, c.k, row, data, ctx); changed(f.k); } });
+            if (sc.autoCols && sc.autoCols.indexOf(c.k) >= 0) reg(function () { if (document.activeElement !== inp) inp.value = c.t === 'money' ? (row[c.k] ? U.fmtNum(row[c.k]) : '') : (row[c.k] == null ? '' : row[c.k]); }); /* valor calculado, pero editable */
+            if (c.t === 'select') reg(function () { if (inp.value !== String(row[c.k] == null ? '' : row[c.k]) && document.activeElement !== inp) inp.value = row[c.k] == null ? '' : row[c.k]; });
             td.appendChild(inp);
           }
           tr.appendChild(td);
@@ -499,15 +606,78 @@
     return box;
   }
 
+  /* ¿está firmado? Cada firmante dibujó la suya, o se subió el documento ya firmado */
+  function signIssues(sc, data) {
+    if (!sc.signers) return [];
+    var hasFile = !!(data.signedFile && data.signedFile.blobId), missing = sc.signers.filter(function (x) { return !(data.firmas && data.firmas[x.k]); });
+    return hasFile || !missing.length ? [] : [{ level: 'error', msg: 'Falta la firma: ' + (sc.signers.length === 1 ? 'fírmalo aquí abajo' : 'faltan ' + missing.map(function (x) { return x.l.replace(/^Firma de /, ''); }).join(' y ')) + ', o sube el documento ya firmado.' }];
+  }
   function renderIssues(sc, data, ctx) {
     var box = h('div', { class: 'issues' });
     function paint() {
       U.clear(box);
-      var list = sc.check ? sc.check(data, ctx) : [];
+      var list = (sc.check ? sc.check(data, ctx) : []).concat(signIssues(sc, data));
       list.forEach(function (i) { box.appendChild(UI.callout(i.level === 'error' ? 'bad' : i.level === 'warn' ? 'warn' : 'info', '', i.msg)); });
     }
     paint();
     box.refresh = paint;
+    return box;
+  }
+
+  /* ---------- firma dibujada (con el dedo o el mouse) y documento firmado ---------- */
+  function signPad(onSave) {
+    var cv = h('canvas', { width: 480, height: 160, class: 'sign-pad', 'aria-label': 'Espacio para firmar con el dedo o el mouse' }), g = cv.getContext && cv.getContext('2d'), down = false, dirty = false;
+    if (g) { g.lineWidth = 2.4; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#111'; }
+    function pos(ev) { var r = cv.getBoundingClientRect(); return { x: (ev.clientX - r.left) * cv.width / r.width, y: (ev.clientY - r.top) * cv.height / r.height }; }
+    cv.addEventListener('pointerdown', function (ev) { if (!g) return; ev.preventDefault(); down = true; try { cv.setPointerCapture(ev.pointerId); } catch (e) { /* sin captura */ } var p = pos(ev); g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x + .1, p.y + .1); g.stroke(); dirty = true; });
+    cv.addEventListener('pointermove', function (ev) { if (!down || !g) return; ev.preventDefault(); var p = pos(ev); g.lineTo(p.x, p.y); g.stroke(); });
+    function up() { if (!down) return; down = false; if (dirty && onSave) onSave(cv.toDataURL('image/png')); }
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    cv.clear = function () { if (g) g.clearRect(0, 0, cv.width, cv.height); dirty = false; };
+    return cv;
+  }
+  function signBlock(sc, data, ctx, onChange) {
+    if (!sc.signers) return null;
+    var box = h('div', { class: 'sign-block' }), status = h('div');
+    data.firmas = data.firmas || {};
+    function paintStatus() { U.clear(status); var errs = signIssues(sc, data); status.appendChild(errs.length ? UI.callout('warn', '', errs[0].msg) : UI.callout('ok', '', data.signedFile && data.signedFile.blobId ? 'Firmado: subiste el documento ya firmado.' : 'Firmado en la app.')); }
+    sc.signers.forEach(function (sg) {
+      var row = h('div', { class: 'sign-row' }), holder = h('div');
+      function paintRow() {
+        U.clear(holder);
+        if (data.firmas[sg.k]) {
+          holder.appendChild(h('img', { src: data.firmas[sg.k], alt: sg.l, class: 'sign-img' }));
+          holder.appendChild(UI.btn('Borrar la firma', { cls: 'ghost small', onclick: function () { delete data.firmas[sg.k]; RF.store.update(function () { }, { silent: true }); paintRow(); paintStatus(); if (onChange) onChange(); } }));
+        } else {
+          var pad = signPad(function (url) { data.firmas[sg.k] = url; RF.store.update(function () { }, { silent: true }); if (RF.activity) RF.activity.log('ficha', 'Firmó en la app: ' + sc.title + '.'); paintRow(); paintStatus(); if (onChange) onChange(); });
+          holder.appendChild(pad); holder.appendChild(UI.btn('Borrar y empezar de nuevo', { cls: 'ghost small', onclick: function () { pad.clear(); } }));
+          holder.appendChild(h('p', { class: 'hint' }, 'Dibuja tu firma con el dedo o el mouse; se guarda sola al soltar.'));
+        }
+      }
+      paintRow(); row.appendChild(h('div', { class: 'lbl' }, sg.l)); row.appendChild(holder); box.appendChild(row);
+    });
+    var fileBox = h('div', { class: 'row-actions' });
+    function paintFile() {
+      U.clear(fileBox);
+      var inp = h('input', { type: 'file', accept: 'image/*,application/pdf,.pdf', class: 'sr-only', 'aria-label': 'Elegir el documento firmado' });
+      inp.addEventListener('change', function () {
+        var f = inp.files && inp.files[0]; if (!f) return;
+        if (f.size > 8 * 1024 * 1024) { UI.toast('El archivo pesa más de 8 MB: el Drive no lo aceptaría.', 'bad'); return; }
+        var bid = 'signed-' + U.uid('sg');
+        RF.blobs.put(bid, f).then(function () {
+          data.signedFile = { blobId: bid, name: f.name, type: f.type || '', at: new Date().toISOString(), driveUrl: '' };
+          RF.store.update(function () { }, { silent: true }); UI.toast('Documento firmado guardado.', 'ok'); if (RF.activity) RF.activity.log('respaldo', 'Subió el documento firmado: ' + sc.title + '.');
+          paintFile(); paintStatus(); if (onChange) onChange();
+          if (RF.drive && RF.drive.auto()) RF.drive.saveSigned(data.signedFile, sc, ctx.project, f).then(function (r) { if (r && r.remote) { data.signedFile.driveUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); paintFile(); } }).catch(function () { });
+        });
+      });
+      fileBox.appendChild(inp);
+      fileBox.appendChild(UI.btn(data.signedFile ? 'Cambiar el documento firmado' : 'Subir el documento ya firmado (foto o PDF)', { icon: 'file', cls: data.signedFile ? 'ghost' : 'primary', onclick: function () { inp.click(); } }));
+      if (data.signedFile) { fileBox.appendChild(h('span', { class: 'file-name' }, data.signedFile.name + (data.signedFile.driveUrl ? ' · ya está en tu Drive' : ''))); if (data.signedFile.driveUrl) fileBox.appendChild(h('a', { class: 'btn small ghost', href: data.signedFile.driveUrl, target: '_blank', rel: 'noopener' }, 'Ver en Drive')); fileBox.appendChild(UI.btn('Quitar', { cls: 'ghost small danger', onclick: function () { delete data.signedFile; RF.store.update(function () { }, { silent: true }); paintFile(); paintStatus(); if (onChange) onChange(); } })); }
+    }
+    paintFile(); paintStatus();
+    box.appendChild(h('p', { class: 'hint' }, 'Puedes firmarlo aquí, o imprimirlo, firmarlo a mano y subir la foto o el PDF. Una de las dos es obligatoria.'));
+    box.appendChild(fileBox); box.appendChild(status);
     return box;
   }
 
@@ -521,6 +691,8 @@
     function drawFields() { U.clear(fieldsBox); fieldsBox.appendChild(renderFieldSet(sc, data, ctx, function () { issues.refresh(); })); }
     drawFields();
     root.appendChild(UI.section(sc.title, [fieldsBox]));
+    var sb = signBlock(sc, data, ctx, function () { issues.refresh(); });
+    if (sb) root.appendChild(UI.section('Firma', [sb]));
     root.appendChild(UI.section('Revisión', [issues]));
     root.appendChild(UI.section('Sacar el documento', [UI.exportBar(function () { return docOf(id, data, ctx); }, sc.sheet)]));
     root._redraw = drawFields;
@@ -557,6 +729,8 @@
       root.appendChild(secCard);
       /* si eligen actividad o gasto, se re-dibuja para mostrar los montos rellenados */
       fieldsBox.addEventListener('change', function (ev) { var t = ev.target; if (t && t.tagName === 'SELECT' && (t.dataset.key === 'actId' || t.dataset.key === 'gastoId')) { if (sc.onChange) sc.onChange(t.dataset.key, cur.data, ctx); RF.store.update(function () {}, { silent: true }); drawFields(); issues.refresh(); } });
+      var sbR = signBlock(sc, cur.data, ctx, function () { issues.refresh(); });
+      if (sbR) root.appendChild(UI.section('Firma', [sbR]));
       root.appendChild(UI.section('Revisión', [issues]));
       root.appendChild(UI.section('Sacar el documento', [UI.exportBar(function () { return docOf(id, cur.data, ctx); }, sc.sheet + '-' + (cur.data.nombre || cur.data.viajero || cur.data.proveedorNombre || 'ficha'))]));
       if (list.length > 1) root.appendChild(UI.section('Todos juntos', [UI.exportBar(function () { return combinedDoc(id, list, ctx); }, sc.sheet + '-todos')]));
@@ -573,5 +747,5 @@
   /* Informe técnico completo: cabecera + fichas A–E */
   function informeCompleto(ctx) { var d = getSingle(ctx.project, 'informe'); return informeDoc(d, ctx, false); }
 
-  RF.forms = { ficha: ficha, SCHEMAS: SCHEMAS, getSingle: getSingle, getList: getList, docOf: docOf, renderSingle: renderSingle, renderRepeat: renderRepeat, informeCompleto: informeCompleto, combinedDoc: combinedDoc, ctxNow: ctxNow };
+  RF.forms = { errors: errors, ficha: ficha, SCHEMAS: SCHEMAS, getSingle: getSingle, getList: getList, docOf: docOf, renderSingle: renderSingle, renderRepeat: renderRepeat, informeCompleto: informeCompleto, combinedDoc: combinedDoc, ctxNow: ctxNow };
 })(typeof window !== 'undefined' ? window : globalThis);

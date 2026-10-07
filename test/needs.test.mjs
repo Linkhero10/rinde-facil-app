@@ -10,26 +10,26 @@ const fresh = () => { const p = RF.store.newProject('P'); return p; };
 test('sin responder, le tocan todos los trámites; al marcar solo viáticos, se esconden los que no aplican', () => {
   const p = fresh();
   const all = L.progress(p);
-  assert.ok(all.tramTotal >= 25);
+  assert.ok(all.tramTotal >= 18);
   p.needsSet = true; p.needs = { viaticos: true };
   const some = L.progress(p);
   assert.ok(some.tramTotal < all.tramTotal, 'menos trámites');
   assert.ok(some.porFase.F4.total < all.porFase.F4.total / 2, 'la fase de gastos baja de 63 pasos a menos de la mitad (' + all.porFase.F4.total + ' → ' + some.porFase.F4.total + ')');
   assert.equal(L.applies(p, 'TRM-011'), true, 'viajes y viáticos');
   assert.equal(L.applies(p, 'TRM-024'), true, 'Anexo 4');
-  assert.equal(L.applies(p, 'TRM-010'), false, 'administración no marcada');
+  assert.equal(L.applies(p, 'TRM-025'), false, 'administración no marcada');
   assert.equal(L.applies(p, 'TRM-023'), false, 'efectivo no marcado');
   assert.equal(L.applies(p, 'TRM-008'), true, 'los trámites generales siempre tocan');
-  assert.equal(L.itemProgress(p, 'TRM-010').auto, true);
+  assert.equal(L.itemProgress(p, 'TRM-025').auto, true);
 });
 test('lo que ya gastó cuenta aunque no lo haya marcado, y «me toca igual» lo fuerza', () => {
   const p = fresh(); p.needsSet = true; p.needs = { insumos: true };
   assert.equal(L.applies(p, 'TRM-023'), false);
   p.expenses.push({ id: 'e1', cuenta: 'operacion', formaPago: 'efectivo', total: 5000 });
   assert.equal(L.applies(p, 'TRM-023'), true, 'pagó en efectivo');
-  assert.equal(L.applies(p, 'TRM-010'), false);
-  p.show['TRM-010'] = true;
-  assert.equal(L.applies(p, 'TRM-010'), true, '«me toca igual»');
+  assert.equal(L.applies(p, 'TRM-025'), false);
+  p.show['TRM-025'] = true;
+  assert.equal(L.applies(p, 'TRM-025'), true, '«me toca igual»');
   RF.store.get().community.ivaModo = 'no_usa';
   assert.equal(L.applies(p, 'TRM-021'), true, 'quien no usa el IVA necesita el Anexo 1');
   RF.store.get().community.ivaModo = 'no_contribuyente';
@@ -65,7 +65,7 @@ test('un estado antiguo (sin estos datos) se abre bien', () => {
   const p = s.projects[0];
   assert.equal(p.needsSet, false); assert.equal(Object.keys(p.needs).length, 0); assert.ok(Array.isArray(p.needsAdded) && Array.isArray(p.needsCustom));
   assert.equal(JSON.stringify(s.repo), JSON.stringify({ docs: [], actas: [] }));
-  assert.equal(L.applies(p, 'TRM-010'), true, 'sin responder muestra todo');
+  assert.equal(L.applies(p, 'TRM-025'), true, 'sin responder muestra todo');
 });
 test('los botones de cada paso apuntan a pasos que existen', () => {
   Object.keys(N.STEP_TOOLS).forEach(k => {

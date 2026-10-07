@@ -27,17 +27,12 @@
     'TRM-006': ['grandes'],
     'TRM-007': ['sueldos', 'honorarios'],
     'TRM-009': ['activos', 'inmuebles', 'obras'],
-    'TRM-010': ['admin'],
     'TRM-011': ['viaticos'],
     'TRM-021': ['iva_no'],
     'TRM-022': ['iva_otro'],
     'TRM-023': ['efectivo'],
     'TRM-024': ['viaticos'],
-    'TRM-025': ['admin'],
-    'TRM-017': ['actividades', 'insumos', 'viaticos'],
-    'TRM-018': ['estudios'],
-    'TRM-019': ['obras', 'activos', 'inmuebles'],
-    'TRM-020': ['sueldos', 'honorarios']
+    'TRM-025': ['admin']
   };
   /* qué necesidad delatan los gastos que ya anotó (para avisar si algo no lo marcó) */
   function derivedFromExpenses(project) {
@@ -84,6 +79,8 @@
     informeE: { kind: 'segun', text: 'Otras actividades de las personas contratadas.' },
     consulta: { kind: 'apoyo', text: 'Para preguntarle a CORFO si un gasto se puede pagar. No es obligatoria: úsala cuando tengas una duda.' },
     historial: { kind: 'apoyo', text: '' },
+    obras: { kind: 'segun', text: 'Solo si compraste activos o hiciste una construcción: permisos y fotos, aparte de las boletas y sin OCR.' },
+    viaje: { kind: 'segun', text: 'Solo si hubo viajes: anota quién viajó, su rol y por qué era necesario.' },
     f29: { kind: 'segun', text: 'Solo si tus gastos incluyen facturas: el Manual pide el Formulario 29 de cada mes. Aquí lo guardas y se compara con el IVA de tus facturas.' },
     prorroga: { kind: 'segun', text: 'Solo si no alcanzas a entregar el PEA en 90 días: se pide una vez, hasta 30 días más y antes de que venza.' },
     solicitud: { kind: 'clave', text: 'Al final del proyecto, para pedir los aportes que faltan.' },

@@ -272,6 +272,7 @@
     ficha_E: function (p) { var n = listN(p, 'informeE'); return n ? ok('hay ' + n + (n === 1 ? ' ficha' : ' fichas') + ' de otras actividades.') : no('Si tuviste otras actividades, crea su ficha.', 'informeE'); },
     ficha_C: function (p) { return fichasPorGasto(p, 'informeC', ['inversion'], 'compras de inversión'); },
     ficha_D: function (p) { return fichasPorGasto(p, 'informeD', ['rrhh'], 'gastos de recursos humanos'); },
+    viaje_form: function (p) { var n = listN(p, 'viaje'); return n ? ok('hay ' + n + (n === 1 ? ' registro de viaje.' : ' registros de viaje.')) : no('Registra quién viaja y por qué es necesario.', 'viaje'); },
     anexo1: function (p) { return hasForm(p, 'anexo1') ? ok('ya llenaste el Anexo 1.') : no('Llena el Anexo 1.', 'anexo1'); },
     anexo2: function (p) { return hasForm(p, 'anexo2') ? ok('ya llenaste el Anexo 2.') : no('Llena el Anexo 2.', 'anexo2'); },
     anexo3: function (p) { var n = (p.expenses || []).filter(function (e) { return realExp(e) && e.formaPago === 'efectivo'; }).length, have = listN(p, 'anexo3'); if (!n) return no('Todavía no anotas pagos en efectivo.', 'gastos'); return have >= n ? ok('hay ' + have + ' declaración(es) para ' + n + ' pago(s) en efectivo.') : no('Hay ' + have + ' de ' + n + ' declaraciones del Anexo 3.', 'anexo3'); },
