@@ -121,11 +121,16 @@
     if (app._warming || app._warmed) return;
     if (!RF.cloud.configured() || !RF.auth.ensureSession) return;
     app._warming = true; setChip('Conectando con tu servicio…', 'work');
-    RF.auth.ensureSession().then(function () { return RF.drive && RF.drive.flushOutbox ? RF.drive.flushOutbox() : null; }).then(function () { app._warmed = true; setChip('', ''); }, function (e) {
+    RF.auth.ensureSession().then(function () { return RF.drive && RF.drive.flushOutbox ? RF.drive.flushOutbox() : null; }).then(function () { app._warmed = true; setChip('', ''); if (RF.drive && RF.drive.syncNow) RF.drive.syncNow({ force: true }); }, function (e) {
       var quiet = e && (e.code === 'SIN_CUENTA' || e.code === 'BLOQUEADA' || e.code === 'NO_CONFIGURADO');
       setChip(quiet ? '' : 'Sin conexión con el servicio; se reintentará al usarlo', 'warn'); if (!quiet) setTimeout(function () { setChip('', ''); }, 8000);
     }).then(function () { app._warming = false; });
   };
+  if (RF.drive && RF.drive.onSync) RF.drive.onSync(function (r) {
+    if (r && r.conflict) { setChip('Dos equipos cambiaron lo mismo. Revisa «Nube y copias» (Herramientas › Gastos)', 'warn'); return; }
+    if (chip.kind === 'warn' && /Dos equipos/.test(chip.text)) setChip('', '');
+    if (r && r.merged !== undefined) { if (r.merged) RF.ui.toast('Se trajeron cambios hechos en otro equipo (' + r.merged + ' nuevos).', 'ok'); render(); }
+  });
   window.addEventListener('resize', fitSide);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', fitSide);
   function toggleMenu() { var open = document.body.classList.toggle('menu-open'); var b = document.querySelector('.menu-btn'); if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false'); fitSide(); }

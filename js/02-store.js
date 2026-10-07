@@ -130,8 +130,12 @@
     dirty = true;
     schedulePersist();
     if (!(opts && opts.silent)) listeners.slice().forEach(function (l) { l(s); });
+    if (!(opts && opts.noSync)) changeListeners.slice().forEach(function (l) { try { l(s); } catch (e) { /* un oyente no debe romper el guardado */ } });
     return s;
   }
+  var changeListeners = [];
+  /* cualquier cambio de datos, incluso los «silenciosos»; opts.noSync lo excluye (lo usa la propia sincronización) */
+  function onChange(fn) { changeListeners.push(fn); }
   function subscribe(fn) { listeners.push(fn); return function () { listeners = listeners.filter(function (l) { return l !== fn; }); }; }
   function onStorageStatus(fn) { storageListeners.push(fn); return function () { storageListeners = storageListeners.filter(function (l) { return l !== fn; }); }; }
   function addProject(name) {
@@ -151,6 +155,7 @@
     var copy = JSON.parse(JSON.stringify(get()));
     copy.cloud = Object.assign({}, copy.cloud, { saves: [] });
     delete copy.cloud.device; /* la credencial de equipo no viaja en copias ni respaldos */
+    delete copy.cloud.base; delete copy.cloud.syncFp; /* la foto de sincronización es de cada equipo */
     delete copy.cloud.key; /* la clave compartida de las versiones anteriores ya no existe; por si quedara una copia vieja */
     /* del texto que leyó el OCR la copia lleva solo un extracto: pesa mucho y trae datos de terceros (RUT, direcciones); el original queda en el equipo */
     (copy.projects || []).forEach(function (p) { (p.expenses || []).forEach(function (e) { if (e.ocr && typeof e.ocr.raw === 'string' && e.ocr.raw.length > OCR_EXTRACT) { e.ocr.raw = e.ocr.raw.slice(0, OCR_EXTRACT); e.ocr.cortado = true; } }); });
@@ -189,29 +194,82 @@
     return ak.length === bk.length && ak.every(function (k, i) { return k === bk[i] && equalData(a[k], b[k]); });
   }
   function conflict(path) { throw Object.assign(new Error('No se pueden combinar automáticamente las copias: diferencias en ' + path + '. Guarda ambas copias y revisa los cambios, o elige explícitamente cuál conservar.'), { code: 'MERGE_CONFLICT', path: path }); }
-  function unionById(local, remote) {
-    var have = new Map(), list = [], added = 0;
-    (local || []).forEach(function (x) { if (!x || !x.id || have.has(x.id)) conflict('identificadores locales'); have.set(x.id, x); list.push(x); });
-    var seen = new Set();
-    (remote || []).forEach(function (x) { if (!x || !x.id || seen.has(x.id)) conflict('identificadores remotos'); seen.add(x.id); if (have.has(x.id)) { if (!equalData(have.get(x.id), x)) conflict('registro ' + x.id); } else { list.push(x); added++; } });
-    return { list: list, added: added };
+  /* Huella de un dato: sirve para saber si cambió desde la última vez que los equipos coincidieron (la «base»). */
+  function stable(v) {
+    if (v === undefined) return 'null';
+    if (v === null || typeof v !== 'object') return JSON.stringify(v);
+    if (Array.isArray(v)) return '[' + v.map(stable).join(',') + ']';
+    return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + stable(v[k]); }).join(',') + '}';
   }
-  function mergeRemote(remote) {
+  function fp(v) { var str = stable(v), h = 2166136261; for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
+  var LISTS = ['expenses', 'cotizaciones', 'observations', 'budgetLines', 'needsCustom'];
+  /* foto de lo que hay ahora, dato por dato: se guarda tras cada sincronización y permite distinguir «lo cambié yo» de «lo cambió el otro equipo» */
+  function snapshotBase(st) {
+    var b = {};
+    Object.keys(st.community || {}).forEach(function (k) { b['c|' + k] = fp(st.community[k]); });
+    (st.events || []).forEach(function (x) { if (x && x.id) b['ev|' + x.id] = fp(x); });
+    ['docs', 'actas'].forEach(function (k) { ((st.repo || {})[k] || []).forEach(function (x) { if (x && x.id) b['r|' + k + '|' + x.id] = fp(x); }); });
+    (st.projects || []).forEach(function (p) {
+      b['P|' + p.id] = 1;
+      Object.keys(p).forEach(function (k) {
+        if (LISTS.indexOf(k) >= 0) (p[k] || []).forEach(function (x) { if (x && x.id) b['l|' + p.id + '|' + k + '|' + x.id] = fp(x); });
+        else if (k === 'done') Object.keys(p.done || {}).forEach(function (d) { b['d|' + p.id + '|' + d] = 1; });
+        else if (k === 'forms') Object.keys(p.forms || {}).forEach(function (f) {
+          if (Array.isArray(p.forms[f])) p.forms[f].forEach(function (x) { if (x && x.id) b['l|' + p.id + '|forms.' + f + '|' + x.id] = fp(x); });
+          else b['f|' + p.id + '|' + f] = fp(p.forms[f]);
+        });
+        else b['p|' + p.id + '|' + k] = fp(p[k]);
+      });
+    });
+    return b;
+  }
+  /* Une dos listas de registros con identificador. Con base (tres vías) se respetan los cambios de cada lado y los borrados;
+     sin base solo se agregan los nuevos y cualquier registro distinto es conflicto. Devuelve { list, added }. */
+  function unionById(local, remote, base, prefix) {
+    var lm = new Map(), rm = new Map(), order = [], added = 0, out = [];
+    (local || []).forEach(function (x) { if (!x || !x.id || lm.has(x.id)) conflict('identificadores locales'); lm.set(x.id, x); order.push(x.id); });
+    (remote || []).forEach(function (x) { if (!x || !x.id || rm.has(x.id)) conflict('identificadores remotos'); rm.set(x.id, x); if (!lm.has(x.id)) order.push(x.id); });
+    order.forEach(function (id) {
+      var l = lm.get(id), r = rm.get(id), b = base ? base[prefix + id] : undefined;
+      if (l && r) {
+        if (equalData(l, r)) out.push(l);
+        else if (b === undefined) conflict('registro ' + id);
+        else if (fp(l) === b) out.push(r);
+        else if (fp(r) === b) out.push(l);
+        else conflict('registro ' + id);
+      } else if (l) { /* solo aquí: nuevo, o lo borró el otro equipo */
+        if (b !== undefined && fp(l) === b) return; /* lo borraron allá y aquí no se tocó */
+        out.push(l);
+      } else { /* solo allá: nuevo, o lo borramos aquí */
+        if (b !== undefined && fp(r) === b) return;
+        out.push(r); added++;
+      }
+    });
+    return { list: out, added: added };
+  }
+  /* Une los datos de otra copia (la de la nube) con los de este equipo. base: la foto de la última sincronización (opcional). */
+  function mergeRemote(remote, base) {
     function checkProjects(projects) {
       var ids = new Set();
       (projects || []).forEach(function (p) { if (!p || !p.id || ids.has(p.id)) conflict('identificadores de proyectos'); ids.add(p.id); });
     }
     checkProjects(remote && remote.projects); checkProjects(get().projects);
     var added = 0, r = migrate(U.safeParse(JSON.stringify(remote))), s = migrate(U.safeParse(JSON.stringify(get())));
-    var mergeLists = ['expenses', 'cotizaciones', 'observations', 'budgetLines', 'needsCustom'];
-    /* los datos de la comunidad se juntan campo a campo: lo que un equipo dejó vacío se completa con lo del otro; solo hay conflicto si ambos tienen un valor distinto */
+    function empty(v) { return v === undefined || v === null || v === ''; }
+    /* un valor suelto (con base): si solo cambió un lado, gana ese; si cambiaron los dos distinto, conflicto */
+    function pick(l, rv, key, label) {
+      if (equalData(l, rv)) return l;
+      var b = base ? base[key] : undefined;
+      if (b !== undefined) { if (fp(l) === b) return rv; if (fp(rv) === b) return l; }
+      conflict(label);
+    }
+    /* los datos de la comunidad se juntan campo a campo: lo que un equipo dejó vacío se completa con lo del otro */
     (function () {
       var rc = r.community || {}, sc = s.community || {};
-      function empty(v) { return v === undefined || v === null || v === ''; }
       Object.keys(rc).concat(Object.keys(sc)).forEach(function (k) {
         var a = sc[k], b = rc[k];
         if (empty(a) && !empty(b)) sc[k] = b;
-        else if (!empty(a) && !empty(b) && !equalData(a, b)) conflict('community');
+        else if (!empty(a) && !empty(b)) sc[k] = pick(a, b, 'c|' + k, 'community');
       });
       s.community = sc;
       /* feriados: se unen (son fechas sueltas, no hay nada que pelear) */
@@ -223,18 +281,35 @@
       r.projects.forEach(function (rp) {
         var lp = haveP.get(rp.id);
         if (!lp) { s.projects.push(rp); added++; return; }
-        Object.keys(rp).concat(Object.keys(lp)).forEach(function (k) { if (mergeLists.concat(['forms', 'done']).indexOf(k) < 0 && !equalData(lp[k], rp[k])) conflict('proyecto ' + rp.id + '/' + k); });
-        mergeLists.forEach(function (k) { var u = unionById(lp[k], rp[k]); lp[k] = u.list; added += u.added; });
-        Object.keys(rp.forms || {}).forEach(function (k) {
-          if (Array.isArray(rp.forms[k]) && (!lp.forms[k] || Array.isArray(lp.forms[k]))) { var u = unionById(lp.forms[k], rp.forms[k]); lp.forms[k] = u.list; added += u.added; }
-          else if (!equalData(lp.forms[k], rp.forms[k])) conflict('formulario ' + k);
+        Object.keys(rp).concat(Object.keys(lp)).forEach(function (k) {
+          if (LISTS.concat(['forms', 'done']).indexOf(k) >= 0) return;
+          lp[k] = pick(lp[k], rp[k], 'p|' + rp.id + '|' + k, 'proyecto ' + rp.id + '/' + k);
+          if (lp[k] === undefined) delete lp[k];
         });
-        Object.keys(lp.forms || {}).forEach(function (k) { if (!Object.prototype.hasOwnProperty.call(rp.forms, k)) conflict('formulario ' + k); });
-        Object.keys(rp.done || {}).forEach(function (k) { if (Object.prototype.hasOwnProperty.call(lp.done, k) && !equalData(lp.done[k], rp.done[k])) conflict('marca ' + k); lp.done[k] = rp.done[k]; });
+        LISTS.forEach(function (k) { var u = unionById(lp[k], rp[k], base, 'l|' + rp.id + '|' + k + '|'); lp[k] = u.list; added += u.added; });
+        lp.forms = lp.forms || {};
+        Object.keys(rp.forms || {}).concat(Object.keys(lp.forms)).forEach(function (k, i, all) {
+          if (all.indexOf(k) !== i) return;
+          var lf = lp.forms[k], rf = (rp.forms || {})[k];
+          if ((Array.isArray(lf) || lf === undefined) && (Array.isArray(rf) || rf === undefined) && (lf !== undefined || rf !== undefined)) {
+            var u = unionById(lf, rf, base, 'l|' + rp.id + '|forms.' + k + '|'); lp.forms[k] = u.list; added += u.added;
+          } else if (rf === undefined && !base) conflict('formulario ' + k);
+          else if (rf === undefined) { if (base['f|' + rp.id + '|' + k] === undefined) { /* nuevo aquí */ } else if (fp(lf) !== base['f|' + rp.id + '|' + k]) { /* cambiado aquí: se conserva */ } else delete lp.forms[k]; }
+          else if (lf === undefined) { if (!base || base['f|' + rp.id + '|' + k] === undefined || fp(rf) !== base['f|' + rp.id + '|' + k]) { lp.forms[k] = rf; added++; } }
+          else lp.forms[k] = pick(lf, rf, 'f|' + rp.id + '|' + k, 'formulario ' + k);
+        });
+        /* pasos marcados: si lo marcó cualquiera, queda marcado; con base, si uno lo desmarcó (y estaba marcado en la base), queda desmarcado */
+        lp.done = lp.done || {};
+        Object.keys(rp.done || {}).concat(Object.keys(lp.done)).forEach(function (k) {
+          var inL = Object.prototype.hasOwnProperty.call(lp.done, k), inR = Object.prototype.hasOwnProperty.call(rp.done || {}, k);
+          if (inL && inR) return;
+          var was = base && base['d|' + rp.id + '|' + k] !== undefined;
+          if (was) delete lp.done[k]; else lp.done[k] = true;
+        });
       });
-      var d = unionById(s.repo.docs, r.repo.docs), a = unionById(s.repo.actas, r.repo.actas);
+      var d = unionById(s.repo.docs, r.repo.docs, base, 'r|docs|'), a = unionById(s.repo.actas, r.repo.actas, base, 'r|actas|');
       s.repo.docs = d.list; s.repo.actas = a.list; added += d.added + a.added;
-      var ev = unionById(s.events, r.events); s.events = ev.list; added += ev.added;
+      var ev = unionById(s.events, r.events, base, 'ev|'); s.events = ev.list; added += ev.added;
     })();
     update(function (current) { current.projects = s.projects; current.repo = s.repo; current.events = s.events; current.community = s.community; current.holidays = s.holidays; });
     return added;
@@ -252,6 +327,6 @@
     addProject: addProject, removeProject: removeProject, newProject: newProject, defaults: defaults,
     exportJSON: exportJSON, importJSON: importJSON, reset: reset, migrate: migrate,
     isDone: isDone, setDone: setDone, persistNow: persistNow, storageOk: function () { return storageOk; }, storageError: function () { return storageError; }, onStorageStatus: onStorageStatus,
-    mergeRemote: mergeRemote, useVault: useVault, attach: attach, detach: detach, flush: flush
+    onChange: onChange, mergeRemote: mergeRemote, snapshotBase: snapshotBase, fingerprint: fp, useVault: useVault, attach: attach, detach: detach, flush: flush
   };
 })(typeof window !== 'undefined' ? window : globalThis);

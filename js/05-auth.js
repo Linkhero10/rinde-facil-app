@@ -194,7 +194,7 @@
       setToken(r);
       return RF.cloud.postRawTo(url, 'loadState', { t: r.token }).then(function (st) {
         var state = st && st.ok ? RF.util.safeParse(st.state) : RF.store.defaults();
-        state.cloud = Object.assign({}, state.cloud || {}, { apiUrl: url }); delete state.cloud.device; if (typeof r.device === 'string' && /^[0-9a-f]{64}$/.test(r.device)) state.cloud.device = r.device; state.community = Object.assign({}, state.community || {}, { name: (state.community && state.community.name) || user });
+        state.cloud = Object.assign({}, state.cloud || {}, { apiUrl: url }); delete state.cloud.device; delete state.cloud.base; delete state.cloud.syncFp; if (typeof r.device === 'string' && /^[0-9a-f]{64}$/.test(r.device)) state.cloud.device = r.device; state.community = Object.assign({}, state.community || {}, { name: (state.community && state.community.name) || user });
         return V.create(user, password, state, { noRecovery: true, skipPolicy: !problems.length ? false : true }).then(function () { afterOpen(state); return { rev: st && st.rev }; });
       });
     });

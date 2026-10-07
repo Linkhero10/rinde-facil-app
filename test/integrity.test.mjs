@@ -110,3 +110,56 @@ test('merge completa los datos de la comunidad campo a campo y junta los feriado
   const clash = structuredClone(RF.store.get()); clash.community.address = 'Otra calle';
   assert.throws(() => RF.store.mergeRemote(clash), /community|comunidad|Conflicto|conflict/i);
 });
+
+/* ---------- combinación con base (tres vías) y sincronización automática ---------- */
+test('con base: lo que cambió solo un equipo se respeta, lo borrado se propaga y lo marcado no se pisa', () => {
+  const RF = app(), s = state(RF), p = s.projects[0];
+  p.name = 'Original'; p.gantt = { stages: [{ id: 's1', acts: [] }] };
+  p.expenses = [{ id: 'e1', total: 10 }, { id: 'e2', total: 20 }, { id: 'e3', total: 30 }];
+  p.done = { 'P-01:0': true, 'P-01:1': true };
+  const base = RF.store.snapshotBase(RF.store.get());
+  /* la nube (otro equipo): cambió el gantt, editó e1, borró e2 y agregó e4; desmarcó un paso */
+  const remote = structuredClone(RF.store.get()), rp = remote.projects[0];
+  rp.gantt = { stages: [{ id: 's1', acts: [{ id: 'a1' }] }] };
+  rp.expenses = [{ id: 'e1', total: 11 }, { id: 'e3', total: 30 }, { id: 'e4', total: 40 }];
+  delete rp.done['P-01:1']; rp.done['P-01:2'] = true;
+  /* este equipo: cambió el nombre, editó e3 */
+  p.name = 'Nuevo nombre'; p.expenses[2].total = 33;
+  RF.store.mergeRemote(remote, base);
+  const out = RF.store.get().projects[0];
+  assert.equal(out.name, 'Nuevo nombre', 'lo que solo cambió aquí se conserva');
+  assert.equal(out.gantt.stages[0].acts.length, 1, 'lo que solo cambió allá se trae');
+  assert.equal(JSON.stringify(out.expenses.map(e => e.id + ':' + e.total)), JSON.stringify(['e1:11', 'e3:33', 'e4:40']), 'e1 editado allá, e2 borrado allá, e3 editado aquí, e4 nuevo');
+  assert.equal(JSON.stringify(Object.keys(out.done).sort()), JSON.stringify(['P-01:0', 'P-01:2']), 'el paso desmarcado allá queda desmarcado y el marcado allá se trae');
+});
+test('con base: si los dos equipos cambian lo mismo de forma distinta, se detiene sin tocar nada', () => {
+  const RF = app(), s = state(RF), p = s.projects[0];
+  p.expenses = [{ id: 'e1', total: 10 }];
+  const base = RF.store.snapshotBase(RF.store.get());
+  const remote = structuredClone(RF.store.get()); remote.projects[0].expenses[0].total = 11;
+  p.expenses[0].total = 12;
+  const before = JSON.stringify(RF.store.get());
+  assert.throws(() => RF.store.mergeRemote(remote, base), /registro e1/);
+  assert.equal(JSON.stringify(RF.store.get()), before);
+});
+test('sincronización automática: trae lo del otro equipo, lo une con lo propio y sube el resultado; no hace nada si no hay diferencias', async () => {
+  const RF = app(), s = state(RF), p = s.projects[0];
+  s.cloud.apiUrl = 'https://script.google.com/macros/s/AKfycbTEST/exec'; s.cloud.rev = 1;
+  RF.cloud.configured = () => true;
+  RF.auth = { phase: () => 'open' };
+  p.expenses = [{ id: 'e1', total: 10 }];
+  RF.drive.markSynced();
+  const remote = structuredClone(RF.store.get()); remote.projects[0].expenses.push({ id: 'e2', total: 20 });
+  let pushed = null, calls = [];
+  RF.cloud.post = async (action, payload) => { calls.push(action); if (action === 'loadState') return { ok: true, state: JSON.stringify(remote), rev: 2 }; pushed = payload; return { ok: true, rev: 3 }; };
+  p.expenses.push({ id: 'e3', total: 30 }); /* cambio propio sin enviar */
+  const r = await RF.drive.syncNow({ force: true });
+  assert.equal(r.ok, true); assert.equal(r.merged, 1);
+  assert.equal(JSON.stringify(RF.store.get().projects[0].expenses.map(e => e.id).sort()), JSON.stringify(['e1', 'e2', 'e3']));
+  assert.equal(JSON.parse(pushed.state).projects[0].expenses.length, 3, 'subió la unión');
+  assert.equal(RF.store.get().cloud.rev, 3);
+  calls = [];
+  RF.cloud.post = async (action) => { calls.push(action); return { ok: true, state: pushed.state, rev: 3 }; };
+  const r2 = await RF.drive.syncNow({ force: true });
+  assert.equal(r2.same, true); assert.equal(JSON.stringify(calls), JSON.stringify(['loadState']), 'sin diferencias solo consulta');
+});
