@@ -323,3 +323,19 @@ test('hojas originales con el extracto marcado: cada recorte existe y correspond
   const usados = new Set(RF.tramites.list.flatMap(t => (t.img || []).map(i => i[0])));
   assert.ok(RF.tramites.HL.some(f => usados.has(f)), 'al menos un recorte se usa en un trámite');
 });
+
+test('correo al Organismo Colaborador: el borrador trae la observación, el plazo y quién escribe, y no inventa datos que faltan', () => {
+  const RF = app(), s = state(RF), p = s.projects[0];
+  p.name = 'Taller de tejido'; p.code = '22CDR-1';
+  const m = RF.obsMail(p, { name: 'Comunidad Sol', rut: '65.1-2', legalRep: 'Rosa Mamani', ocEmail: 'oc@ejemplo.cl' }, { titulo: 'Falta cartola', detalle: 'Adjuntar la cartola de septiembre', gastos: 'FAC 167', recibida: '2026-09-28' });
+  assert.equal(m.to, 'oc@ejemplo.cl'); assert.ok(/Falta cartola/.test(m.subject + m.body) && /Adjuntar la cartola/.test(m.body) && /13 de octubre de 2026/.test(m.body) && /Rosa Mamani/.test(m.body));
+  const v = RF.obsMail(p, {}, {});
+  assert.equal(v.to, ''); assert.ok(/\[comunidad\]/.test(v.body), 'lo que falta queda entre corchetes para que lo completen');
+});
+test('firmas guardadas: se unen entre equipos sin duplicar', () => {
+  const RF = app(), s = state(RF), png = 'data:image/png;base64,iVBORw0KGgo=';
+  s.signatures = [{ id: 's1', name: 'Rosa', png }];
+  const remote = structuredClone(RF.store.get()); remote.signatures.push({ id: 's2', name: 'Pedro', png });
+  RF.store.mergeRemote(remote); RF.store.mergeRemote(remote);
+  assert.equal(RF.store.get().signatures.length, 2);
+});

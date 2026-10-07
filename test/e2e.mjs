@@ -1039,6 +1039,16 @@ await step('15r. Anexos como documentos en la ruta (con firma en la app y casill
   await page.mouse.move(bb.x + 30, bb.y + 50); await page.mouse.down(); await page.mouse.move(bb.x + 120, bb.y + 90, { steps: 6 }); await page.mouse.move(bb.x + 200, bb.y + 40, { steps: 6 }); await page.mouse.up();
   await page.waitForSelector('img.sign-img', { timeout: 5000 });
   ok(await page.evaluate(() => /^data:image\/png/.test(RF.store.project().forms.anexo1.data.firmas.rep)), 'la firma quedó guardada como imagen');
+  ok(await page.evaluate(() => { const im = document.querySelector('img.sign-img'); return im.complete && im.naturalWidth > 0; }), 'la firma se ve (la imagen carga de verdad, no queda el icono roto)');
+  const png = await page.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 300; c.height = 100; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 300, 100); g.strokeStyle = '#000'; g.lineWidth = 4; g.beginPath(); g.moveTo(20, 60); g.lineTo(250, 30); g.stroke();
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9)); const url = await RF.forms.imageToSignature(blob);
+    const im = new Image(); await new Promise(r => { im.onload = r; im.src = url; });
+    const k = document.createElement('canvas'); k.width = im.width; k.height = im.height; const kg = k.getContext('2d'); kg.drawImage(im, 0, 0);
+    const alphas = Array.from(kg.getImageData(0, 0, k.width, k.height).data).filter((_, i) => i % 4 === 3);
+    return { png: /^data:image\/png/.test(url), esquina: kg.getImageData(2, 2, 1, 1).data[3], trazo: Math.max(...alphas) };
+  });
+  ok(png.png && png.esquina === 0 && png.trazo > 200, 'una imagen jpg de la firma se convierte en PNG y el fondo blanco queda transparente: ' + JSON.stringify(png));
   await casilla.check();
   ok(await casilla.isChecked(), 'con la firma ya se puede marcar listo');
   /* el menú lateral no salta arriba al marcar un paso */
@@ -1064,7 +1074,7 @@ await step('15r. Anexos como documentos en la ruta (con firma en la app y casill
   ok(await page.locator('.edit-grid input[data-key="hasta"]').inputValue() === '2026-10-03', 'inicio + días calculan el término');
   /* permisos y fotos de obras y registro de viaje existen como herramientas */
   await go('#/h/obras');
-  ok(/Permisos y documentos de la obra/.test(await page.textContent('.tool-page')) && /Fotos de la obra/.test(await page.textContent('.tool-page')), 'permisos y fotos van por separado');
+  ok(/Permisos y documentos de la obra/.test(await page.textContent('.tool-page')) && /Fotos de la obra/.test(await page.textContent('.tool-page')) && /Listas de asistencia/.test(await page.textContent('.tool-page')), 'permisos, fotos y listas van por separado');
   await go('#/h/viaje');
   await page.getByRole('button', { name: 'Nuevo viaje' }).click();
   ok(await page.locator('select[data-key="rol"]').count() >= 1 || await page.locator('.edit-grid select').count() >= 1, 'el registro de viaje pide el rol con una lista');
@@ -1073,6 +1083,39 @@ await step('15r. Anexos como documentos en la ruta (con firma en la app y casill
   ok(await page.locator('.item-list li').count() === 4, 'la fase 5 quedó en 4 trámites');
   await go('#/t/TRM-016');
   ok(await page.locator('details.ficha-embed').count() === 5, 'el informe trae sus 5 fichas dentro');
+  await go('#/h/gastos');
+});
+
+await step('15s. Mi ruta como panel (cuentas, meses, gastos, filtros), expediente completo en un archivo y fuegos artificiales al terminar', async () => {
+  await go('#/');
+  await page.waitForSelector('.dash');
+  ok(await page.locator('.dash-tile').count() === 4 && await page.locator('.dash-phase').count() === 6, 'hay cuatro cifras y las seis fases');
+  ok(await page.locator('.dash-acct').count() === 4, 'una barra por cuenta');
+  const antes = await page.locator('.dash-rows .dr-link').count();
+  const total = await page.evaluate(() => RF.store.project().expenses.filter(e => e.proveedor || e.total).length);
+  ok(antes === Math.min(8, total), 'la lista muestra los gastos recientes: ' + antes + ' de ' + total);
+  const cuentaConGastos = await page.evaluate(() => { const e = RF.store.project().expenses.find(x => x.cuenta && (x.proveedor || x.total)); return e ? e.cuenta : null; });
+  if (cuentaConGastos) {
+    const idx = await page.evaluate((c) => RF.data.CUENTAS.findIndex(x => x.id === c), cuentaConGastos);
+    await page.locator('.dash-acct').nth(idx).click();
+    ok(await page.locator('.dash-acct.on').count() === 1 && /filtrados/.test(await page.textContent('.dash-list')), 'tocar una cuenta filtra la lista y marca la barra');
+    await page.getByRole('button', { name: 'Quitar filtros' }).click();
+    ok(await page.locator('.dash-acct.on').count() === 0, 'se pueden quitar los filtros');
+  }
+  if (await page.locator('.dash-bar').count()) { await page.locator('.dash-bar').first().click(); ok(await page.locator('.dash-bar.on').count() === 1 && await page.locator('.dash-bar.dim').count() >= 0, 'tocar un mes lo resalta y filtra'); await page.getByRole('button', { name: 'Quitar filtros' }).click(); }
+  /* expediente completo */
+  await go('#/h/expediente');
+  ok(await page.locator('.exp-parts li').count() >= 10, 'el expediente lista lo que incluye');
+  await page.getByRole('button', { name: 'Word' }).first().click();
+  const fexp = tmp('expediente.docx'); await saveDownload(page, fexp);
+  const docxText = fs.readFileSync(fexp, 'latin1');
+  ok(docxText.includes('word/document.xml') && fs.statSync(fexp).size > 4000, 'se genera el Word del expediente');
+  const bloques = await page.evaluate(() => RF.dossier.build(RF.store.project(), RF.store.get()).blocks.filter(b => b.t === 'h').map(b => b.text));
+  ok(bloques.some(t => /Datos de la comunidad/.test(t)) && bloques.some(t => /Todos los gastos/.test(t)) && bloques.some(t => /Avance de la ruta/.test(t)), 'incluye datos, gastos escritos y ruta: ' + bloques.slice(0, 6).join(' | '));
+  /* fuegos artificiales y felicitaciones */
+  const fw = await page.evaluate(() => { RF.dash.fireworks(); return !!document.querySelector('canvas.fireworks') || window.matchMedia('(prefers-reduced-motion: reduce)').matches; });
+  ok(fw, 'los fuegos artificiales se dibujan (o se omiten si pidió menos movimiento)');
+  await page.evaluate(() => { const c = document.querySelector('canvas.fireworks'); if (c) c.remove(); });
   await go('#/h/gastos');
 });
 

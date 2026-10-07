@@ -34,9 +34,9 @@ test('util: dinero, RUT y fechas', () => {
 test('datos: cada trámite del inventario está cubierto una sola vez', () => {
   /* Contrato versionado para que el paquete público no dependa del disco privado de SMI. */
   const ids = JSON.parse(fs.readFileSync(new URL('./fixtures/tramite-ids.json', import.meta.url), 'utf8')).sort();
-  assert.equal(ids.length, 21);
+  assert.equal(ids.length, 22);
   const inFases = [].concat(...D.FASES.map(f => f.items), D.AYUDA).filter(x => x.startsWith('TRM-')).sort();
-  assert.deepEqual(Array.from(inFases), ids, 'las fases + ayuda deben cubrir exactamente los 21 trámites');
+  assert.deepEqual(Array.from(inFases), ids, 'las fases + ayuda deben cubrir exactamente los 22 trámites');
   const all = [].concat(...D.FASES.map(f => f.items), D.AYUDA);
   assert.equal(new Set(all).size, all.length, 'ningún trámite repetido');
   all.forEach(id => assert.ok(RF.tramites.byId[id], 'existe contenido para ' + id));

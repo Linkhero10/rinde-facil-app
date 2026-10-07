@@ -265,7 +265,7 @@
   /* ---------- sincronización automática entre equipos ----------
      Trae la copia de la nube, la une con la de este equipo (respetando lo que cambió cada lado desde la última vez) y sube el resultado.
      Se hace al abrir la sesión, al volver a la pestaña, cada pocos minutos y unos segundos después de cualquier cambio. */
-  function syncFingerprint() { var st = RF.store.get(); return RF.store.fingerprint({ community: st.community, holidays: st.holidays, events: st.events, activity: st.activity, repo: st.repo, projects: st.projects }); }
+  function syncFingerprint() { var st = RF.store.get(); return RF.store.fingerprint({ community: st.community, holidays: st.holidays, events: st.events, activity: st.activity, signatures: st.signatures, repo: st.repo, projects: st.projects }); }
   function isDirty() { return cfg().syncFp !== syncFingerprint(); }
   function markSynced() {
     RF.store.update(function (s) { s.cloud.base = RF.store.snapshotBase(s); s.cloud.syncFp = syncFingerprint(); s.cloud.lastSync = new Date().toISOString(); s.cloud.conflict = false; delete s.cloud.conflictText; }, { silent: true, noSync: true });
@@ -347,6 +347,7 @@
   function pendingItems() {
     var out = [], st = RF.store.get();
     (st.projects || []).forEach(function (p) {
+      (p.observations || []).forEach(function (o) { (o.files || []).forEach(function (r) { if (r && r.blobId && !r.driveUrl) out.push({ kind: 'obsfile', r: r, o: o, p: p, e: { id: r.id } }); }); });
       (p.obras || []).forEach(function (r) { if (r && r.blobId && !r.driveUrl) out.push({ kind: 'obra', r: r, p: p, e: { id: r.id } }); });
       (p.f29 || []).forEach(function (r) { if (r && r.file && r.file.blobId && !r.file.driveUrl) out.push({ kind: 'f29', r: r, p: p, e: { id: r.id } }); });
       (p.expenses || []).forEach(function (e) {
@@ -368,6 +369,9 @@
     var chain = Promise.resolve();
     items.forEach(function (it) {
       chain = chain.then(function () {
+        if (it.kind === 'obsfile') {
+          return RF.blobs.get(it.r.blobId).then(function (blob) { if (!blob) { fail++; return null; } return saveObra(it.r, 'Rendiciones - observaciones y respuestas', (it.o.recibida || U.todayISO()) + ' · Observación de CORFO · ' + (it.p.name || 'proyecto') + ' · ' + it.r.name, blob).then(function (r) { if (r && r.remote) { it.r.driveUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); done++; } else fail++; }, function () { fail++; }); }, function () { fail++; });
+        }
         if (it.kind === 'obra') {
           return RF.blobs.get(it.r.blobId).then(function (blob) { if (!blob) { fail++; return null; } return RF.obras.saveToDrive(it.r, it.p, blob).then(function (r) { if (r && r.remote) { it.r.driveUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); done++; } else fail++; }, function () { fail++; }); }, function () { fail++; });
         }

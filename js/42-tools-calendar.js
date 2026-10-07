@@ -351,8 +351,8 @@
     function paintAll() { paintChips(); paintUpcoming(); paintToolbar(); stage._tok = (stage._tok || 0) + 1; stage.classList.remove('moving'); U.clear(stage); stage.appendChild(st.view === 'mes' ? buildMonth() : buildYear()); paintDay(); }
     paintAll();
 
-    root.appendChild(UI.section('Lo que viene', [upcoming]));
     root.appendChild(UI.section('Mi calendario', [toolbar, pickBox, chips, h('div', { class: 'cal-layout' }, h('div', { class: 'cal-main' }, stage), dayBox)]));
+    root.appendChild(UI.section('Lo que viene', [upcoming]));
     return root;
   } };
 

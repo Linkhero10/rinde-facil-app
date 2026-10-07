@@ -195,7 +195,7 @@
         else if (k.slice(0, 2) === 'on' && typeof v === 'function') el.addEventListener(k.slice(2), v);
         else if (k === 'dataset') { for (var d in v) el.dataset[d] = v[d]; }
         else if (v === true) el.setAttribute(k, '');
-        else if ((k === 'href' || k === 'src' || k === 'action' || k === 'formaction') && /^(javascript|vbscript|data):/i.test(stripInvisible(v))) continue; /* enlaces que ejecutan código: se descartan */
+        else if ((k === 'href' || k === 'src' || k === 'action' || k === 'formaction') && /^(javascript|vbscript|data):/i.test(stripInvisible(v)) && !(k === 'src' && tag === 'img' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(String(v)))) continue; /* enlaces que ejecutan código: se descartan (salvo una imagen en base64, como la firma) */
         else el.setAttribute(k, v);
       }
     }

@@ -24,9 +24,9 @@
   function defaults() {
     return {
       v: 2,
-      community: { name: '', rut: '', address: '', legalRep: '', repRut: '', email: '', phone: '', ivaModo: 'no_contribuyente', oc: '' },
+      community: { name: '', rut: '', address: '', legalRep: '', repRut: '', email: '', phone: '', ivaModo: 'no_contribuyente', oc: '', ocEmail: '' },
       cloud: { apiUrl: '', lastSync: null, rev: 0, autoSave: true, rootUrl: '', saves: [] },
-      holidays: [], events: [], activity: [], projects: [], activeProjectId: null, repo: { docs: [], actas: [] },
+      holidays: [], events: [], activity: [], signatures: [], projects: [], activeProjectId: null, repo: { docs: [], actas: [] },
       ui: { theme: 'system', open: {}, idleMinutes: 15 }
     };
   }
@@ -39,6 +39,7 @@
     out.cloud = Object.assign({}, d.cloud, s.cloud || {});
     out.ui = Object.assign({}, d.ui, s.ui || {});
     out.holidays = Array.isArray(s.holidays) ? s.holidays : [];
+    out.signatures = Array.isArray(s.signatures) ? s.signatures.filter(function (e) { return e && e.id && /^data:image\/png;base64,/.test(e.png || ''); }) : [];
     out.activity = Array.isArray(s.activity) ? s.activity.filter(function (e) { return e && typeof e === 'object' && e.id; }) : [];
     out.events = Array.isArray(s.events) ? s.events.filter(function (e) { return e && typeof e === 'object'; }) : [];
     out.repo = { docs: Array.isArray(s.repo && s.repo.docs) ? s.repo.docs : [], actas: Array.isArray(s.repo && s.repo.actas) ? s.repo.actas : [] };
@@ -210,6 +211,7 @@
     Object.keys(st.community || {}).forEach(function (k) { b['c|' + k] = fp(st.community[k]); });
     (st.events || []).forEach(function (x) { if (x && x.id) b['ev|' + x.id] = fp(x); });
     (st.activity || []).forEach(function (x) { if (x && x.id) b['act|' + x.id] = fp(x); });
+    (st.signatures || []).forEach(function (x) { if (x && x.id) b['sig|' + x.id] = fp(x); });
     ['docs', 'actas'].forEach(function (k) { ((st.repo || {})[k] || []).forEach(function (x) { if (x && x.id) b['r|' + k + '|' + x.id] = fp(x); }); });
     (st.projects || []).forEach(function (p) {
       b['P|' + p.id] = 1;
@@ -277,7 +279,7 @@
       /* feriados: se unen (son fechas sueltas, no hay nada que pelear) */
       s.holidays = Array.from(new Set((s.holidays || []).concat(r.holidays || []))).sort();
     })();
-    Object.keys(r).concat(Object.keys(s)).forEach(function (k) { if (['projects', 'repo', 'cloud', 'ui', 'activeProjectId', 'events', 'community', 'holidays', 'activity'].indexOf(k) < 0 && !equalData(s[k], r[k])) conflict(k); });
+    Object.keys(r).concat(Object.keys(s)).forEach(function (k) { if (['projects', 'repo', 'cloud', 'ui', 'activeProjectId', 'events', 'community', 'holidays', 'activity', 'signatures'].indexOf(k) < 0 && !equalData(s[k], r[k])) conflict(k); });
     (function () {
       var haveP = new Map(); s.projects.forEach(function (p) { haveP.set(p.id, p); });
       r.projects.forEach(function (rp) {
@@ -312,9 +314,10 @@
       var d = unionById(s.repo.docs, r.repo.docs, base, 'r|docs|'), a = unionById(s.repo.actas, r.repo.actas, base, 'r|actas|');
       s.repo.docs = d.list; s.repo.actas = a.list; added += d.added + a.added;
       var ev = unionById(s.events, r.events, base, 'ev|'); s.events = ev.list; added += ev.added;
+      var sg = unionById(s.signatures, r.signatures, base, 'sig|'); s.signatures = sg.list; added += sg.added;
       var ac = unionById(s.activity, r.activity, base, 'act|'); s.activity = ac.list.sort(function (a, b) { return a.t < b.t ? -1 : a.t > b.t ? 1 : 0; }).slice(-400); /* el historial se une sin contarlo como cambio */
     })();
-    update(function (current) { current.projects = s.projects; current.repo = s.repo; current.events = s.events; current.activity = s.activity; current.community = s.community; current.holidays = s.holidays; });
+    update(function (current) { current.projects = s.projects; current.repo = s.repo; current.events = s.events; current.activity = s.activity; current.signatures = s.signatures; current.community = s.community; current.holidays = s.holidays; });
     return added;
   }
   function isDone(p, tid, i) { return !!(p && p.done[tid + ':' + i]); }

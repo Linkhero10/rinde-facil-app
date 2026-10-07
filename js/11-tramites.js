@@ -92,19 +92,19 @@
     /* ---------- Fase 5: rendir ---------- */
     { id: 'TRM-013', fase: 'F5', title: 'Preparar y enviar la rendición', why: 'Aquí juntas todos los gastos del período y los envías por SGP.', who: 'comunidad', when: 'En la fecha de tu calendario de rendiciones (cada 6 meses como máximo)', need: ['Gastos del período', 'Respaldos y pruebas de pago'],
       notes: ['Un documento emitido después del cierre va en la rendición siguiente (salvo el informe final).'],
-      steps: ['Revisa el presupuesto disponible por cuenta.', 'Anota cada gasto, uno a uno, con fecha y forma de pago exactas y su respaldo.', 'Revisa el resumen por cuentas y corrige lo que no cuadre.', 'Envía a tiempo.'], stepTools: {1:['gastos'],2:['resumen']}, auto: { 1: 'gastos_ok' },
+      steps: ['Revisa el presupuesto disponible por cuenta.', 'Anota cada gasto, uno a uno, con fecha y forma de pago exactas y su respaldo.', 'Revisa el resumen por cuentas y corrige lo que no cuadre.', 'Envía a tiempo.'], stepTools: { 0: ['resumen'], 1: ['gastos'], 2: ['resumen'] }, auto: { 1: 'gastos_ok' },
       tools: ['gastos', 'revision'], img: [['doc-004-79b28f1aad_p009.jpg', 'Manual, p. 9: preparación y envío']], src: ['Manual CORFO, sección VIII (p. 9-10)'] },
     { id: 'TRM-014', fase: 'F5', title: 'Cuadrar el resumen por cuentas', why: 'Antes de enviar, los totales de cada cuenta deben calzar con lo presupuestado.', who: 'comunidad', when: 'Antes de cada envío', need: ['Gastos ingresados'],
-      steps: ['En SGP entra a «Resumen por Cuentas».', 'Comprueba que los montos sean los que debías cargar, cuenta por cuenta.', 'Corrige o explica cualquier diferencia antes de enviar.'], stepTools: {2:['resumen']},
+      steps: ['Compara en SGP el «Resumen por Cuentas» con lo que cargaste, cuenta por cuenta, y corrige o explica cualquier diferencia antes de enviar.'], stepTools: { 0: ['resumen'] },
       tools: ['resumen', 'revision'], img: [['doc-005-7690461ef7_p020.jpg', 'Presentación de rendición, diap. 20: resumen por cuentas']], src: ['Presentación de rendición, diap. 20'] },
     { id: 'TRM-016', fase: 'F5', title: 'Informe técnico de avance (Anexo 6)', why: 'Cuenta qué actividades hiciste y cómo van, junto con la rendición. Aquí llenas el informe y las fichas de lo que hiciste.', who: 'comunidad', when: 'Con cada rendición', need: ['Datos del proyecto', 'Lo que hiciste en el período'],
       embed: ['informe'], embedFichas: ['informeA', 'informeB', 'informeC', 'informeD', 'informeE'],
-      notes: ['Inversión y Fomento: informe técnico (Anexo 6). Administración: memoria de cálculo (Anexo 5).', { t: 'Cada gasto de inversión o de personas tiene un botón para crear su ficha con los datos ya puestos.', a: ['Ir a Gastos', '#/h/gastos'] }, { t: 'Las fotos y los permisos de obras se suben aparte, sin OCR.', a: ['Permisos y fotos de obras', '#/h/obras'] }],
+      notes: ['Inversión y Fomento: informe técnico (Anexo 6). Administración: memoria de cálculo (Anexo 5).', { t: 'Cada gasto de inversión o de personas tiene un botón para crear su ficha con los datos ya puestos.', a: ['Ir a Gastos', '#/h/gastos'] }, { t: 'Fotos, permisos, listas de asistencia e informes de estudios se suben aparte, sin OCR.', a: ['Permisos, fotos y listas', '#/h/obras'] }],
       steps: ['Completa los datos generales y los objetivos del informe.', 'Completa las fichas de lo que hiciste (actividades, estudios, activos, personas).', 'En SGP elige «Informe de Avance» y «Ver Informe / Rendir», adjunta los archivos y presiona «Enviar Informe».'], auto: { 0: 'informe_general', 1: 'fichas_alguna' },
       img: [['doc-005-7690461ef7_p024.jpg', 'Presentación de rendición, diap. 24: informe técnico en SGP'], ['doc-004-79b28f1aad_p028.jpg', 'Manual, p. 28: formato del informe']], src: ['Manual CORFO, Anexo N° 6 (p. 28-38)', 'Presentación de rendición, diap. 24'] },
     { id: 'TRM-015', fase: 'F5', title: 'Responder las observaciones de CORFO', why: 'Si CORFO observa gastos, tienes 10 días hábiles y una sola oportunidad para aclarar.', who: 'comunidad', when: '10 días hábiles desde que CORFO comunica las observaciones', need: ['Observaciones de CORFO', 'Documentos que faltan'],
       notes: ['CORFO revisa los gastos y puede pedir más antecedentes.', 'Solo tienes una oportunidad para aclarar. Si no respondes a tiempo, los gastos observados se rechazan.', 'CORFO revisa tus respuestas y cierra la revisión.'],
-      steps: ['Aclara las observaciones en un máximo de 10 días hábiles: regístralas en SGP y comenta la glosa del gasto.', 'Pídele ayuda al Organismo Colaborador.'], stepTools: {0:['observaciones']}, opt: {1:'Solo si la necesitas'}, auto: { 0: 'obs_resp' },
+      steps: ['Aclara las observaciones en un máximo de 10 días hábiles: regístralas en SGP y comenta la glosa del gasto.', 'Pídele ayuda al Organismo Colaborador.'], opt: {1:'Solo si la necesitas'}, stepTools: { 0: ['observaciones'], 1: ['observaciones'] }, auto: { 0: 'obs_resp' },
       tools: ['observaciones'], img: [['doc-004-79b28f1aad_p010.jpg', 'Manual, p. 10: revisión y aclaración']], src: ['Manual CORFO, sección VIII (p. 10-11)'] },
 
     /* ---------- Fase 6 ---------- */
@@ -112,6 +112,11 @@
       notes: ['Novandino (ex SQM) transfiere los aportes.', 'Recuerda: la rendición se hace cada 6 meses como máximo.'],
       steps: ['Confirma que CORFO finalizó la revisión de tu rendición.', 'Presenta la solicitud de los aportes restantes.'], stepTools: {1:['solicitud']},
       tools: ['solicitud'], img: [['flujograma_overview.jpg', 'Flujograma oficial, pasos 26 a 28']], src: ['Flujograma, pasos 26 a 28', '«Introducción al Acuerdo», diapositiva 4'] },
+
+    { id: 'TRM-032', fase: 'F6', title: 'Juntar todo el proyecto en un solo archivo', why: 'Al cerrar, todo lo que hicieron queda reunido en un único archivo: datos, ruta, plata por cuenta, PEA, gastos, anexos con sus firmas, informe técnico, observaciones e historial.', who: 'comunidad', when: 'Al cerrar el proyecto', need: ['Todo lo anterior listo'],
+      notes: ['El archivo se arma solo con lo que ya anotaron: no hay que volver a escribir nada.', 'Las fotos y los PDF no van dentro: quedan en el Drive y el expediente lista cada uno con su enlace.'],
+      steps: ['Revisa lo que incluye el expediente y descárgalo (Word, PDF o Excel) o guárdalo en el Drive.'], stepTools: { 0: ['expediente'] },
+      tools: ['expediente'], img: [], src: ['Rinde Fácil'] },
 
     /* ---------- Ayuda ---------- */
     { id: 'TRM-026', fase: 'AY', title: 'Consultar una duda a CORFO', why: 'CORFO resuelve las dudas sobre el Manual. Mejor preguntar antes de gastar.', who: 'comunidad', when: 'Antes de ejecutar o rendir, si la duda importa', need: ['Tu pregunta', 'Los hechos', 'Qué parte del Manual'],

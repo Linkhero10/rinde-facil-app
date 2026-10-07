@@ -6,7 +6,10 @@
   var U = RF.util, UI = RF.ui, h = U.h, TOOLS = RF.tools = RF.tools || {};
   var KINDS = {
     permiso: { name: 'Permisos y documentos de la obra', folder: 'Obras - permisos', accept: 'image/*,application/pdf,.pdf', help: 'Permiso de edificación, recepción, planos u otros papeles. Guarda una copia física y una escaneada, como pide el Manual.' },
-    foto: { name: 'Fotos de la obra o del activo', folder: 'Obras - fotos', accept: 'image/*', help: 'Respaldo fotográfico de los activos comprados o de la construcción. Las fotos no se leen con OCR: solo se ordenan.' }
+    foto: { name: 'Fotos de la obra o del activo', folder: 'Obras - fotos', accept: 'image/*', help: 'Respaldo fotográfico de los activos comprados o de la construcción. Las fotos no se leen con OCR: solo se ordenan.' },
+    actividad: { name: 'Fotos de las actividades de la comunidad', folder: 'Informe - fotos de actividades', accept: 'image/*', help: 'Registro fotográfico de talleres, capacitaciones y visitas (Anexo B del Manual). No pasan por OCR.' },
+    asistencia: { name: 'Listas de asistencia', folder: 'Informe - listas de asistencia', accept: 'image/*,application/pdf,.pdf', help: 'Actividades presenciales: la lista firmada. Actividades en línea: la lista y una foto de la pantalla (Manual, Anexo A).' },
+    estudio: { name: 'Informes de estudios y consultorías', folder: 'Informe - estudios', accept: 'image/*,application/pdf,.pdf', help: 'Informes intermedios o final del estudio o consultoría (Manual, Anexo B).' }
   };
 
   function silent() { RF.store.update(function () { }, { silent: true }); }
@@ -19,11 +22,11 @@
     return RF.drive.saveObra(rec, k.folder, base + ext(rec.name, blob.type), blob);
   }
 
-  TOOLS.obras = { title: 'Permisos y fotos de obras', icon: 'file', desc: 'Guarda aparte los permisos y las fotos de tus obras o activos. Las fotos no pasan por OCR y todo queda ordenado en el Drive.', render: function () {
-    var p = RF.store.project(), root = h('div', { class: 'tool-page' }, h('h1', { class: 'tool-title' }, 'Permisos y fotos de obras'));
+  TOOLS.obras = { title: 'Permisos, fotos y listas del informe', icon: 'file', desc: 'Guarda aparte los permisos y las fotos de obras y actividades, las listas de asistencia y los informes de estudios. Nada pasa por OCR y todo queda ordenado en el Drive.', render: function () {
+    var p = RF.store.project(), root = h('div', { class: 'tool-page' }, h('h1', { class: 'tool-title' }, 'Permisos, fotos y listas del informe'));
     if (!p) { root.appendChild(UI.callout('info', '', 'Primero crea o elige un proyecto.')); return root; }
     p.obras = p.obras || [];
-    root.appendChild(h('p', { class: 'lead' }, 'Para compras de activos y construcciones el Manual pide los permisos y fotos del resultado. Se suben aquí, separados de las boletas: así no pasan por la lectura de documentos y quedan en carpetas distintas de tu Drive.'));
+    root.appendChild(h('p', { class: 'lead' }, 'El informe técnico pide respaldos que no son boletas: permisos y fotos de obras y activos, fotos de las actividades, listas de asistencia e informes de estudios. Se suben aquí, separados de las boletas: así no pasan por la lectura de documentos y quedan en carpetas distintas de tu Drive.'));
     var boxes = {};
     function paintKind(kind) {
       var k = KINDS[kind], box = boxes[kind]; U.clear(box);

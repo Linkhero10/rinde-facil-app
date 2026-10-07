@@ -46,6 +46,8 @@
   function commNames() { var n = v(stateOf().community.name); return n ? [n] : []; }
   function repNames() { var n = v(stateOf().community.legalRep); return n ? [n] : []; }
   function projectNames() { return (stateOf().projects || []).map(function (p) { return p.name; }).filter(Boolean); }
+  function proveedoresOf() { var p = RF.store.project(), seen = {}, out = []; ((p && p.expenses) || []).forEach(function (e) { var n = String(e.proveedor || '').trim(); if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = 1; out.push(n); } }); return out.sort(); }
+  var FORMAS_ADQ = ['Compra directa (sobre $10.000.000 no corresponde)', 'Con 2 o más cotizaciones', 'Con autorización previa de CORFO (una sola cotización)', 'Contrato de servicios', 'Otra'];
   var CARGOS = ['Presidente(a)', 'Representante legal', 'Tesorero(a)', 'Secretario(a)', 'Director(a)'];
   /* al elegir el proyecto se rellenan su código y el período que se rinde */
   function projectFill(k, d) {
@@ -270,16 +272,31 @@
     id: 'informe', title: 'Anexo 6 · Informe de seguimiento técnico', repeat: false, sheet: 'Informe técnico',
     defaults: function (ctx) { return { proyectoNombre: v(proj(ctx).name), nInforme: '', comunidad: v(com(ctx).name), proyectoCodigo: v(proj(ctx).code), fechaInforme: U.todayISO(), elaboradoPor: '', fechaInicio: v(proj(ctx).start), fechaTermino: v(proj(ctx).end), fechaTransferencia: v(proj(ctx).desembolso1), periodoInicio: v(proj(ctx).periodoInicio), periodoFin: v(proj(ctx).periodoFin), responsableCorreo: '', responsableTel: '', comunidadRut: v(com(ctx).rut), direccion: v(com(ctx).address), repLegal: v(com(ctx).legalRep), repCorreo: v(com(ctx).email), repTel: v(com(ctx).phone), oc: v(com(ctx).oc, 'Organismo Colaborador'), objetivoGeneral: '', objetivosEspecificos: '', resumen: '' }; },
     fields: [
-      { k: 'proyectoNombre', l: 'Nombre del proyecto (según el PEA)', t: 'text' }, { k: 'nInforme', l: 'Informe técnico N°', t: 'text' }, { k: 'comunidad', l: 'Nombre de la comunidad', t: 'text' }, { k: 'proyectoCodigo', l: 'Código del proyecto', t: 'text' },
-      { k: 'fechaInforme', l: 'Fecha del informe', t: 'date' }, { k: 'elaboradoPor', l: 'Elaborado por (responsable en la comunidad)', t: 'text' },
-      { k: 'fechaInicio', l: 'Fecha de inicio del proyecto', t: 'date' }, { k: 'fechaTermino', l: 'Fecha estimada de término', t: 'date' }, { k: 'fechaTransferencia', l: 'Fecha de transferencia de recursos para el hito que informas', t: 'date' },
+      { t: 'heading', l: 'Portada del informe' },
+      { k: 'proyectoNombre', l: 'Proyecto (según el PEA)', t: 'choice', options: projectNames }, { k: 'proyectoCodigo', l: 'Código del proyecto', t: 'text', hint: 'Se rellena solo al elegir el proyecto.' },
+      { k: 'comunidad', l: 'Comunidad', t: 'choice', options: commNames }, { k: 'nInforme', l: 'Informe técnico N°', t: 'text', hint: 'Si es el primero, escribe 1.' },
+      { k: 'fechaInforme', l: 'Fecha del informe', t: 'date' }, { k: 'elaboradoPor', l: 'Elaborado por (responsable en la comunidad)', t: 'choice', options: repNames },
+      { k: 'fechaInicio', l: 'Fecha de inicio del proyecto', t: 'date' }, { k: 'fechaTermino', l: 'Fecha estimada de término del proyecto', t: 'date' }, { k: 'fechaTransferencia', l: 'Fecha de transferencia de recursos para el hito que informas', t: 'date' },
+      { t: 'heading', l: 'I. Datos generales del proyecto' },
       { k: 'periodoInicio', l: 'Período del informe: desde', t: 'date' }, { k: 'periodoFin', l: 'hasta', t: 'date' },
-      { k: 'responsableCorreo', l: 'Correo de quien elabora', t: 'text' }, { k: 'responsableTel', l: 'Teléfono de quien elabora', t: 'text' },
+      { k: 'responsableCorreo', l: 'Correo de quien elabora el informe', t: 'text' }, { k: 'responsableTel', l: 'Teléfono de quien elabora el informe', t: 'text' },
       { k: 'comunidadRut', l: 'RUT de la comunidad', t: 'rut' }, { k: 'direccion', l: 'Dirección de la comunidad', t: 'text' },
-      { k: 'repLegal', l: 'Representante legal', t: 'text' }, { k: 'repCorreo', l: 'Correo del representante', t: 'text' }, { k: 'repTel', l: 'Teléfono del representante', t: 'text' }, { k: 'oc', l: 'Organismo Colaborador que apoyó', t: 'text' },
-      { k: 'objetivoGeneral', l: 'Objetivo general del proyecto', t: 'textarea' }, { k: 'objetivosEspecificos', l: 'Objetivos específicos', t: 'textarea', rows: 4 },
-      { k: 'resumen', l: 'Resumen de lo que hiciste en el período (etapa o hitos comprometidos en el PEA)', t: 'textarea', rows: 5 }
+      { k: 'repLegal', l: 'Representante legal de la comunidad', t: 'choice', options: repNames }, { k: 'repCorreo', l: 'Correo del representante', t: 'text' }, { k: 'repTel', l: 'Teléfono del representante', t: 'text' },
+      { k: 'oc', l: 'Organismo Colaborador que apoyó en la elaboración del informe', t: 'text' },
+      { t: 'heading', l: 'II. Antecedentes del proyecto' },
+      { k: 'objetivoGeneral', l: 'Descripción del objetivo general del proyecto', t: 'textarea' }, { k: 'objetivosEspecificos', l: 'Descripción de los objetivos específicos', t: 'textarea', rows: 4 },
+      { t: 'heading', l: 'III. Detalle de actividades informadas' },
+      { k: 'actividadesPeriodo', l: 'Tus actividades en el período (según la Carta Gantt)', t: 'custom' },
+      { k: 'resumen', l: 'Resumen de actividades realizadas en el período para la etapa proyectada o los hitos comprometidos en el PEA', t: 'textarea', rows: 5 }
     ],
+    onChange: function (k, d) { projectFill(k, d); },
+    custom: { actividadesPeriodo: function (d, ctx) {
+      var wrap = h('div'), acts = RF.logic.allActivities(ctx.project || {}).filter(function (x) { return x.act && x.act.name && (!d.periodoInicio || !d.periodoFin || !x.act.start || !x.act.end || (x.act.end >= d.periodoInicio && x.act.start <= d.periodoFin)); });
+      if (!acts.length) { wrap.appendChild(h('p', { class: 'hint' }, 'Cuando armes la Carta Gantt, aquí aparecen las actividades que caen en el período del informe.')); return wrap; }
+      wrap.appendChild(h('ul', { class: 'cal-list' }, acts.map(function (x) { return h('li', null, h('strong', null, x.act.name), x.act.start && x.act.end ? ' · ' + U.fmtDate(x.act.start) + ' al ' + U.fmtDate(x.act.end) : '', x.stage && x.stage.name ? ' · ' + x.stage.name : ''); })));
+      wrap.appendChild(UI.btn('Usar como borrador del resumen', { cls: 'ghost small', onclick: function () { if (d.resumen && d.resumen.trim()) { UI.toast('Ya hay un resumen escrito: no lo reemplacé.', 'bad'); return; } d.resumen = 'En el período se trabajó en: ' + acts.map(function (x) { return x.act.name; }).join('; ') + '.'; RF.store.update(function () { }, { silent: true }); var ta = document.querySelector('textarea[data-key="resumen"]'); if (ta) ta.value = d.resumen; } }));
+      return wrap;
+    } },
     check: function (d) { var o = []; if (!d.objetivoGeneral) o.push({ level: 'warn', msg: 'Falta el objetivo general.' }); if (!d.resumen) o.push({ level: 'warn', msg: 'Falta el resumen de actividades del período.' }); return o; },
     doc: function (d, ctx) { return informeDoc(d, ctx, false); }
   };
@@ -323,16 +340,16 @@
   SCHEMAS.informeA = fichaSchema('informeA', 'Ficha A · Actividad de la comunidad', 'informeA', [ACT_SEL,
     { k: 'nombre', l: 'Nombre de la actividad', t: 'text' }, { k: 'fecha', l: 'Fecha de ejecución', t: 'date' }, { k: 'lugar', l: 'Lugar de realización', t: 'text' }, { k: 'asistentes', l: 'N° de asistentes', t: 'number' },
     { k: 'presupuestado', l: 'Monto total presupuestado ($)', t: 'money' }, { k: 'rendido', l: 'Monto total rendido acumulado ($)', t: 'money' },
-    { k: 'objetivos', l: 'Objetivos y descripción de la actividad', t: 'textarea' }, { k: 'formaAdq', l: 'Forma de adquisición', t: 'text' }, { k: 'proveedores', l: 'Proveedores', t: 'text' }, { k: 'participantes', l: 'Quiénes participaron (perfil y cantidad)', t: 'textarea', rows: 2 },
+    { k: 'objetivos', l: 'Objetivos y descripción de la actividad', t: 'textarea' }, { k: 'formaAdq', l: 'Forma de adquisición', t: 'choice', options: FORMAS_ADQ }, { k: 'proveedores', l: 'Proveedores', t: 'text', hint: 'Si fueron varios, sepáralos con comas.' }, { k: 'participantes', l: 'Quiénes participaron (perfil y cantidad)', t: 'textarea', rows: 2 },
     { k: 'descripcion', l: 'Qué se hizo o cómo va (y conclusiones si ya terminó)', t: 'textarea', rows: 4 }], function () { return { nombre: '', fecha: '', lugar: '', asistentes: '', presupuestado: '', rendido: '', objetivos: '', formaAdq: '', proveedores: '', participantes: '', descripcion: '' }; });
   SCHEMAS.informeB = fichaSchema('informeB', 'Ficha B · Estudio o consultoría', 'informeB', [ACT_SEL,
     { k: 'nombre', l: 'Nombre del estudio o consultoría', t: 'text' }, { k: 'presupuestado', l: 'Monto total presupuestado ($)', t: 'money' }, { k: 'adjudicado', l: 'Monto total adjudicado ($)', t: 'money' }, { k: 'rendido', l: 'Monto rendido acumulado ($)', t: 'money' },
-    { k: 'proveedor', l: 'Nombre del proveedor', t: 'text' }, { k: 'desde', l: 'Contratación desde', t: 'date' }, { k: 'hasta', l: 'hasta', t: 'date' },
+    { k: 'proveedor', l: 'Nombre del proveedor', t: 'choice', options: proveedoresOf }, { k: 'desde', l: 'Contratación desde', t: 'date' }, { k: 'hasta', l: 'hasta', t: 'date' },
     { k: 'objetivo', l: 'Objetivo general de la contratación', t: 'textarea', rows: 2 }, { k: 'entregables', l: 'Entregables', t: 'textarea', rows: 2 }, { k: 'descripcion', l: 'Qué se hizo o cómo va', t: 'textarea', rows: 4 }],
     function () { return { nombre: '', presupuestado: '', adjudicado: '', rendido: '', proveedor: '', desde: '', hasta: '', objetivo: '', entregables: '', descripcion: '' }; });
   SCHEMAS.informeC = fichaSchema('informeC', 'Ficha C · Infraestructura, inmueble o activo', 'informeC', [ACT_SEL,
-    { k: 'nombre', l: 'Nombre del activo o edificación', t: 'text' }, { k: 'objetivos', l: 'Objetivos de la adquisición', t: 'textarea', rows: 2 }, { k: 'caracteristicas', l: 'Características técnicas', t: 'textarea', rows: 2 }, { k: 'formaAdq', l: 'Forma de adquisición', t: 'text' },
-    { k: 'presupuestado', l: 'Monto total presupuestado ($)', t: 'money' }, { k: 'rendido', l: 'Monto rendido acumulado ($)', t: 'money' }, { k: 'proveedor', l: 'Nombre del proveedor', t: 'text' }, { k: 'desde', l: 'Ejecución desde', t: 'date' }, { k: 'hasta', l: 'hasta', t: 'date' },
+    { k: 'nombre', l: 'Nombre del activo o edificación', t: 'text' }, { k: 'objetivos', l: 'Objetivos de la adquisición', t: 'textarea', rows: 2 }, { k: 'caracteristicas', l: 'Características técnicas', t: 'textarea', rows: 2 }, { k: 'formaAdq', l: 'Forma de adquisición', t: 'choice', options: FORMAS_ADQ },
+    { k: 'presupuestado', l: 'Monto total presupuestado ($)', t: 'money' }, { k: 'rendido', l: 'Monto rendido acumulado ($)', t: 'money' }, { k: 'proveedor', l: 'Nombre del proveedor', t: 'choice', options: proveedoresOf }, { k: 'desde', l: 'Ejecución desde', t: 'date' }, { k: 'hasta', l: 'hasta', t: 'date' },
     { k: 'descripcion', l: 'Qué se hizo o cómo va', t: 'textarea', rows: 4 }], function () { return { gastoId: '', nombre: '', objetivos: '', caracteristicas: '', formaAdq: '', presupuestado: '', rendido: '', proveedor: '', desde: '', hasta: '', descripcion: '' }; });
   SCHEMAS.informeD = fichaSchema('informeD', 'Ficha D · Persona contratada', 'informeD', [ACT_SEL,
     { k: 'nombre', l: 'Nombre completo de la persona', t: 'text' }, { k: 'rut', l: 'Cédula de identidad', t: 'rut' }, { k: 'presupuestado', l: 'Monto presupuestado de la contratación ($)', t: 'money' }, { k: 'rendido', l: 'Monto rendido acumulado ($)', t: 'money' },
@@ -375,8 +392,8 @@
     return wrap;
   }
   SCHEMAS.informeE = fichaSchema('informeE', 'Ficha E · Otra actividad', 'informeE', [ACT_SEL,
-    { k: 'nombre', l: 'Descripción de la actividad y sus objetivos', t: 'textarea', rows: 2 }, { k: 'proveedor', l: 'Proveedor', t: 'text' }, { k: 'lugar', l: 'Lugar de realización del servicio', t: 'text' },
-    { k: 'presupuestado', l: 'Monto total presupuestado ($)', t: 'money' }, { k: 'rendido', l: 'Monto rendido acumulado ($)', t: 'money' }, { k: 'formaContratacion', l: 'Forma de contratación', t: 'text' },
+    { k: 'nombre', l: 'Descripción de la actividad y sus objetivos', t: 'textarea', rows: 2 }, { k: 'proveedor', l: 'Proveedor', t: 'choice', options: proveedoresOf }, { k: 'lugar', l: 'Lugar de realización del servicio', t: 'text' },
+    { k: 'presupuestado', l: 'Monto total presupuestado ($)', t: 'money' }, { k: 'rendido', l: 'Monto rendido acumulado ($)', t: 'money' }, { k: 'formaContratacion', l: 'Forma de contratación', t: 'choice', options: FORMAS_ADQ },
     { k: 'fechaInicio', l: 'Fecha de inicio', t: 'date' }, { k: 'fechaTermino', l: 'Fecha de término', t: 'date' }, { k: 'descripcion', l: 'Qué se hizo o cómo va', t: 'textarea', rows: 4 }],
     function () { return { nombre: '', proveedor: '', lugar: '', presupuestado: '', rendido: '', formaContratacion: '', fechaInicio: '', fechaTermino: '', descripcion: '' }; });
 
@@ -529,6 +546,7 @@
     sc.fields.forEach(function (f) {
       var el;
       if (f.t === 'table') { el = renderTable(sc, f, data, ctx, changed, refreshers); wrap.appendChild(h('div', { class: 'field wide' }, h('span', { class: 'lbl' }, f.l), el)); return; }
+      if (f.t === 'heading') { wrap.appendChild(h('h3', { class: 'grp wide form-heading' }, f.l)); return; }
       if (f.t === 'choice') { /* lista de opciones con «Otro (escribir)»: nada de teclear el nombre de un proyecto y equivocarse en una letra */
         var copts = (typeof f.options === 'function' ? f.options(ctx) : f.options || []).filter(function (x, i, a) { return x && a.indexOf(x) === i; });
         var csel = h('select', { 'aria-label': f.l }, copts.map(function (o) { return h('option', { value: o }, o); }), h('option', { value: '__otro' }, 'Otro (escribir)'));
@@ -574,7 +592,7 @@
       mine.forEach(function (fn) { var i = refreshers.indexOf(fn); if (i >= 0) refreshers.splice(i, 1); }); mine = [];
       function reg(fn) { refreshers.push(fn); mine.push(fn); }
       U.clear(box);
-      var tbl = h('table', { class: 'edit-grid' });
+      var tbl = h('table', { class: 'edit-grid' + (f.cols.length >= 6 ? ' cards' : '') });
       tbl.appendChild(h('thead', null, h('tr', null, f.cols.map(function (c) { return h('th', null, c.l, c.tip ? UI.tip(c.tip, 'Qué significa ' + c.l) : null); }), h('th', { class: 'act' }, ''))));
       var tb = h('tbody');
       data[f.k].forEach(function (row, ri) {
@@ -592,6 +610,7 @@
             if (sc.autoCols && sc.autoCols.indexOf(c.k) >= 0) reg(function () { if (document.activeElement !== inp) inp.value = c.t === 'money' ? (row[c.k] ? U.fmtNum(row[c.k]) : '') : (row[c.k] == null ? '' : row[c.k]); }); /* valor calculado, pero editable */
             if (c.t === 'select') reg(function () { if (inp.value !== String(row[c.k] == null ? '' : row[c.k]) && document.activeElement !== inp) inp.value = row[c.k] == null ? '' : row[c.k]; });
             td.appendChild(inp);
+            if (f.cols.length >= 6 && c.tip) td.appendChild(UI.tip(c.tip, 'Qué significa ' + c.l));
           }
           tr.appendChild(td);
         });
@@ -625,6 +644,22 @@
   }
 
   /* ---------- firma dibujada (con el dedo o el mouse) y documento firmado ---------- */
+  function imageToSignature(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file), im = new Image();
+      im.onload = function () {
+        try {
+          var k = Math.min(1, 600 / im.width, 200 / im.height), w = Math.max(1, Math.round(im.width * k)), hh = Math.max(1, Math.round(im.height * k));
+          var cv = document.createElement('canvas'); cv.width = w; cv.height = hh; var g = cv.getContext('2d'); g.drawImage(im, 0, 0, w, hh);
+          var d = g.getImageData(0, 0, w, hh), px = d.data;
+          for (var i = 0; i < px.length; i += 4) { var lum = (px[i] + px[i + 1] + px[i + 2]) / 3; if (lum > 225) px[i + 3] = 0; else if (lum > 170) px[i + 3] = Math.round(px[i + 3] * (225 - lum) / 55); } /* el papel blanco queda transparente */
+          g.putImageData(d, 0, 0); URL.revokeObjectURL(url); resolve(cv.toDataURL('image/png'));
+        } catch (e) { URL.revokeObjectURL(url); reject(e); }
+      };
+      im.onerror = function () { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen.')); };
+      im.src = url;
+    });
+  }
   function signPad(onSave) {
     var cv = h('canvas', { width: 480, height: 160, class: 'sign-pad', 'aria-label': 'Espacio para firmar con el dedo o el mouse' }), g = cv.getContext && cv.getContext('2d'), down = false, dirty = false;
     if (g) { g.lineWidth = 2.4; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#111'; }
@@ -647,10 +682,21 @@
         U.clear(holder);
         if (data.firmas[sg.k]) {
           holder.appendChild(h('img', { src: data.firmas[sg.k], alt: sg.l, class: 'sign-img' }));
+          holder.appendChild(UI.btn('Guardar esta firma para reutilizarla', { icon: 'check', cls: 'ghost small', onclick: function () { var nm = ((sg.l || 'Firma').replace(/^Firma de /, '') + ' · ' + U.fmtDate(U.todayISO())).slice(0, 60), st = RF.store.get(); if ((st.signatures || []).some(function (x) { return x.png === data.firmas[sg.k]; })) { UI.toast('Esa firma ya está guardada.', 'ok'); return; } RF.store.update(function (x) { x.signatures = (x.signatures || []).concat([{ id: U.uid('sig'), name: nm, png: data.firmas[sg.k], at: new Date().toISOString() }]).slice(-12); }, { silent: true }); UI.toast('Firma guardada. La puedes elegir en cualquier documento.', 'ok'); } }));
           holder.appendChild(UI.btn('Borrar la firma', { cls: 'ghost small', onclick: function () { delete data.firmas[sg.k]; RF.store.update(function () { }, { silent: true }); paintRow(); paintStatus(); if (onChange) onChange(); } }));
         } else {
+          var lib = (RF.store.get().signatures || []);
+          function adopt(url, label) { data.firmas[sg.k] = url; RF.store.update(function () { }, { silent: true }); if (RF.activity) RF.activity.log('ficha', 'Firmó en la app: ' + sc.title + '.'); paintRow(); paintStatus(); if (onChange) onChange(); if (label) UI.toast(label, 'ok'); }
+          var up = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', class: 'sr-only', 'aria-label': 'Elegir la imagen de la firma' });
+          up.addEventListener('change', function () { var f = up.files && up.files[0]; if (!f) return; imageToSignature(f).then(function (url) { adopt(url, 'Firma cargada desde la imagen (se guardó como PNG).'); }, function (e) { UI.toast(e.message || 'No se pudo leer la imagen.', 'bad'); }); });
+          var reuse = h('div', { class: 'row-actions' }, up, UI.btn('Subir una imagen de mi firma (jpg o png)', { icon: 'file', cls: 'ghost', onclick: function () { up.click(); } }));
+          if (lib.length) {
+            var pick = h('select', { 'aria-label': 'Usar una firma guardada' }, h('option', { value: '' }, 'Usar una firma guardada…'), lib.map(function (x) { return h('option', { value: x.id }, x.name); }));
+            pick.addEventListener('change', function () { var x = lib.filter(function (y) { return y.id === pick.value; })[0]; if (x) adopt(x.png, 'Firma «' + x.name + '» puesta.'); });
+            reuse.appendChild(pick);
+          }
           var pad = signPad(function (url) { data.firmas[sg.k] = url; RF.store.update(function () { }, { silent: true }); if (RF.activity) RF.activity.log('ficha', 'Firmó en la app: ' + sc.title + '.'); paintRow(); paintStatus(); if (onChange) onChange(); });
-          holder.appendChild(pad); holder.appendChild(UI.btn('Borrar y empezar de nuevo', { cls: 'ghost small', onclick: function () { pad.clear(); } }));
+          holder.appendChild(pad); holder.appendChild(UI.btn('Borrar y empezar de nuevo', { cls: 'ghost small', onclick: function () { pad.clear(); } })); holder.appendChild(reuse);
           holder.appendChild(h('p', { class: 'hint' }, 'Dibuja tu firma con el dedo o el mouse; se guarda sola al soltar.'));
         }
       }
@@ -747,5 +793,5 @@
   /* Informe técnico completo: cabecera + fichas A–E */
   function informeCompleto(ctx) { var d = getSingle(ctx.project, 'informe'); return informeDoc(d, ctx, false); }
 
-  RF.forms = { errors: errors, ficha: ficha, SCHEMAS: SCHEMAS, getSingle: getSingle, getList: getList, docOf: docOf, renderSingle: renderSingle, renderRepeat: renderRepeat, informeCompleto: informeCompleto, combinedDoc: combinedDoc, ctxNow: ctxNow };
+  RF.forms = { imageToSignature: imageToSignature, errors: errors, ficha: ficha, SCHEMAS: SCHEMAS, getSingle: getSingle, getList: getList, docOf: docOf, renderSingle: renderSingle, renderRepeat: renderRepeat, informeCompleto: informeCompleto, combinedDoc: combinedDoc, ctxNow: ctxNow };
 })(typeof window !== 'undefined' ? window : globalThis);

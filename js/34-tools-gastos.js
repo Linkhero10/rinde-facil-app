@@ -419,6 +419,15 @@
   } };
 
   /* ================= Observaciones de CORFO ================= */
+  /* borrador del correo al Organismo Colaborador pidiendo ayuda con una observación de CORFO */
+  function obsMail(p, community, o) {
+    var lim = o.recibida ? L.aclaracionDeadline(o.recibida, RF.holidays.all()) : '';
+    var body = 'Hola:\n\nSomos ' + (community.name || '[comunidad]') + (community.rut ? ' (RUT ' + community.rut + ')' : '') + ', del proyecto «' + (p.name || '[proyecto]') + '»' + (p.code ? ' (código ' + p.code + ')' : '') + '.\n\n' +
+      'CORFO nos comunicó' + (o.recibida ? ' el ' + U.fmtDate(o.recibida) : '') + ' una observación a nuestra rendición' + (o.titulo ? ': «' + o.titulo + '»' : '') + '.' + (o.detalle ? '\n\nLo que pide CORFO:\n' + o.detalle : '') + (o.gastos ? '\n\nGastos o documentos afectados: ' + o.gastos : '') + '\n\n' +
+      (lim ? 'Tenemos hasta el ' + U.fmtDate(lim) + ' (10 días hábiles) para aclararla y solo podemos hacerlo una vez. ' : 'Solo podemos aclararla una vez y en un máximo de 10 días hábiles. ') + '¿Pueden ayudarnos a revisarla y a redactar la aclaración?\n\nAdjuntamos lo que nos envió CORFO.\n\nMuchas gracias,\n' + (community.legalRep || '[nombre]') + '\n' + (community.name || '');
+    return { to: community.ocEmail || '', subject: 'Ayuda con una observación de CORFO · ' + (p.name || 'proyecto') + (p.code ? ' · ' + p.code : ''), body: body };
+  }
+  RF.obsMail = obsMail;
   TOOLS.observaciones = { title: 'Observaciones de CORFO', icon: 'alert', desc: 'Anota lo que observó CORFO y cuenta tus 10 días hábiles.', render: function () {
     var c = ctx(), p = c.project; if (!p) return page('Observaciones de CORFO', '', needProject());
     var hol = RF.holidays.all(), root = h('div'), body = h('div');
@@ -435,12 +444,63 @@
           else if (left <= 3) status.appendChild(UI.callout('warn', 'Plazo próximo: ' + U.fmtDate(lim) + '.', ' Quedan ' + left + ' día(s) hábil(es).'));
           else status.appendChild(UI.callout('ok', 'Tienes hasta el ' + U.fmtDate(lim) + '.', ' Quedan ' + left + ' día(s) hábil(es). Se puede aclarar una sola vez.'));
         };
-        body.appendChild(h('div', { class: 'stage-card' },
+        o.files = o.files || [];
+        var viewer = h('div', { class: 'obs-viewer', hidden: true }), filesBox = h('div', { class: 'obs-files' }), mailBox = h('div');
+        function showFile(rec) {
+          viewer.hidden = false; U.clear(viewer);
+          viewer.appendChild(h('div', { class: 'row-actions between' }, h('strong', null, rec.name), UI.btn('Cerrar', { cls: 'ghost small', onclick: function () { viewer.hidden = true; U.clear(viewer); } })));
+          RF.blobs.get(rec.blobId).then(function (b) {
+            if (!b) { viewer.appendChild(UI.empty('El archivo ya no está en este dispositivo. Si lo guardaste en el Drive, ábrelo desde allí.')); return; }
+            var url = URL.createObjectURL(b), isPdf = /pdf/i.test(rec.type || rec.name);
+            viewer.appendChild(isPdf ? h('iframe', { src: url, title: rec.name, class: 'obs-frame' }) : h('img', { src: url, alt: rec.name, class: 'obs-img' }));
+          });
+        }
+        function paintFiles() {
+          U.clear(filesBox);
+          var inp = h('input', { type: 'file', accept: 'image/*,application/pdf,.pdf', multiple: true, class: 'sr-only', 'aria-label': 'Elegir lo que envió CORFO' });
+          inp.addEventListener('change', function () {
+            var list = Array.prototype.slice.call(inp.files || []); inp.value = '';
+            list.forEach(function (f) {
+              if (f.size > 8 * 1024 * 1024) { UI.toast('«' + f.name + '» pesa más de 8 MB: el Drive no lo aceptaría.', 'bad'); return; }
+              var rec = { id: U.uid('of'), name: f.name, type: f.type || '', size: f.size, at: new Date().toISOString(), blobId: 'obsf-' + U.uid('b'), driveUrl: '' };
+              RF.blobs.put(rec.blobId, f).then(function () {
+                o.files.push(rec); silent(); paintFiles(); showFile(rec); if (RF.activity) RF.activity.log('respaldo', 'Subió lo que envió CORFO sobre una observación.', 'observaciones');
+                if (RF.drive && RF.drive.auto()) RF.drive.saveObra(rec, 'Rendiciones - observaciones y respuestas', (o.recibida || U.todayISO()) + ' · Observación de CORFO · ' + (p.name || 'proyecto') + ' · ' + rec.name, f).then(function (r) { if (r && r.remote) { rec.driveUrl = r.url || ''; silent(); paintFiles(); } }).catch(function () { });
+              });
+            });
+          });
+          filesBox.appendChild(h('div', { class: 'row-actions' }, inp, UI.btn(o.files.length ? 'Agregar otro archivo' : 'Subir lo que envió CORFO (imagen o PDF)', { icon: 'file', cls: o.files.length ? 'ghost' : 'primary', onclick: function () { inp.click(); } })));
+          o.files.forEach(function (rec) {
+            filesBox.appendChild(h('div', { class: 'row-actions' }, h('span', { class: 'file-name' }, rec.name + (rec.driveUrl ? ' · ya está en tu Drive' : (RF.drive && RF.drive.enabled() ? ' · todavía no está en tu Drive' : ''))),
+              UI.btn('Verlo aquí', { cls: 'small', onclick: function () { showFile(rec); } }), rec.driveUrl ? h('a', { class: 'btn small ghost', href: rec.driveUrl, target: '_blank', rel: 'noopener' }, 'Ver en Drive') : null,
+              UI.btn('Quitar', { cls: 'ghost small danger', onclick: function () { o.files = o.files.filter(function (x) { return x.id !== rec.id; }); silent(); paintFiles(); viewer.hidden = true; } })));
+          });
+        }
+        paintFiles();
+        function paintMail() {
+          U.clear(mailBox);
+          mailBox.appendChild(UI.btn('Pedir ayuda al Organismo Colaborador', { icon: 'help', cls: 'ghost', onclick: function () {
+            U.clear(mailBox);
+            var com = RF.store.get().community, m = obsMail(p, com, o), st = { to: m.to, subject: m.subject, body: m.body };
+            var gm = h('a', { class: 'btn primary', target: '_blank', rel: 'noopener' }, 'Abrir en Gmail'), ml = h('a', { class: 'btn ghost' }, 'Abrir en mi programa de correo');
+            function links() {
+              var q = 'to=' + encodeURIComponent(st.to) + '&su=' + encodeURIComponent(st.subject) + '&body=' + encodeURIComponent(st.body);
+              gm.href = 'https://mail.google.com/mail/?view=cm&fs=1&' + q; ml.href = 'mailto:' + encodeURIComponent(st.to) + '?subject=' + encodeURIComponent(st.subject) + '&body=' + encodeURIComponent(st.body);
+            }
+            links();
+            mailBox.appendChild(h('div', { class: 'mail-draft' }, h('h4', { class: 'cot-sub' }, 'Borrador del correo'), h('p', { class: 'hint' }, 'Edítalo a tu gusto. Este es un boceto: el archivo de CORFO tienes que adjuntarlo tú en el correo.'),
+              UI.field('Para (correo del Organismo Colaborador)', st, 'to', { type: 'text', ph: 'correo@organismo.cl', onChange: function () { RF.store.update(function (x) { x.community.ocEmail = st.to; }, { silent: true }); links(); } }),
+              UI.field('Asunto', st, 'subject', { type: 'text', onChange: links }), UI.field('Mensaje', st, 'body', { type: 'textarea', rows: 12, cls: 'wide', onChange: links }),
+              h('div', { class: 'row-actions' }, gm, ml, UI.btn('Copiar el mensaje', { cls: 'ghost', onclick: function () { U.copyText(st.body).then(function (ok) { UI.toast(ok ? 'Mensaje copiado.' : 'No se pudo copiar.', ok ? 'ok' : 'bad'); }); } }), UI.btn('Cerrar', { cls: 'ghost', onclick: paintMail }))));
+          } }));
+        }
+        paintMail();
+        body.appendChild(h('div', { class: 'stage-card obs-card' },
           h('div', { class: 'stage-head' }, h('span', { class: 'stage-n' }, 'Observación ' + (i + 1)), UI.bind(o, 'titulo', { type: 'text', ph: 'Resumen corto', aria: 'Resumen de la observación' }),
             h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar', onclick: function () { p.observations.splice(i, 1); silent(); paint(); } }, UI.icon('trash', 18))),
           h('div', { class: 'form-grid' }, UI.field('Fecha en que CORFO la comunicó', o, 'recibida', { type: 'date', onChange: upd }), UI.field('Gastos o documentos afectados', o, 'gastos', { type: 'text' }),
             UI.field('Qué pidió CORFO', o, 'detalle', { type: 'textarea', rows: 3, cls: 'wide' }), UI.field('Tu aclaración', o, 'respuesta', { type: 'textarea', rows: 4, cls: 'wide', hint: 'También agrega un comentario en la glosa del gasto en SGP.' }),
-            UI.field('Ya envié la aclaración en SGP', o, 'respondida', { type: 'check', onChange: upd })), status));
+            UI.field('Ya envié la aclaración en SGP', o, 'respondida', { type: 'check', onChange: upd })), status, h('h4', { class: 'cot-sub' }, 'Lo que envió CORFO'), filesBox, viewer, h('h4', { class: 'cot-sub' }, '¿Necesitas ayuda?'), mailBox));
         upd();
       });
       body.appendChild(UI.btn('Agregar observación', { icon: 'plus', cls: 'primary', onclick: function () { p.observations.push({ id: U.uid('o'), titulo: '', recibida: U.todayISO(), gastos: '', detalle: '', respuesta: '', respondida: false }); silent(); paint(); } }));

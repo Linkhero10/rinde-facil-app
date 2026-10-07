@@ -16,7 +16,7 @@
     { id: 'G-plan', name: 'Planificar', tools: ['necesidades', 'proyecto', 'gantt', 'presupuesto', 'pea', 'reitem', 'cotizaciones'] },
     { id: 'G-rend', name: 'Rendir', tools: ['gastos', 'f29', 'revision', 'resumen', 'observaciones'] },
     { id: 'G-form', name: 'Anexos y formularios', tools: ['anexo1', 'anexo2', 'anexo3', 'anexo4', 'anexo5', 'informe', 'consulta', 'solicitud'] },
-    { id: 'G-doc', name: 'Documentos y actas', tools: ['documentos', 'obras', 'actas', 'historial', 'compartir'] },
+    { id: 'G-doc', name: 'Documentos y actas', tools: ['expediente', 'documentos', 'obras', 'actas', 'historial', 'compartir'] },
     { id: 'G-ayu', name: 'Ayudas', tools: ['plazos', 'verificador', 'cuentas', 'nofinanciable'] }
   ];
   function isOpen(key, dflt) { var o = RF.store.get().ui.open; return o[key] == null ? !!dflt : !!o[key]; }
@@ -132,7 +132,9 @@
         nt ? h('a', { class: 'btn primary big', href: '#/t/' + nt.id }, 'Continuar: ' + nt.title, UI.icon('right', 20)) : h('a', { class: 'btn primary big', href: '#/h/revision' }, doneWithIssues ? 'Ver qué corregir' : 'Ver la revisión final'),
         h('div', { class: 'ring-wrap' }, UI.progressBar(prog.tramDone, prog.tramTotal, 'Avance total'), h('span', { class: 'ring-t' }, prog.tramDone + ' de ' + prog.tramTotal + ' trámites listos'))),
       nt ? h('p', { class: 'next-step' }, 'Siguiente paso: ', h('strong', null, nt.steps[nx.stepIdx])) : null));
+    if (!nx && !flagged.some(function (i) { return i.level === 'error'; }) && RF.dash) root.appendChild(RF.dash.congrats(p));
     if (!L.needsAnswered(p)) root.appendChild(h('section', { class: 'card need-banner' }, h('h2', { class: 'card-title' }, 'Cuéntanos qué necesitará tu proyecto'), h('p', null, 'Marca lo que vas a usar (viáticos, insumos, inmuebles…) y te mostramos solo los trámites que te tocan. Hoy ves todos.'), h('a', { class: 'btn primary', href: '#/h/necesidades' }, 'Marcar lo que necesito')));
+    if (RF.dash && !fresh) root.appendChild(RF.dash.render(p, s, { prog: prog, res: res }));
     /* próximas fechas */
     var soon = RF.calendar.collect(s, p).filter(function (e) { return e.date >= U.todayISO(); }).slice(0, 3);
     if (soon.length) root.appendChild(UI.section('Próximas fechas', [h('ul', { class: 'cal-list' }, soon.map(function (e) { return h('li', { class: 'cal-ev' }, h('span', { class: 'cal-ev-t' }, h('strong', null, U.fmtDate(e.date) + ' · '), e.title)); })), h('a', { class: 'btn ghost small', href: '#/h/calendario' }, UI.icon('calendar', 14), 'Ver el calendario completo')]));
