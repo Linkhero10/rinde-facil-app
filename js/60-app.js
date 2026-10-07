@@ -93,11 +93,12 @@
       h('button', { type: 'button', class: 'icon-btn menu-btn', 'aria-label': 'Abrir el menú', 'aria-controls': 'side', 'aria-expanded': 'false', onclick: toggleMenu }, UI.icon('menu', 24)),
       h('a', { href: '#/', class: 'brand' }, 'Rinde Fácil'),
       h('span', { class: 'top-proj' }, (RF.store.project() || {}).name || ''),
+      h('span', { id: 'cloudChip', class: 'cloud-chip', hidden: true, role: 'status' }),
       h('button', { type: 'button', class: 'icon-btn top-search', 'aria-label': 'Buscar en toda la app', onclick: function () { if (RF.searchui) RF.searchui.open(); } }, UI.icon('search', 22)));
     var scrim = h('div', { class: 'scrim', onclick: closeMenu });
     var sideEl = RF.views.sidebar(r);
     host.appendChild(h('div', { class: 'shell' }, top, sideEl, scrim, main));
-    fitSide(); sideEl.scrollTop = sideScroll;
+    fitSide(); sideEl.scrollTop = sideScroll; paintChip();
     U.$$('a', sideEl).forEach(function (a) { a.addEventListener('click', closeMenu); });
     applyThemeLabel();
     if (app.pendingHighlight && RF.searchui) { var toks = app.pendingHighlight; app.pendingHighlight = null; RF.searchui.highlight(main, toks); } /* viene del buscador: marca lo encontrado */
@@ -112,6 +113,19 @@
     side.style.height = narrow && h > 200 ? h + 'px' : '';
   }
   app.fitSide = fitSide;
+  /* al abrir la sesión, la conexión con el servicio (lo más lento) se hace sola y en segundo plano: así la primera lectura de una boleta o el primer guardado ya no esperan */
+  var chip = { text: '', kind: '' };
+  function paintChip() { var el = document.getElementById('cloudChip'); if (!el) return; el.textContent = chip.text; el.className = 'cloud-chip ' + chip.kind; el.hidden = !chip.text; }
+  function setChip(text, kind) { chip = { text: text || '', kind: kind || '' }; paintChip(); }
+  app.warmUp = function () {
+    if (app._warming || app._warmed) return;
+    if (!RF.cloud.configured() || !RF.auth.ensureSession) return;
+    app._warming = true; setChip('Conectando con tu servicio…', 'work');
+    RF.auth.ensureSession().then(function () { return RF.drive && RF.drive.flushOutbox ? RF.drive.flushOutbox() : null; }).then(function () { app._warmed = true; setChip('', ''); }, function (e) {
+      var quiet = e && (e.code === 'SIN_CUENTA' || e.code === 'BLOQUEADA' || e.code === 'NO_CONFIGURADO');
+      setChip(quiet ? '' : 'Sin conexión con el servicio; se reintentará al usarlo', 'warn'); if (!quiet) setTimeout(function () { setChip('', ''); }, 8000);
+    }).then(function () { app._warming = false; });
+  };
   window.addEventListener('resize', fitSide);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', fitSide);
   function toggleMenu() { var open = document.body.classList.toggle('menu-open'); var b = document.querySelector('.menu-btn'); if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false'); fitSide(); }
@@ -127,7 +141,7 @@
 
   function boot() {
     RF.auth.init().then(function () {
-      RF.auth.onChange(function () { applyTheme(); render(); });
+      RF.auth.onChange(function () { applyTheme(); render(); if (RF.auth.phase() === 'open') app.warmUp(); else { app._warmed = false; setChip('', ''); } });
       start();
     });
   }

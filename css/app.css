@@ -512,3 +512,10 @@ body.menu-open{overflow:hidden}
 @media (min-width:901px){body.menu-open{overflow:visible}}
 
 .list-grid td[data-label="Subido"]{white-space:nowrap}
+
+.cloud-chip{margin-left:8px;font:600 12px var(--mono);color:var(--muted);white-space:nowrap}
+.cloud-chip.work::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:var(--action);animation:chipPulse 1s ease-in-out infinite}
+.cloud-chip.warn{color:var(--warn)}
+@keyframes chipPulse{0%,100%{opacity:.35}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.cloud-chip.work::before{animation:none}}
+.moved-notice{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}

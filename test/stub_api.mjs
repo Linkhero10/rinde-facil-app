@@ -13,9 +13,9 @@ IVA (19%) $237.500
 Total $1.487.500`;
 
 export function startStub(port = 8791) {
-  const env = makeEnv({ RINDE_FACIL_SETUP_CODE: SETUP_CODE, RINDE_FACIL_GCP_PROJECT_ID: 'proyecto-de-prueba' },
-    { status: 'SUCCESS', raw_text: CANNED, confidence: 0.97, duration_ms: 5, page_count: 1, document_coverage: 'COMPLETE' }, { anon: true });
-  const store = { state: null, calls: [], env, ocrDelay: 0 };
+  const vision = { status: 'SUCCESS', raw_text: CANNED, confidence: 0.97, duration_ms: 5, page_count: 1, document_coverage: 'COMPLETE' };
+  const env = makeEnv({ RINDE_FACIL_SETUP_CODE: SETUP_CODE, RINDE_FACIL_GCP_PROJECT_ID: 'proyecto-de-prueba' }, vision, { anon: true });
+  const store = { state: null, calls: [], env, vision, canned: CANNED, ocrDelay: 0 };
   const server = http.createServer((req, res) => {
     const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Content-Type': 'application/json' };
     if (req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return; }

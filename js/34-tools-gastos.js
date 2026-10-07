@@ -16,7 +16,7 @@
   }
   function addExpenseWithReceipt(project, file) {
     if (!project || !Array.isArray(project.expenses) || !file) return Promise.reject(new Error('Falta el proyecto o la foto del comprobante.'));
-    var e = newExpense(); e.imgId = 'img-' + e.id; e.imgType = file.type;
+    var e = newExpense(); e.imgId = 'img-' + e.id; e.imgType = file.type; e.fileName = String(file.name || '').slice(0, 120);
     return RF.blobs.put(e.imgId, file).then(function () {
       project.expenses.push(e);
       silent();
@@ -61,21 +61,23 @@
     var camInput = h('input', { type: 'file', accept: 'image/*', capture: 'environment', class: 'sr-only', 'aria-label': 'Sacar foto al comprobante' });
     function paint() { U.clear(root); root.appendChild(fileInput); root.appendChild(camInput); if (st.editing) paintEditor(); else paintList(); }
 
+    function refreshIfList() { if (!st.editing && root.isConnected !== false && document.body.contains(root)) paint(); }
     /* ---- procesar fotos ---- */
     function handleFiles(files) {
       files = Array.prototype.slice.call(files || []); if (!files.length) return;
-      var made = [], i = 0;
+      var made = [], i = 0, movedCount = 0;
       function next() {
         if (i >= files.length) {
-          if (!made.length) UI.toast('No se agregó ningún comprobante: no se pudo guardar la foto en este dispositivo.', 'bad');
-          else UI.toast(made.length + ' comprobante(s) agregado(s). Revísalos uno por uno.', 'ok');
+          made = made.filter(function (id) { return p.expenses.some(function (x) { return x.id === id; }); }); /* los respaldos que se movieron solos ya no son gastos */
+          if (!made.length && !movedCount) UI.toast('No se agregó ningún comprobante: no se pudo guardar la foto en este dispositivo.', 'bad');
+          else if (made.length) UI.toast(made.length + ' comprobante(s) agregado(s). Revísalos uno por uno.', 'ok');
           if (made.length === 1) st.editing = made[0]; paint(); return Promise.resolve();
         }
         var file = files[i++];
         return addExpenseWithReceipt(p, file).then(function (e) {
-          made.push(e.id);
-          if (!RF.cloud.configured()) { e._ocrNote = 'Anota los datos mirando la foto. Para leerla automáticamente, conecta el servicio en la nube.'; return null; }
-          return ocrJob(file, e, files.length > 1 ? 'Leyendo el comprobante ' + i + ' de ' + files.length : 'Leyendo el comprobante');
+          made.push(e.id); e._reading = true;
+          if (!RF.cloud.configured()) { e._reading = false; e._ocrNote = 'Anota los datos mirando la foto. Para leerla automáticamente, conecta el servicio en la nube.'; return null; }
+          return ocrJob(file, e, files.length > 1 ? 'Leyendo el comprobante ' + i + ' de ' + files.length : 'Leyendo el comprobante').then(function (res) { if (e._doc) return autoFile(e).then(function (moved) { if (moved) movedCount++; }); });
         }).catch(function (err) {
           UI.toast('No se agregó este gasto porque no se pudo guardar su comprobante (' + (err.message || err) + ').', 'bad');
         }).then(next);
@@ -91,10 +93,12 @@
         b.stage('parse', 'Ordenando los datos…');
         applyOcr(e, res);
         if (res && res.ok) b.done('Listo. Compara los datos con la foto.'); else b.fail('Google no pudo leer esta foto (' + ((res && res.error) || 'error') + '). Anota los datos a mano.');
+        e._reading = false; refreshIfList();
         return res;
       }).catch(function (err) {
         e._ocrNote = 'No se pudo leer la foto automáticamente: ' + RF.cloud.humanError(err) + ' Anota los datos mirando la foto, o usa «Leer de nuevo» cuando vuelva la conexión.';
         b.fail('No se pudo leer (' + (err.message || err) + '). Anota los datos mirando la foto.');
+        e._reading = false; refreshIfList();
       });
     }
     function applyOcr(e, res) {
@@ -123,12 +127,12 @@
       });
       return best;
     }
-    function moveToAttachment(src, tgt, key, label) {
+    function moveToAttachment(src, tgt, key, label, opts) {
       return RF.blobs.get(src.imgId).then(function (blob) {
         if (!blob) throw new Error('La foto ya no está en este dispositivo.');
         var k = key || ('extra-' + U.uid('x')), id = 'att-' + tgt.id + '-' + k;
         return RF.blobs.put(id, blob).then(function () {
-          tgt.attach = tgt.attach || {}; tgt.attach[k] = { id: id, name: label, type: blob.type || '', at: new Date().toISOString(), extra: !key };
+          tgt.attach = tgt.attach || {}; tgt.attach[k] = { id: id, name: label, type: blob.type || '', at: new Date().toISOString(), extra: !key, key: key || null, auto: !!(opts && opts.auto), doc: src._doc || null, from: JSON.parse(JSON.stringify(src)) };
           if (key) { tgt.has = tgt.has || {}; tgt.has[key] = true; }
           RF.blobs.del(src.imgId);
           p.expenses = p.expenses.filter(function (x) { return x.id !== src.id; });
@@ -137,6 +141,42 @@
           return tgt;
         });
       });
+    }
+    /* deshacer: el archivo vuelve a la lista como un gasto, tal como estaba */
+    function undoMove(tgt, k) {
+      var a = tgt.attach && tgt.attach[k]; if (!a || !a.from) return Promise.reject(new Error('No hay nada que deshacer.'));
+      return RF.blobs.get(a.id).then(function (blob) {
+        if (!blob) throw new Error('El archivo ya no está en este dispositivo.');
+        var src = a.from; src._doc = null; src._reading = false; src.imgId = 'img-' + src.id;
+        return RF.blobs.put(src.imgId, blob).then(function () {
+          RF.blobs.del(a.id); if (a.key && tgt.has) tgt.has[a.key] = false; delete tgt.attach[k];
+          p.expenses.push(src); silent();
+        });
+      });
+    }
+    function notices() { var app = RF.app || {}; return (app.notices = app.notices || []); }
+    function noticesBox() {
+      return notices().map(function (n) {
+        return h('div', { class: 'callout info moved-notice', role: 'status' }, h('span', null, n.text + ' '),
+          UI.btn('Deshacer', { cls: 'ghost small', onclick: function () { undoMove(n.tgt, n.key).then(function () { notices().splice(notices().indexOf(n), 1); UI.toast('Listo: el archivo volvió a la lista como gasto.', 'ok'); paint(); }).catch(function (er) { UI.toast(RF.cloud.humanError(er), 'bad'); }); } }),
+          UI.btn('Entendido', { cls: 'ghost small', onclick: function () { notices().splice(notices().indexOf(n), 1); paint(); } }));
+      });
+    }
+    /* un respaldo reconocido se adjunta solo al gasto que corresponde (por monto o proveedor, o si es el único que lo pide) y se avisa con la opción de deshacer */
+    function autoFile(e) {
+      var d = e._doc; if (!d) return Promise.resolve(false);
+      var tgt = guessTarget(e);
+      if (!tgt && d.key) {
+        var cands = p.expenses.filter(function (x) { return x.id !== e.id && !x._doc && !(x.has && x.has[d.key]) && L.evaluateExpense(x, p, c.community, p.expenses).requirements.some(function (q) { return q.key === d.key; }); });
+        if (cands.length === 1) tgt = cands[0];
+      }
+      if (!tgt) return Promise.resolve(false);
+      var fname = e.fileName || 'El archivo', k = null;
+      return moveToAttachment(e, tgt, d.key, d.label, { auto: true }).then(function () {
+        Object.keys(tgt.attach).forEach(function (kk) { if (tgt.attach[kk].from && tgt.attach[kk].from.id === e.id) k = kk; });
+        notices().push({ tgt: tgt, key: k, text: '«' + fname + '» parece ser ' + d.label.toLowerCase() + ' y se adjuntó al gasto «' + (tgt.proveedor || 'sin proveedor') + (tgt.folio ? ' N° ' + tgt.folio : '') + '». Si fue un error, puedes deshacerlo aquí o abrir ese gasto y quitar el adjunto.' });
+        return true;
+      }).catch(function () { return false; });
     }
     function respaldoBox(src) {
       var d = src._doc, targets = p.expenses.filter(function (x) { return x.id !== src.id && !x._doc; }), guess = guessTarget(src);
@@ -164,6 +204,7 @@
       var evs = {}; res.evals.forEach(function (x) { evs[x.e.id] = x.r; });
       var totals = res.totals, tot = U.sum(p.expenses, function (e) { return num(e.montoRendir); });
       var counts = { ok: 0, warn: 0, error: 0 }; p.expenses.forEach(function (e) { counts[evs[e.id].status]++; });
+      noticesBox().forEach(function (n) { root.appendChild(n); });
       root.appendChild(UI.section('', [h('div', { class: 'gastos-top' },
         h('div', { class: 'stat' }, h('span', { class: 'stat-n' }, String(p.expenses.length)), h('span', null, 'gastos')),
         h('div', { class: 'stat' }, h('span', { class: 'stat-n' }, U.fmtCLP(tot)), h('span', null, 'a rendir')),
@@ -175,16 +216,16 @@
           UI.btn('Subir foto o PDF', { icon: 'file', onclick: function () { fileInput.click(); } }),
           UI.btn('Anotar a mano', { icon: 'edit', onclick: function () { var e = newExpense(); p.expenses.push(e); silent(); st.editing = e.id; paint(); } }),
           emptyExpenses().length ? UI.btn('Quitar gastos vacíos (' + emptyExpenses().length + ')', { icon: 'trash', cls: 'ghost', title: 'Gastos sin datos, por ejemplo fotos que no se pudieron leer', onclick: function () { UI.confirmBox('¿Quitar ' + emptyExpenses().length + ' gasto(s) sin datos? Las fotos asociadas también se quitan.', 'Quitar').then(function (yes) { if (!yes) return; var ids = emptyExpenses().map(function (x) { return x.id; }); p.expenses.filter(function (x) { return ids.indexOf(x.id) >= 0 && x.imgId; }).forEach(function (x) { RF.blobs.del(x.imgId); }); p.expenses = p.expenses.filter(function (x) { return ids.indexOf(x.id) < 0; }); silent(); paint(); }); } }) : null),
-        h('div', { class: 'expense-drop-wrap' }, UI.fileDrop(fileInput, { kind: 'expense', multiple: true, label: 'Suelta aquí las fotos o PDF', hint: 'La foto se guarda en este dispositivo y, si el OCR está conectado, se envía para leerla. No va al Drive hasta que revises y confirmes.', invalidText: 'Ese archivo no se puede usar como comprobante. Elige una foto compatible o un PDF.', onFiles: handleFiles })),
+        h('div', { class: 'expense-drop-wrap' }, UI.fileDrop(fileInput, { kind: 'expense', multiple: true, label: 'Suelta aquí las fotos o PDF', hint: 'Sube boletas, facturas y también tus respaldos (cartola, cheque, Formulario 29…): la app los reconoce y adjunta cada respaldo al gasto que prueba, avisándote. La foto se guarda en este dispositivo y, si el OCR está conectado, se envía para leerla. No va al Drive hasta que revises y confirmes.', invalidText: 'Ese archivo no se puede usar como comprobante. Elige una foto compatible o un PDF.', onFiles: handleFiles })),
         RF.cloud.configured() ? h('p', { class: 'hint' }, 'Las fotos se leen en la nube con Google Cloud Vision, en la cuenta de tu comunidad. Siempre tienes que revisar los datos.') : UI.callout('info', 'Lectura automática desactivada.', ' Puedes anotar los gastos a mano o conectar el servicio en la nube en «Nube y copias».')]));
       var chips = h('div', { class: 'chips' }, [['all', 'Todos'], ['error', 'Pendientes'], ['warn', 'Por revisar'], ['ok', 'Listos']].map(function (f) { return h('button', { type: 'button', class: 'chip' + (st.filter === f[0] ? ' on' : ''), onclick: function () { st.filter = f[0]; paint(); } }, f[1]); }));
       var rows = p.expenses.filter(function (e) { return st.filter === 'all' || evs[e.id].status === st.filter; }).slice().sort(function (a, b) { return String(b.fecha || 'z').localeCompare(String(a.fecha || 'z')); }).map(function (e) {
         var r = evs[e.id];
         return h('tr', { class: 'clickable', tabindex: 0, onclick: function () { st.editing = e.id; paint(); }, onkeydown: function (ev) { if (ev.key === 'Enter') { st.editing = e.id; paint(); } } },
-          h('td', { 'data-label': 'Estado' }, UI.badge(STATUS_LABEL[r.status], r.status === 'ok' ? 'ok' : r.status === 'warn' ? 'warn' : 'bad')),
+          h('td', { 'data-label': 'Estado' }, e._reading ? UI.badge('Leyendo…', 'info') : UI.badge(STATUS_LABEL[r.status], r.status === 'ok' ? 'ok' : r.status === 'warn' ? 'warn' : 'bad')),
           h('td', { 'data-label': 'Fecha del documento' }, e.fecha ? U.fmtDateShort(e.fecha) : '—'), h('td', { 'data-label': 'Subido' }, uploadedText(e)), h('td', { 'data-label': 'Proveedor' }, e.proveedor || 'Sin proveedor'),
           h('td', { 'data-label': 'Documento' }, ((D.DOC_BY_ID[e.docType] || {}).name || '—') + (e.folio ? ' N° ' + e.folio : '')), h('td', { 'data-label': 'Cuenta' }, (D.CUENTA_BY_ID[e.cuenta] || {}).name || '—'),
-          h('td', { class: 'r', 'data-label': 'A rendir' }, U.fmtCLP(num(e.montoRendir))), h('td', { 'data-label': 'Problemas' }, e._doc ? 'Parece un respaldo' : r.errors ? r.errors + ' error(es)' : r.warns ? r.warns + ' aviso(s)' : '✓'));
+          h('td', { class: 'r', 'data-label': 'A rendir' }, U.fmtCLP(num(e.montoRendir))), h('td', { 'data-label': 'Problemas' }, e._reading ? 'Leyendo la foto…' : e._doc ? 'Parece un respaldo' : r.errors ? r.errors + ' error(es)' : r.warns ? r.warns + ' aviso(s)' : '✓'));
       });
       root.appendChild(UI.section('Tus gastos', [p.expenses.length ? chips : null, p.expenses.length ? h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid list-grid' }, h('thead', null, h('tr', null, ['Estado', 'Fecha del documento', 'Subido', 'Proveedor', 'Documento', 'Cuenta', 'A rendir', 'Problemas'].map(function (x, i) { return h('th', { class: i === 6 ? 'r' : '' }, x); }))), h('tbody', null, rows))) : UI.empty('Aún no anotas gastos. Saca una foto al primer comprobante o anótalo a mano.')]));
       /* totales por cuenta */
@@ -254,7 +295,7 @@
             extra = h('span', { class: 'att' },
               att ? h('span', { class: 'muted' }, 'Adjunto: ' + att.name + ' ') : null,
               UI.btn(att ? 'Cambiar archivo' : 'Adjuntar archivo', { icon: 'file', cls: 'ghost', onclick: function () { pick.click(); } }),
-              att ? UI.btn('Quitar', { cls: 'ghost small', onclick: function () { RF.blobs.del(att.id); delete e.attach[q.key]; if (e.has) e.has[q.key] = false; silent(); paintReq(L.evaluateExpense(e, p, c.community, p.expenses)); } }) : null, pick);
+              att ? UI.btn('Quitar', { cls: 'ghost small', onclick: function () { RF.blobs.del(att.id); delete e.attach[q.key]; if (e.has) e.has[q.key] = false; silent(); paintReq(L.evaluateExpense(e, p, c.community, p.expenses)); } }) : null, att && att.from ? UI.btn('Deshacer: volver a la lista', { cls: 'ghost small', title: 'El archivo vuelve a la lista de gastos', onclick: function () { undoMove(e, q.key).then(function () { UI.toast('El archivo volvió a la lista como gasto.', 'ok'); st.editing = null; paint(); }).catch(function (er) { UI.toast(RF.cloud.humanError(er), 'bad'); }); } }) : null, pick);
           }
           reqBox.appendChild(h('div', { class: 'req' + (q.met ? ' met' : '') }, h('label', { class: 'check', for: 'rq-' + q.key }, cb, h('span', null, q.label + (auto ? ' (ya lo tienes en la app)' : ''))), extra));
         });

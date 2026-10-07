@@ -890,6 +890,22 @@ await step('15m. Un respaldo subido como si fuera un gasto (cartola) se reconoce
   ok(!res.sigue && res.adjunto && res.cumple, 'la cartola ya no es un gasto, quedó adjunta al gasto y cumple el respaldo de pago: ' + JSON.stringify(res));
 });
 
+await step('15n. Una cartola subida junto a las boletas se adjunta sola al gasto que prueba, avisa y se puede deshacer; sin conexión de fondo la sesión se abre sola', async () => {
+  await go('#/h/gastos');
+  const antes = await page.evaluate(() => RF.store.project().expenses.length);
+  stub.store.ocrDelay = 0;
+  stub.store.vision.raw_text = 'Scotiabank®\nCliente\nFecha Consulta\nDesde\nSaldo Anterior\nCargos/Giros\n$ 1.487.500\nEMPRESA FANTASÍA';
+  await dragFileTo('.file-drop[data-kind="expense"]', { name: 'cartola-prueba.jpg', type: 'image/jpeg', base64: fs.readFileSync(FIXTURE).toString('base64') });
+  await page.waitForSelector('.moved-notice', { timeout: 20000 });
+  ok(/cartola-prueba\.jpg/.test(await page.textContent('.moved-notice')) && /se adjuntó al gasto/.test(await page.textContent('.moved-notice')), 'avisa qué archivo era y a dónde fue');
+  ok(await page.evaluate(() => RF.store.project().expenses.length) === antes, 'la cartola no quedó como gasto');
+  ok(await page.evaluate(() => RF.store.project().expenses.some(e => e.attach && Object.keys(e.attach).some(k => e.attach[k].auto))), 'quedó adjunta con la marca de automática');
+  await page.getByRole('button', { name: 'Deshacer' }).first().click(); await page.waitForTimeout(600);
+  ok(await page.evaluate(() => RF.store.project().expenses.length) === antes + 1, 'al deshacer vuelve a la lista como gasto');
+  ok(await page.locator('.moved-notice').count() === 0, 'el aviso desaparece');
+  stub.store.vision.raw_text = stub.store.canned;
+});
+
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });
 
 /* ---- celular ---- */
