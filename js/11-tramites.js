@@ -119,7 +119,9 @@
       tools: ['consulta'], img: [['doc-004-79b28f1aad_p022.jpg', 'Manual, p. 22: interpretación']], src: ['Manual CORFO, sección XI (p. 22)'] }
   ];
 
+  /* hojas originales que tienen un recorte con el extracto marcado en amarillo (assets/docs/hl/, hecho con tools/make_highlights.py) */
+  var HL = ["doc-004-79b28f1aad_p007.jpg","doc-004-79b28f1aad_p008.jpg","doc-004-79b28f1aad_p009.jpg","doc-004-79b28f1aad_p010.jpg","doc-004-79b28f1aad_p015.jpg","doc-004-79b28f1aad_p019.jpg","doc-004-79b28f1aad_p020.jpg","doc-004-79b28f1aad_p021.jpg","doc-004-79b28f1aad_p022.jpg","doc-005-7690461ef7_p004.jpg","doc-005-7690461ef7_p005.jpg","doc-005-7690461ef7_p015.jpg","doc-005-7690461ef7_p016.jpg","doc-005-7690461ef7_p018.jpg","doc-005-7690461ef7_p020.jpg","doc-005-7690461ef7_p024.jpg"];
   var BY_ID = {}; T.forEach(function (t) { BY_ID[t.id] = t; });
 
-  RF.tramites = { list: T, byId: BY_ID };
+  RF.tramites = { list: T, byId: BY_ID, HL: HL };
 })(typeof window !== 'undefined' ? window : globalThis);

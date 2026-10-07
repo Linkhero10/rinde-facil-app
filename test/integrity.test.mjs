@@ -315,3 +315,11 @@ test('la firma dibujada viaja en el Word (imagen incrustada) y en la vista de im
   assert.ok(!sin.includes('word/media') && sin.includes('______________________'));
   assert.ok(RF.exp.docToHtml ? RF.exp.docToHtml(doc).includes('data:image/png;base64') : true);
 });
+
+test('hojas originales con el extracto marcado: cada recorte existe y corresponde a una hoja completa que se usa en la ruta', () => {
+  const RF = app(), dir = new URL('../assets/docs/', import.meta.url);
+  assert.ok(RF.tramites.HL.length >= 10);
+  RF.tramites.HL.forEach(f => { assert.ok(fs.existsSync(new URL('hl/' + f, dir)), 'falta el recorte ' + f); assert.ok(fs.existsSync(new URL(f, dir)), 'falta la hoja completa ' + f); });
+  const usados = new Set(RF.tramites.list.flatMap(t => (t.img || []).map(i => i[0])));
+  assert.ok(RF.tramites.HL.some(f => usados.has(f)), 'al menos un recorte se usa en un trámite');
+});

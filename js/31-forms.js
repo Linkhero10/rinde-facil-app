@@ -114,9 +114,9 @@
     defaults: function (ctx) { return { ciudad: '', fecha: U.todayISO(), proveedorNombre: '', proveedorRut: '', monto: '', repNombre: v(com(ctx).legalRep), documentos: '', gastoId: '' }; },
     fields: [
       { k: 'gastoId', l: 'Gasto en efectivo al que corresponde (opcional)', t: 'expenseSelect', filter: function (e) { return e.formaPago === 'efectivo'; } },
-      { k: 'ciudad', l: 'Ciudad', t: 'text' }, { k: 'fecha', l: 'Fecha', t: 'date' },
+      { k: 'ciudad', l: 'Ciudad donde se firma', t: 'text' }, { k: 'fecha', l: 'Fecha del pago', t: 'date' },
       { k: 'proveedorNombre', l: 'Quien recibió el pago (nombre completo)', t: 'text' }, { k: 'proveedorRut', l: 'RUT o cédula de quien recibió', t: 'rut' },
-      { k: 'monto', l: 'Monto pagado en efectivo ($)', t: 'money' }, { k: 'repNombre', l: 'Nombre de quien pagó, por la comunidad', t: 'text' },
+      { k: 'monto', l: 'Monto pagado en efectivo ($)', t: 'money' }, { k: 'repNombre', l: 'Quién pagó, por la comunidad', t: 'choice', options: repNames },
       { k: 'documentos', l: 'Documento que se pagó (N° de factura, boleta u otro)', t: 'text', ph: 'Ej: boleta N° 542449' }
     ],
     onChange: function (k, d, ctx) {
