@@ -102,5 +102,7 @@ Rinde fácil/
 - **Servicio con sesiones** (`backend/WebApi.gs` 3.0.0): claves derivadas (el servidor no conoce la contraseña), bloqueo por intentos, sesiones que vencen, control de versiones de la copia (`CONFLICTO`).
 - **Cola sin conexión:** lo que no se pudo subir al Drive queda cifrado en el equipo y se reintenta solo.
 - **Resumen para el Organismo Colaborador** (`js/41-tools-share.js`): la comunidad elige qué incluye, revisa el texto y autoriza; sin nombres de proveedores ni RUT; queda registro de lo compartido.
+- **Calendario** (`js/42-tools-calendar.js`): reúne plazos, actividades de la Carta Gantt, boletas, reuniones y fechas propias; cada fecha se puede abrir en Google Calendar y todo se descarga como archivo `.ics` (Google Calendar, Outlook, teléfono). Nada se envía solo.
+- **Panel del Organismo** (propuesta): ver `docs/PANEL_ORGANISMO.md`.
 - **Reglas por convenio** (`RF.data.CONVENIOS`): las reglas numéricas son un juego versionado («Manual vigente a septiembre de 2026»); un cambio de Manual o un fondo nuevo no toca los datos.
 - **Tamaño de letra** (normal, grande, muy grande) y extracto del texto del OCR en las copias.

@@ -796,6 +796,21 @@ await step('15i. Calendario: muestra las fechas del proyecto, permite agregar un
   await shot('15i-calendario');
 });
 
+await step('15j. Tamaño de letra y tema se eligen en una lista, sin mover el menú lateral ni la página', async () => {
+  await go('#/h/necesidades');
+  ok(await page.getByRole('button', { name: /Bloquear/ }).count() === 0, 'ya no hay botón Bloquear en el menú');
+  ok(!/vigente a/i.test(await page.textContent('.side')), 'el menú no muestra fechas de vigencia de las reglas');
+  const before = await page.evaluate(() => { const s = document.getElementById('side'); s.scrollTop = 220; return s.scrollTop / s.scrollHeight; });
+  await page.locator('#prefText').selectOption('grande');
+  await page.waitForTimeout(300);
+  const info = await page.evaluate(() => { const s = document.getElementById('side'); return { ratio: s.scrollTop / s.scrollHeight, top: s.scrollTop, attr: document.documentElement.getAttribute('data-text') }; });
+  ok(info.attr === 'grande', 'la letra cambió a grande');
+  ok(info.top > 0 && Math.abs(info.ratio - before) < 0.03, 'el menú lateral conserva su posición: ' + JSON.stringify(info));
+  await page.locator('#prefTheme').selectOption('dark');
+  ok(await page.evaluate(() => document.documentElement.getAttribute('data-theme')) === 'dark', 'el tema cambió a oscuro solo al elegirlo');
+  await page.locator('#prefTheme').selectOption('system'); await page.locator('#prefText').selectOption('normal');
+});
+
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });
 
 /* ---- celular ---- */
