@@ -114,7 +114,7 @@
     } else if (type === 'money') {
       el = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off', placeholder: opts.ph || '0' });
       el.value = obj[key] === '' || obj[key] == null || obj[key] === 0 && !opts.showZero ? (obj[key] === 0 && opts.showZero ? '0' : '') : money(obj[key]);
-      el.addEventListener('input', function () { var atEnd = el.selectionStart === el.value.length; commit(U.parseCLP(el.value)); if (atEnd && obj[key]) el.value = money(obj[key]); });
+      el.addEventListener('input', function () { var atEnd = el.selectionStart === el.value.length, raw = el.value, n = raw.indexOf(',') >= 0 ? U.parseCLP(raw) : (raw.trim().charAt(0) === '-' ? -1 : 1) * Number(raw.replace(/\D/g, '') || 0); commit(n); if (atEnd && obj[key]) el.value = money(obj[key]); }); /* sin coma, los puntos son separadores de miles: «1.0000» es 10.000, no 1 */
       el.addEventListener('blur', function () { el.value = obj[key] ? money(obj[key]) : (opts.showZero && obj[key] === 0 ? '0' : ''); });
     } else if (type === 'number' || type === 'pct') {
       el = h('input', { type: 'number', inputmode: 'decimal', min: opts.min != null ? opts.min : (type === 'pct' ? 0 : null), max: opts.max != null ? opts.max : (type === 'pct' ? 100 : null), step: opts.step || 'any', placeholder: opts.ph || '' });
@@ -151,6 +151,19 @@
       return h('label', { class: 'field ' + (opts.cls || '') }, h('span', { class: 'lbl' }, label), ctl, cnt, opts.hint ? h('span', { class: 'hint' }, opts.hint) : null);
     }
     return labelWrap(label, ctl, opts.hint, opts.cls);
+  }
+
+  /* un «?» que abre una explicación corta; se cierra al tocar fuera o con Escape */
+  var tipOpen = null;
+  function closeTip() { if (tipOpen) { tipOpen.pop.hidden = true; tipOpen.btn.setAttribute('aria-expanded', 'false'); tipOpen = null; } }
+  function tip(text, label) {
+    var pop = h('span', { class: 'tip-pop', role: 'note', hidden: true }, text), btn = h('button', { type: 'button', class: 'tip-btn', 'aria-label': label || 'Qué significa', 'aria-expanded': 'false' }, '?');
+    btn.addEventListener('click', function (ev) { ev.stopPropagation(); var wasOpen = tipOpen && tipOpen.btn === btn; closeTip(); if (!wasOpen) { pop.hidden = false; btn.setAttribute('aria-expanded', 'true'); tipOpen = { pop: pop, btn: btn }; } });
+    return h('span', { class: 'tip' }, btn, pop);
+  }
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('click', function (ev) { if (tipOpen && !tipOpen.pop.contains(ev.target)) closeTip(); });
+    document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeTip(); });
   }
 
   /* ---------- botones y menú de exportar ---------- */
@@ -260,5 +273,5 @@
     };
   }
 
-  RF.ui = { choiceBox: choiceBox, promptSecret: promptSecret, busy: busy, icon: icon, ICONS: ICONS, toast: toast, confirmBox: confirmBox, bind: bind, field: field, labelWrap: labelWrap, btn: btn, exportBar: exportBar, badge: badge, callout: callout, empty: empty, section: section, fileDrop: fileDrop, progressBar: progressBar };
+  RF.ui = { tip: tip, closeTip: closeTip, choiceBox: choiceBox, promptSecret: promptSecret, busy: busy, icon: icon, ICONS: ICONS, toast: toast, confirmBox: confirmBox, bind: bind, field: field, labelWrap: labelWrap, btn: btn, exportBar: exportBar, badge: badge, callout: callout, empty: empty, section: section, fileDrop: fileDrop, progressBar: progressBar };
 })(typeof window !== 'undefined' ? window : globalThis);

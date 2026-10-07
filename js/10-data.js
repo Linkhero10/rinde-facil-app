@@ -12,9 +12,9 @@
 
   var FASES = [
     { id: 'F1', n: 1, name: 'Convenio y primer dinero', short: 'Convenio', blurb: 'Firmar, abrir la cuenta y recibir el 30 %.', items: ['P-01', 'P-02', 'P-03'] },
-    { id: 'F2', n: 2, name: 'El PEA', short: 'PEA', blurb: 'Armar el plan de tus proyectos y enviarlo a CORFO.', items: ['TRM-027', 'TRM-028'] },
+    { id: 'F2', n: 2, name: 'El PEA', short: 'PEA', blurb: 'Armar el plan de tus proyectos y enviarlo a CORFO.', items: ['TRM-027', 'TRM-030', 'TRM-028'] },
     { id: 'F3', n: 3, name: 'Configurar en SGP', short: 'SGP', blurb: 'Cargar etapas, actividades y presupuesto.', items: ['TRM-002', 'TRM-001'] },
-    { id: 'F4', n: 4, name: 'Gastos y respaldos', short: 'Gastos', blurb: 'Gastar bien y guardar cada respaldo.', items: ['TRM-003', 'TRM-004', 'TRM-005', 'TRM-006', 'TRM-007', 'TRM-008', 'TRM-009', 'TRM-010', 'TRM-011', 'TRM-012', 'TRM-021', 'TRM-022', 'TRM-023', 'TRM-024', 'TRM-025'] },
+    { id: 'F4', n: 4, name: 'Gastos y respaldos', short: 'Gastos', blurb: 'Gastar bien y guardar cada respaldo.', items: ['TRM-006', 'TRM-007', 'TRM-008', 'TRM-009', 'TRM-010', 'TRM-011', 'TRM-012', 'TRM-021', 'TRM-022', 'TRM-023', 'TRM-024', 'TRM-025'] },
     { id: 'F5', n: 5, name: 'Rendir y responder', short: 'Rendir', blurb: 'Enviar la rendición, el informe técnico y responder a CORFO.', items: ['TRM-013', 'TRM-014', 'TRM-016', 'TRM-017', 'TRM-018', 'TRM-019', 'TRM-020', 'TRM-015'] },
     { id: 'F6', n: 6, name: 'Cierre', short: 'Cierre', blurb: 'Pedir los aportes que faltan.', items: ['TRM-029'] }
   ];
@@ -106,6 +106,8 @@
     2026: ['2026-01-01', '2026-04-03', '2026-04-04', '2026-05-01', '2026-05-21', '2026-06-21', '2026-06-29', '2026-07-16', '2026-08-15', '2026-09-18', '2026-09-19', '2026-10-12', '2026-10-31', '2026-11-01', '2026-12-08', '2026-12-25'],
     2027: ['2027-01-01', '2027-03-26', '2027-03-27', '2027-05-01', '2027-05-21', '2027-06-20', '2027-06-28', '2027-07-16', '2027-08-15', '2027-09-18', '2027-09-19', '2027-10-11', '2027-11-01', '2027-12-08', '2027-12-25']
   };
+  /* lo que el Manual (sección VI) dice que no se financia: se pregunta al anotar cada gasto y también está en la ayuda «¿Se puede pagar con el aporte?» */
+  var NO_FINANCIABLE = ['Impuestos que la comunidad recupera (por ejemplo, IVA crédito fiscal usado)', 'Bienes de capital que CORFO no considere determinantes para el proyecto', 'Deudas, dividendos o recuperación de capital', 'Compra de acciones, derechos sociales, bonos u otros valores', 'Derechos o multas', 'Gastos que no tienen relación con los proyectos del plan'];
   var CONVENIO_DEFECTO = 'corfo-2026-09';
   function convenioDe(project) { return CONVENIOS[(project && project.convenio) || CONVENIO_DEFECTO] || CONVENIOS[CONVENIO_DEFECTO]; }
   function useConvenio(project) { var c = convenioDe(project); Object.keys(REGLAS).forEach(function (k) { delete REGLAS[k]; }); Object.assign(REGLAS, c.reglas); return c; }
@@ -133,7 +135,7 @@
     'D2': ['corfo', '¿Hay observaciones?', 'Con observaciones, la comunidad corrige (paso 17) y CORFO revisa de nuevo; sin observaciones, CORFO aprueba (paso 18).', null, null, 'Sí: paso 17. No: paso 18.', 'TRM-001'],
     '17': ['comunidad', 'Corrige la configuración', 'La comunidad corrige las observaciones de la configuración.', null, 'Vuelve a la revisión (paso 16)', null, 'TRM-001'],
     '18': ['corfo', 'Aprueba la configuración', 'CORFO aprueba la configuración.', null, null, null, 'TRM-001'],
-    '19': ['comunidad', 'Comienza a configurar los gastos', 'La comunidad comienza a configurar los gastos.', null, null, null, 'TRM-004'],
+    '19': ['comunidad', 'Comienza a configurar los gastos', 'La comunidad comienza a configurar los gastos.', null, null, null, 'TRM-001'],
     '20': ['smi', 'Apoya la rendición', 'La comunidad puede pedir apoyo al Organismo Colaborador en las rendiciones. «Introducción al Acuerdo» agrega que puede revisar la documentación antes del envío y, si la comunidad quiere, subir los documentos a la plataforma.', null, null, null, 'TRM-013'],
     '21': ['comunidad', 'Rinde el total del AIA en SGP', 'La comunidad termina de rendir el total del AIA en SGP. Según el Acuerdo, la rendición se hace cada 6 meses.', 'cada 6 meses', null, null, 'TRM-013'],
     '22': ['corfo', 'Recibe y revisa las rendiciones', 'CORFO recibe las rendiciones y comienza la revisión. El flujograma no fija plazo para esta revisión.', 'sin plazo escrito', null, null, 'TRM-015'],
@@ -155,7 +157,7 @@
     { fase: 'F6', title: 'Cierre', ids: ['26', '27', '28'], edges: [['26', '27'], ['27', '28']] }
   ];
 
-  RF.data = { FERIADOS_CL: FERIADOS_CL,
+  RF.data = { FERIADOS_CL: FERIADOS_CL, NO_FINANCIABLE: NO_FINANCIABLE,
     ACTORS: ACTORS, FASES: FASES, AYUDA: AYUDA, CUENTAS: CUENTAS, CUENTA_BY_ID: CUENTA_BY_ID,
     TIPOS_PROYECTO: TIPOS_PROYECTO, DOC_TYPES: DOC_TYPES, DOC_BY_ID: DOC_BY_ID, RESPALDOS: RESPALDOS,
     FORMAS_PAGO: FORMAS_PAGO, REGLAS: REGLAS, CONVENIOS: CONVENIOS, CONVENIO_DEFECTO: CONVENIO_DEFECTO, convenioDe: convenioDe, useConvenio: useConvenio, FLOW: FLOW, FLOW_BLOCKS: FLOW_BLOCKS

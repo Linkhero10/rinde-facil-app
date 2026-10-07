@@ -308,6 +308,30 @@
     check: function (d) { var o = []; if (!d.pregunta) o.push({ level: 'warn', msg: 'Escribe tu pregunta.' }); return o; },
     doc: function (d, ctx) { return { title: 'Consulta a CORFO', subtitle: v(d.asunto), sheet: 'Consulta', footer: 'Borrador generado con Rinde Fácil. Envíalo a tu ejecutivo técnico de CORFO (con copia al Organismo Colaborador si quieres apoyo) y guarda la respuesta en tu expediente.', blocks: [{ t: 'p', text: 'Fecha: ' + (d.fecha ? U.fmtDate(d.fecha) : '') }, { t: 'p', text: 'Estimado(a) ejecutivo(a) técnico(a):' }, { t: 'p', text: 'Junto con saludar, le escribimos desde ' + v(ctx.community.name, '[comunidad]') + (proj(ctx).code ? ' (proyecto ' + proj(ctx).code + ')' : '') + ' para consultar lo siguiente.' }, { t: 'h', text: 'Situación' }, { t: 'p', text: v(d.hechos, '[describa los hechos]') }, { t: 'h', text: 'Norma que genera la duda' }, { t: 'p', text: v(d.manual, '[indique la parte del Manual o del convenio]') }, { t: 'h', text: 'Impacto' }, { t: 'p', text: v(d.impacto, '[monto o plazo involucrado]') }, { t: 'h', text: 'Consulta' }, { t: 'p', text: v(d.pregunta, '[su pregunta]') }, { t: 'p', text: 'Agradecemos su respuesta antes de ejecutar el gasto.' }, { t: 'sign', labels: [v(d.firma, 'Nombre')] }] }; }
   };
+  SCHEMAS.prorroga = {
+    id: 'prorroga', title: 'Solicitud de prórroga del PEA', repeat: false, sheet: 'Prórroga',
+    defaults: function (ctx) { var pd = ctx.project && RF.logic.peaDeadline ? RF.logic.peaDeadline(ctx.project, '') : null; return { fecha: U.todayISO(), vencimiento: pd ? pd.fin : '', dias: 30, motivo: '', antecedentes: '', firma: v(com(ctx).legalRep) }; },
+    fields: [
+      { k: 'vencimiento', l: 'Fecha en que vence el plazo del PEA', t: 'date' }, { k: 'dias', l: 'Días que pides (máximo 30)', t: 'number', min: 1, max: 30 },
+      { k: 'motivo', l: 'Por qué necesitas más tiempo', t: 'textarea', rows: 5 }, { k: 'antecedentes', l: 'Antecedentes que adjuntas (uno por línea, si los hay)', t: 'textarea', rows: 3 }, { k: 'firma', l: 'Quién firma', t: 'text' }
+    ],
+    check: function (d) {
+      var o = [], today = U.todayISO();
+      if (!d.motivo) o.push({ level: 'warn', msg: 'Explica por qué necesitas más tiempo: la solicitud tiene que ser fundada.' });
+      if (d.dias && (Number(d.dias) < 1 || Number(d.dias) > 30)) o.push({ level: 'error', msg: 'La prórroga es de hasta 30 días.' });
+      if (d.vencimiento && today > d.vencimiento) o.push({ level: 'error', msg: 'El plazo del PEA ya venció. La prórroga se pide antes de que venza.' });
+      o.push({ level: 'info', msg: 'Se concede una sola vez. El flujograma no dice el canal ni los antecedentes que se adjuntan: confirma con tu ejecutivo técnico antes de enviarla.' });
+      return o;
+    },
+    doc: function (d, ctx) {
+      var nuevo = d.vencimiento && d.dias ? U.addDays(d.vencimiento, Number(d.dias)) : '';
+      return { title: 'Solicitud de prórroga del plazo del PEA', sheet: 'Prórroga', footer: 'Borrador generado con Rinde Fácil. No es un formato oficial: confirma el canal y los antecedentes con tu ejecutivo técnico de CORFO.', blocks: [{ t: 'p', text: 'Fecha: ' + (d.fecha ? U.fmtDate(d.fecha) : '') }, { t: 'p', text: 'Estimado(a) ejecutivo(a) técnico(a):' },
+        { t: 'p', text: 'Junto con saludar, ' + v(ctx.community.name, '[comunidad]') + (ctx.community.rut ? ' (RUT ' + ctx.community.rut + ')' : '') + ' solicita la prórroga del plazo para presentar el Programa de Ejecución de Actividades (PEA)' + (d.dias ? ', por ' + d.dias + ' días' : '') + (d.vencimiento ? '. El plazo vence el ' + U.fmtDate(d.vencimiento) + (nuevo ? ' y con la prórroga pasaría al ' + U.fmtDate(nuevo) : '') : '') + '.' },
+        { t: 'h', text: 'Fundamento' }, { t: 'p', text: v(d.motivo, '[explique por qué necesita más tiempo]') },
+        { t: 'h', text: 'Antecedentes que se adjuntan' }, { t: 'p', text: v(d.antecedentes, 'Ninguno.') },
+        { t: 'p', text: 'Quedamos atentos a su respuesta.' }, { t: 'sign', labels: [v(d.firma, 'Nombre')] }] };
+    }
+  };
   SCHEMAS.solicitud = {
     id: 'solicitud', title: 'Solicitud de aportes restantes del AIA', repeat: false, sheet: 'Solicitud',
     defaults: function (ctx) { return { fecha: U.todayISO(), destinatario: 'Novandino Litio (ex SQM Litio)', cierreRevision: '', comentario: '', firma: v(com(ctx).legalRep) }; },

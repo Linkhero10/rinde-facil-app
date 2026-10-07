@@ -10,7 +10,7 @@ const fresh = () => { const p = RF.store.newProject('P'); return p; };
 test('sin responder, le tocan todos los trámites; al marcar solo viáticos, se esconden los que no aplican', () => {
   const p = fresh();
   const all = L.progress(p);
-  assert.ok(all.tramTotal >= 30);
+  assert.ok(all.tramTotal >= 25);
   p.needsSet = true; p.needs = { viaticos: true };
   const some = L.progress(p);
   assert.ok(some.tramTotal < all.tramTotal, 'menos trámites');
@@ -19,7 +19,7 @@ test('sin responder, le tocan todos los trámites; al marcar solo viáticos, se 
   assert.equal(L.applies(p, 'TRM-024'), true, 'Anexo 4');
   assert.equal(L.applies(p, 'TRM-010'), false, 'administración no marcada');
   assert.equal(L.applies(p, 'TRM-023'), false, 'efectivo no marcado');
-  assert.equal(L.applies(p, 'TRM-003'), true, 'los trámites generales siempre tocan');
+  assert.equal(L.applies(p, 'TRM-008'), true, 'los trámites generales siempre tocan');
   assert.equal(L.itemProgress(p, 'TRM-010').auto, true);
 });
 test('lo que ya gastó cuenta aunque no lo haya marcado, y «me toca igual» lo fuerza', () => {

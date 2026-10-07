@@ -31,7 +31,8 @@
       if (rows.some(function (r) { return String(r.doc || '').trim() === String(exp.folio).trim(); })) has.anexo5 = true;
     }
     ((project && project.cotizaciones) || []).forEach(function (c) {
-      if (c.gastoId !== exp.id) return;
+      var linked = c.gastoId === exp.id || (!c.gastoId || c.gastoId === '__otro') && c.elegido && exp.proveedor && String(c.elegido).trim().toLowerCase() === String(exp.proveedor).trim().toLowerCase();
+      if (!linked) return;
       if (cotizacionOk(c)) has.cotizaciones = true;
       if (c.autorizacion) has.autorizacion = true;
     });
@@ -112,6 +113,11 @@
       else if (project.end && exp.fecha > project.end) add('error', 'fecha_despues', 'La fecha es posterior al término del proyecto.', 'fecha');
       if (project.periodoInicio && project.periodoFin && (exp.fecha < project.periodoInicio || exp.fecha > project.periodoFin)) add('warn', 'fuera_periodo', 'La fecha está fuera del período que estás rindiendo: iría en otra rendición.', 'fecha');
     }
+    if (exp.fecha && exp.actId) {
+      var ax = allActivities(project).filter(function (a) { return a.act.id === exp.actId; })[0];
+      if (ax && ax.act.start && ax.act.end && (exp.fecha < ax.act.start || exp.fecha > ax.act.end)) add('warn', 'fecha_actividad', 'La fecha está fuera del plazo de la actividad «' + (ax.act.name || 'sin nombre') + '» (' + U.fmtDate(ax.act.start) + ' al ' + U.fmtDate(ax.act.end) + '). Solo se rinden gastos dentro del plazo aprobado en el PEA.', 'fecha');
+    }
+    if (exp.noFin && Object.keys(exp.noFin).some(function (k) { return exp.noFin[k]; })) add('warn', 'no_financiable', 'Marcaste que podría ser un gasto que el aporte no financia. Consulta a CORFO antes de rendirlo.', 'noFin');
     if (exp.fecha && exp.fechaPago && exp.fechaPago < exp.fecha && !dt.pagoImplicito) add('warn', 'pago_antes', 'La fecha de pago es anterior a la del documento.', 'fechaPago');
 
     /* respaldos */
@@ -250,7 +256,7 @@
     if (project && project.na && project.na[tid]) return { done: 0, total: 0, na: true, complete: true };
     if (project && project.needsSet && !applies(project, tid)) return { done: 0, total: 0, na: true, auto: true, complete: true };
     req.forEach(function (i) { if (project && project.done[tid + ':' + i]) done++; });
-    return { done: done, total: n, na: false, complete: n > 0 && done === n };
+    return { done: done, total: n, na: false, optional: !!(RF.tramites.byId[tid] && RF.tramites.byId[tid].optional), complete: n > 0 && done === n };
   }
   function progress(project) {
     var porFase = {}, total = 0, done = 0, tramTotal = 0, tramDone = 0, next = null, cur = null;
@@ -258,6 +264,7 @@
       var d = 0, t = 0, td = 0, tt = 0, started = false, complete = true;
       f.items.forEach(function (tid) {
         var ip = itemProgress(project, tid);
+        if (ip.optional) return; /* los opcionales no cuentan en el avance ni frenan la fase */
         d += ip.done; t += ip.total;
         if (!ip.na) { tt++; if (ip.complete) td++; }
         if (ip.done > 0 && !ip.na) started = true;

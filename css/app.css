@@ -585,3 +585,11 @@ body.menu-open{overflow:hidden}
 .update-bar .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--ink-2)}
 .update-bar .btn.ghost:hover{background:var(--action-soft)}
 .update-bar .btn.primary{background:var(--action);color:var(--action-ink);border-color:var(--action)}
+
+.tip{position:relative;display:inline-block;margin-left:6px;vertical-align:middle}
+.tip-btn{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--action);background:var(--card);color:var(--action);font:700 13px/1 var(--mono);cursor:pointer;padding:0;display:inline-grid;place-items:center}
+.tip-btn:hover,.tip-btn[aria-expanded="true"]{background:var(--action);color:var(--action-ink)}
+.tip-pop{position:absolute;z-index:30;left:0;top:30px;width:min(320px,80vw);padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);color:var(--ink);box-shadow:var(--shadow);font:400 14.5px/1.45 var(--body);text-transform:none;letter-spacing:0}
+.tip-pop[hidden]{display:none}
+.check-tip{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+.nofin{margin:6px 0}.nofin summary{cursor:pointer;font-weight:600}

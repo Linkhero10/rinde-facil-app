@@ -52,12 +52,6 @@
       if (pd) root.appendChild(UI.section('Plazo del PEA', [h('p', null, 'Vence el ', h('strong', null, U.fmtDate(pd.fin)), ' (' + (pd.diasRestantes >= 0 ? 'faltan ' + pd.diasRestantes + ' días' : 'pasó hace ' + Math.abs(pd.diasRestantes) + ' días') + '). Con prórroga única de 30 días: ' + U.fmtDate(pd.finProrroga) + '.')]));
       if (s.projects.length > 1 || true) root.appendChild(h('div', { class: 'row-actions' }, UI.btn('Borrar este proyecto', { icon: 'trash', cls: 'ghost danger', onclick: function () { UI.confirmBox('¿Borrar «' + (p.name || 'este proyecto') + '» y todos sus datos? No se puede deshacer.', 'Borrar').then(function (ok) { if (ok) RF.store.removeProject(p.id); }); } })));
     }
-    /* feriados */
-    var hol = h('div', { class: 'chips' });
-    function paintHol() { U.clear(hol); s.holidays.slice().sort().forEach(function (d) { hol.appendChild(h('button', { type: 'button', class: 'chip', title: 'Quitar', onclick: function () { RF.store.update(function (st) { st.holidays = st.holidays.filter(function (x) { return x !== d; }); }, { silent: true }); paintHol(); } }, U.fmtDateShort(d) + ' ✕')); }); if (!s.holidays.length) hol.appendChild(h('span', { class: 'hint' }, 'No agregaste feriados propios.')); }
-    paintHol();
-    var hd = h('input', { type: 'date', 'aria-label': 'Fecha de feriado' });
-    root.appendChild(UI.section('Feriados (para contar días hábiles)', [h('p', { class: 'hint' }, 'Los días hábiles se cuentan de lunes a viernes. Los feriados nacionales de Chile se cargan solos y se actualizan cada mes al abrir la app: no tienes que hacer nada. Aquí solo agrega los que falten, como los regionales o los que se decreten de un día para otro.'), h('div', { class: 'inline-add' }, hd, UI.btn('Agregar', { icon: 'plus', onclick: function () { if (!hd.value) return; RF.store.update(function (st) { if (st.holidays.indexOf(hd.value) < 0) st.holidays.push(hd.value); }, { silent: true }); hd.value = ''; paintHol(); } })), hol]));
     return page('Mi comunidad y proyectos', 'Estos datos se usan para rellenar solos los anexos y revisar tus fechas.', root);
   } };
 
@@ -287,21 +281,23 @@
       p.cotizaciones.forEach(function (cq, i) {
         if (!Array.isArray(cq.cots)) cq.cots = [{}, {}];
         var st = h('div'); var refreshSt = function () { U.clear(st); var s = cotStatus(cq); st.appendChild(UI.callout(s.kind, '', s.msg)); };
+        var otro = h('div'); function paintOtro() { U.clear(otro); if (cq.gastoId === '__otro') otro.appendChild(h('p', { class: 'hint' }, 'Anota ese gasto en «Gastos y rendición» y vuelve a elegirlo aquí. ', h('a', { href: '#/h/gastos' }, 'Ir a anotar el gasto'))); else if (!cq.gastoId) otro.appendChild(h('p', { class: 'hint' }, 'Puedes dejar las cotizaciones anotadas y elegir después. Cuando anotes la boleta o factura del proveedor que elegiste, se vincula sola.')); }
         var rows = h('tbody');
         cq.cots.forEach(function (x, j) {
           rows.appendChild(h('tr', null, h('td', { 'data-label': 'Proveedor' }, UI.bind(x, 'proveedor', { type: 'text', aria: 'Proveedor', onChange: refreshSt })), h('td', { 'data-label': 'Monto neto' }, UI.bind(x, 'monto', { type: 'money', aria: 'Monto', onChange: refreshSt })), h('td', { 'data-label': 'Fecha' }, UI.bind(x, 'fecha', { type: 'date', aria: 'Fecha' })),
             h('td', { class: 'act' }, h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar cotización', onclick: function () { cq.cots.splice(j, 1); RF.store.update(function () { }, { silent: true }); paint(); } }, UI.icon('trash', 18)))));
         });
-        var expOpts = [{ id: '', name: 'Ninguno' }].concat(p.expenses.map(function (e) { return { id: e.id, name: (e.proveedor || 'Sin proveedor') + ' · ' + (e.folio || 's/n') + ' · ' + U.fmtCLP(e.total) }; }));
+        var expOpts = [{ id: '', name: 'Todavía no compro: estoy comparando' }, { id: '__otro', name: 'Otro gasto que aún no anoté' }].concat(p.expenses.map(function (e) { return { id: e.id, name: (e.proveedor || 'Sin proveedor') + ' · ' + (e.folio || 's/n') + ' · ' + U.fmtCLP(e.total) }; }));
         body.appendChild(h('div', { class: 'stage-card' },
           h('div', { class: 'stage-head' }, h('span', { class: 'stage-n' }, 'Compra ' + (i + 1)), UI.bind(cq, 'descripcion', { type: 'text', ph: 'Qué vas a comprar o contratar', aria: 'Descripción de la compra', onChange: function () { } }),
             h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar compra', onclick: function () { p.cotizaciones.splice(i, 1); RF.store.update(function () { }, { silent: true }); paint(); } }, UI.icon('trash', 18))),
-          h('div', { class: 'form-grid' }, UI.field('Monto neto de la compra ($)', cq, 'neto', { type: 'money', onChange: refreshSt }), UI.field('Gasto al que corresponde', cq, 'gastoId', { type: 'select', options: expOpts, noEmpty: true, onChange: refreshSt }),
-            UI.field('Es servicio técnico-profesional (no pide cotizaciones)', cq, 'servicioTecnico', { type: 'check', onChange: refreshSt }), UI.field('Tengo autorización previa de CORFO', cq, 'autorizacion', { type: 'check', onChange: refreshSt })),
+          h('div', { class: 'form-grid' }, UI.field('Monto neto de la compra ($)', cq, 'neto', { type: 'money', onChange: refreshSt }), h('div', { class: 'field' }, UI.field('Gasto al que corresponde', cq, 'gastoId', { type: 'select', options: expOpts, noEmpty: true, onChange: function () { refreshSt(); paintOtro(); } }), otro),
+            UI.field('Es servicio técnico-profesional (no pide cotizaciones)', cq, 'servicioTecnico', { type: 'check', onChange: refreshSt }), h('div', { class: 'check-tip' }, UI.field('Tengo autorización previa de CORFO', cq, 'autorizacion', { type: 'check', onChange: refreshSt }), UI.tip('Es el visto bueno de CORFO, por escrito, para comprar con una sola cotización o con ninguna. Si no lo tienes guardado en tu expediente, no lo tienes: pídelo antes de comprar con «Consultar una duda a CORFO».', 'Cómo saber si tengo la autorización'))),
           h('div', { class: 'table-scroll' }, h('table', { class: 'edit-grid' }, h('thead', null, h('tr', null, ['Proveedor', 'Monto neto', 'Fecha', ''].map(function (x) { return h('th', null, x); }))), rows)),
           UI.btn('Agregar cotización', { icon: 'plus', cls: 'ghost', onclick: function () { cq.cots.push({}); RF.store.update(function () { }, { silent: true }); paint(); } }),
+          UI.field('Proveedor elegido (si ya decidiste)', cq, 'elegido', { type: 'select', options: [{ id: '', name: 'Todavía no decido' }].concat((cq.cots || []).filter(function (x) { return String(x.proveedor || '').trim(); }).map(function (x) { return { id: String(x.proveedor).trim(), name: String(x.proveedor).trim() }; })), noEmpty: true }),
           UI.field('Por qué elegiste al proveedor', cq, 'justificacion', { type: 'textarea', rows: 2, cls: 'wide' }), st));
-        refreshSt();
+        refreshSt(); paintOtro();
       });
       body.appendChild(UI.btn('Agregar compra', { icon: 'plus', cls: 'primary', onclick: function () { p.cotizaciones.push({ id: U.uid('q'), descripcion: '', neto: '', cots: [{}, {}], gastoId: '' }); RF.store.update(function () { }, { silent: true }); paint(); } }));
     }
@@ -346,7 +342,7 @@
     return page('¿En qué cuenta va?', 'Cada gasto va en una de 4 cuentas (Manual, sección IX).', root);
   } };
   TOOLS.nofinanciable = { title: '¿Se puede pagar con el aporte?', icon: 'shield', desc: 'Revisa si el gasto está en la lista de lo que no se financia.', render: function () {
-    var list = ['Impuestos que la comunidad recupera (por ejemplo, IVA crédito fiscal usado)', 'Bienes de capital que CORFO no considere determinantes para el proyecto', 'Deudas, dividendos o recuperación de capital', 'Compra de acciones, derechos sociales, bonos u otros valores', 'Derechos o multas', 'Gastos que no tienen relación con los proyectos del plan'];
+    var list = D.NO_FINANCIABLE;
     var st = {}, out = h('div');
     function paint() { U.clear(out); var n = list.filter(function (_, i) { return st['k' + i]; }).length; if (n) out.appendChild(UI.callout('bad', 'Probablemente NO se financia.', ' Marcaste ' + n + ' punto(s) de la lista del Manual. Consulta a CORFO antes de gastar.')); else out.appendChild(UI.callout('info', 'Ninguno marcado.', ' Entonces no está en la lista, pero esta ayuda solo orienta: CORFO decide en caso de duda.')); }
     var root = h('div', null, UI.section('Marca lo que aplique a tu gasto', [h('div', { class: 'checks' }, list.map(function (t, i) { return UI.field(t, st, 'k' + i, { type: 'check', onChange: paint }); })), out, h('div', { class: 'row-actions' }, UI.btn('Preparar una consulta a CORFO', { icon: 'help', onclick: function () { location.hash = '#/h/consulta'; } }))]));
@@ -354,9 +350,9 @@
     return page('¿Se puede pagar con el aporte?', 'El Manual (sección VI) lista lo que no se financia. La única excepción es invertir excedentes en renta fija con aprobación previa de CORFO.', root);
   } };
   TOOLS.plazos = { title: 'Calculadora de plazos', icon: 'clock', desc: 'PEA (90 + 30 días) y aclaración de observaciones (10 días hábiles).', render: function () {
-    var s = RF.store.get(), st = { pago: '', obs: U.todayISO() }, o1 = h('div'), o2 = h('div');
+    var st = { pago: '', obs: U.todayISO() }, o1 = h('div'), o2 = h('div');
     function p1() { U.clear(o1); if (!st.pago) return; var pd = L.peaDeadline({ desembolso1: st.pago }, U.todayISO()); o1.appendChild(UI.callout(pd.diasRestantes < 0 ? 'warn' : 'ok', 'El PEA vence el ' + U.fmtDate(pd.fin) + '.', ' Con la prórroga única (hasta 30 días, pedida antes del vencimiento): ' + U.fmtDate(pd.finProrroga) + '.')); }
-    function p2() { U.clear(o2); if (!st.obs) return; var lim = L.aclaracionDeadline(st.obs, RF.holidays.all()); o2.appendChild(UI.callout('info', 'Tienes hasta el ' + U.fmtDate(lim) + '.', ' Son 10 días hábiles desde que CORFO comunicó las observaciones' + (s.holidays.length ? ' (descontando tus feriados).' : ' (sin feriados: agrégalos en «Mi comunidad y proyectos»).') + ' La aclaración se hace una sola vez.')); }
+    function p2() { U.clear(o2); if (!st.obs) return; var lim = L.aclaracionDeadline(st.obs, RF.holidays.all()); o2.appendChild(UI.callout('info', 'Tienes hasta el ' + U.fmtDate(lim) + '.', ' Son 10 días hábiles desde que CORFO comunicó las observaciones' + ' (descontando los feriados de Chile).' + ' La aclaración se hace una sola vez.')); }
     var root = h('div', null, UI.section('Plazo del PEA', [UI.field('Fecha del primer pago (30 %)', st, 'pago', { type: 'date', onChange: p1 }), o1]), UI.section('Plazo para aclarar observaciones', [UI.field('Fecha en que CORFO comunicó las observaciones', st, 'obs', { type: 'date', onChange: p2 }), o2]));
     p1(); p2();
     return page('Calculadora de plazos', 'Los plazos que aparecen en los documentos del convenio.', root);
@@ -391,6 +387,7 @@
   formTool('informeD', 'form', 'Una ficha por persona contratada.', 'Nombre, RUT, meses, montos y función.');
   formTool('informeE', 'form', 'Actividades que no calzan en las otras fichas.', 'Descripción, proveedor, montos y fechas.');
   formTool('consulta', 'help', 'Redacta tu duda con los hechos, la norma y el impacto.', 'Mejor preguntar antes de gastar. Guarda la respuesta en tu expediente.');
+  formTool('prorroga', 'file', 'Pide más tiempo para entregar el PEA (una vez, hasta 30 días).', 'Se pide antes de que venza el plazo de 90 días. Explica el motivo: tiene que ser una solicitud fundada.');
   formTool('solicitud', 'file', 'Borrador de la solicitud cuando CORFO cierre tu rendición.', 'Se pide después de que CORFO finaliza la revisión de tu rendición.');
   formTool('peaGeneral', 'form', 'PEA · información general.', '');
   formTool('peaProyecto', 'form', 'PEA · un formulario por proyecto.', '');

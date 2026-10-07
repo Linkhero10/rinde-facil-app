@@ -84,6 +84,7 @@
     informeD: { kind: 'segun', text: 'Ficha de personas contratadas: solo si pagaste sueldos u honorarios.' },
     informeE: { kind: 'segun', text: 'Otras actividades de las personas contratadas.' },
     consulta: { kind: 'apoyo', text: 'Para preguntarle a CORFO si un gasto se puede pagar. No es obligatoria: úsala cuando tengas una duda.' },
+    prorroga: { kind: 'segun', text: 'Solo si no alcanzas a entregar el PEA en 90 días: se pide una vez, hasta 30 días más y antes de que venza.' },
     solicitud: { kind: 'clave', text: 'Al final del proyecto, para pedir los aportes que faltan.' },
     calendario: { kind: 'apoyo', text: '' },
     documentos: { kind: 'apoyo', text: 'Tu archivo de documentos importantes: convenio, resoluciones, certificados. Para tenerlos a mano.' },

@@ -163,3 +163,32 @@ test('sincronización automática: trae lo del otro equipo, lo une con lo propio
   const r2 = await RF.drive.syncNow({ force: true });
   assert.equal(r2.same, true); assert.equal(JSON.stringify(calls), JSON.stringify(['loadState']), 'sin diferencias solo consulta');
 });
+
+/* ---------- gastos: avisos automáticos, cotizaciones sin gasto y trámites opcionales ---------- */
+test('al anotar un gasto se avisa solo si la fecha cae fuera de su actividad y si podría no financiarse', () => {
+  const RF = app(), p = state(RF).projects[0];
+  p.gantt.stages = [{ id: 's1', name: 'E1', acts: [{ id: 'a1', name: 'Taller', start: '2026-10-01', end: '2026-10-31' }] }];
+  const e = { id: 'e1', docType: 'boleta', fecha: '2026-12-05', actId: 'a1', cuenta: 'operacion', total: 1000, montoRendir: 1000, has: {} };
+  let ids = RF.logic.evaluateExpense(e, p, {}, [e]).issues.map(i => i.id);
+  assert.ok(ids.includes('fecha_actividad'), 'fuera del plazo de la actividad');
+  e.fecha = '2026-10-10'; e.noFin = { k4: true };
+  ids = RF.logic.evaluateExpense(e, p, {}, [e]).issues.map(i => i.id);
+  assert.ok(!ids.includes('fecha_actividad') && ids.includes('no_financiable'));
+});
+test('cotizaciones anotadas antes de comprar se vinculan solas a la boleta del proveedor elegido', () => {
+  const RF = app(), p = state(RF).projects[0];
+  p.cotizaciones = [{ id: 'q1', neto: 12000000, gastoId: '', elegido: 'Ferretería Sur', cots: [{ proveedor: 'Ferretería Sur', monto: 12000000 }, { proveedor: 'Otra Ltda', monto: 13000000 }] }];
+  const e = { id: 'e1', docType: 'factura', proveedor: ' ferretería sur ', neto: 12000000, total: 14280000, cuenta: 'operacion', has: {} };
+  assert.equal(RF.logic.effectiveHas(e, p).cotizaciones, true);
+  e.proveedor = 'Otro';
+  assert.ok(!RF.logic.effectiveHas(e, p).cotizaciones);
+});
+test('un trámite opcional no cuenta en el avance ni frena la fase', () => {
+  const RF = app(), p = state(RF).projects[0];
+  assert.equal(RF.logic.itemProgress(p, 'TRM-028').optional, true);
+  assert.equal(RF.logic.itemProgress(p, 'TRM-030').optional, true);
+  const before = RF.logic.progress(p).porFase.F2;
+  ['TRM-027:0', 'TRM-027:1', 'TRM-027:2'].forEach(k => { p.done[k] = true; });
+  assert.equal(RF.logic.progress(p).porFase.F2.complete, true, 'con el PEA hecho, la fase queda completa aunque no se use lo opcional');
+  assert.equal(before.tramTotal, 1, 'solo cuenta el PEA');
+});

@@ -182,8 +182,9 @@
   /* ---------- trámite ---------- */
   /* botones bajo un paso que pide llenar un documento: «Rellenar» (por casillas) y «Ver formato» (cómo queda el documento) */
   var FORMY = /^(anexo|informe|pea|gantt|presupuesto|cotizaciones|reitem|solicitud|consulta)/;
-  function stepDocs(tid, i) {
-    var ids = RF.needs.STEP_TOOLS[tid + ':' + i]; if (!ids) return null;
+  function stepDocs(tid, i, shown) {
+    var ids = (RF.needs.STEP_TOOLS[tid + ':' + i] || []).filter(function (x) { return !shown[x]; }); if (!ids.length) return null;
+    ids.forEach(function (x) { shown[x] = true; });
     var kids = [];
     ids.forEach(function (x) {
       var tl = RF.tools[x]; if (!tl) return;
@@ -211,23 +212,24 @@
     /* qué necesitas */
     if (t.need && t.need.length) root.appendChild(UI.section('Qué necesitas', [h('ul', { class: 'need-list' }, t.need.map(function (n) { return h('li', null, n); }))]));
     /* a tener en cuenta (texto, no se marca) */
-    if (t.notes && t.notes.length) root.appendChild(h('section', { class: 'card notes-card' }, h('h2', { class: 'card-title' }, 'Ten en cuenta'), h('ul', { class: 'notes-list' }, t.notes.map(function (n) { return h('li', null, n); }))));
+    if ((t.notes && t.notes.length) || (t.related && t.related.length)) root.appendChild(h('section', { class: 'card notes-card' }, h('h2', { class: 'card-title' }, 'Ten en cuenta'), h('ul', { class: 'notes-list' }, (t.notes || []).map(function (n) { return h('li', null, n); })), (t.related || []).length ? h('p', { class: 'hint' }, 'Relacionado: ', t.related.map(function (rid, k) { var rt = RF.tramites.byId[rid]; return rt ? [k ? ' · ' : '', h('a', { href: '#/t/' + rid }, rt.title)] : null; })) : null));
     /* pasos */
-    var stepsBox = h('ol', { class: 'steps' });
+    var stepsBox = h('ol', { class: 'steps' }), shownTools = {};
     var counter = h('span', { class: 'steps-count' });
     function updCount() { var q = L.itemProgress(p || { done: {} }, id); counter.textContent = q.na ? 'No aplica' : q.done + ' de ' + q.total + (q.total < t.steps.length ? ' (+' + (t.steps.length - q.total) + ' opcional' + (t.steps.length - q.total > 1 ? 'es' : '') + ')' : ''); }
     t.steps.forEach(function (txt, i) {
       var cb = h('input', { type: 'checkbox', id: 'st-' + i, checked: !!(p && RF.store.isDone(p, id, i)), disabled: !p });
       var li = h('li', { class: 'step' + (cb.checked ? ' done' : '') }, h('label', { for: 'st-' + i }, cb, h('span', { class: 'st-n' }, String(i + 1)), h('span', { class: 'st-t' }, txt), t.opt && t.opt[i] ? h('span', { class: 'st-opt' }, t.opt[i]) : null));
       cb.addEventListener('change', function () { RF.store.setDone(id, i, cb.checked); li.classList.toggle('done', cb.checked); updCount(); refreshSide(); });
-      var sd = stepDocs(id, i); if (sd) li.appendChild(sd);
+      var sd = stepDocs(id, i, shownTools); if (sd) li.appendChild(sd);
       stepsBox.appendChild(li);
     });
     updCount();
     var naBox = h('label', { class: 'check na-check' }, h('input', { type: 'checkbox', checked: !!(p && p.na && p.na[id]), disabled: !p, onchange: function (ev) { RF.store.update(function () { p.na = p.na || {}; if (ev.target.checked) p.na[id] = true; else delete p.na[id]; }); } }), h('span', null, 'Este trámite no me aplica'));
     root.appendChild(h('section', { class: 'card steps-card' }, h('div', { class: 'card-title-row' }, h('h2', { class: 'card-title' }, 'Pasos'), counter), stepsBox, h('div', { class: 'row-actions between' }, UI.btn('Marcar todos', { cls: 'ghost small', onclick: function () { t.steps.forEach(function (_, i) { RF.store.setDone(id, i, true); }); RF.app.render(); } }), naBox)));
     /* herramientas */
-    if (t.tools && t.tools.length) root.appendChild(UI.section('Hazlo aquí', [h('div', { class: 'tool-cards' }, t.tools.map(function (tid) { var tl = RF.tools[tid]; return h('a', { class: 'tool-card', href: '#/h/' + tid + '?from=' + encodeURIComponent(id) }, h('span', { class: 'tc-ico' }, UI.icon(tl.icon || 'file', 26)), h('span', { class: 'tc-t' }, tl.title), h('span', { class: 'tc-d' }, tl.desc), UI.icon('right', 18)); }))]));
+    var restTools = (t.tools || []).filter(function (x) { return !shownTools[x]; });
+    if (restTools.length) root.appendChild(UI.section('Hazlo aquí', [h('div', { class: 'tool-cards' }, restTools.map(function (tid) { var tl = RF.tools[tid]; return h('a', { class: 'tool-card', href: '#/h/' + tid + '?from=' + encodeURIComponent(id) }, h('span', { class: 'tc-ico' }, UI.icon(tl.icon || 'file', 26)), h('span', { class: 'tc-t' }, tl.title), h('span', { class: 'tc-d' }, tl.desc), UI.icon('right', 18)); }))]));
     /* documento original */
     if (t.img && t.img.length) root.appendChild(h('details', { class: 'card orig' }, h('summary', null, 'Ver el documento original'), h('div', { class: 'orig-grid' }, t.img.map(function (im) { return h('figure', null, h('a', { href: 'assets/docs/' + im[0], target: '_blank', rel: 'noopener' }, h('img', { src: 'assets/docs/' + im[0], alt: im[1], loading: 'lazy' })), h('figcaption', null, im[1])); })), h('p', { class: 'hint' }, 'Fuente: ' + (t.src || []).join(' · '))));
     else if (t.src) root.appendChild(h('p', { class: 'hint' }, 'Fuente: ' + t.src.join(' · ')));

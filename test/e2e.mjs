@@ -940,6 +940,31 @@ await step('15n. Una cartola subida junto a las boletas se adjunta sola al gasto
   stub.store.vision.raw_text = stub.store.canned;
 });
 
+await step('15o. Montos grandes en cotizaciones, ayuda de la autorización, trámites opcionales sin pasos de relleno y sin secciones obsoletas', async () => {
+  await go('#/h/cotizaciones');
+  await page.getByRole('button', { name: 'Agregar compra' }).click();
+  await page.getByLabel('Monto neto de la compra ($)').last().pressSequentially('12500000', { delay: 20 });
+  const dbgN = await page.evaluate(() => ({ neto: RF.store.project().cotizaciones.slice(-1)[0].neto, n: RF.store.project().cotizaciones.length, vals: [...document.querySelectorAll('.stage-card input')].map(i => i.value).slice(0, 6) }));
+  ok(dbgN.neto === 12500000, 'se puede escribir un monto de ocho dígitos: ' + JSON.stringify(dbgN));
+  ok(/12\.500\.000/.test(await page.getByLabel('Monto neto de la compra ($)').last().inputValue()), 'se muestra con puntos');
+  await page.getByRole('button', { name: 'Cómo saber si tengo la autorización' }).last().click();
+  ok(/visto bueno de CORFO/.test(await page.locator('.tip-pop:visible').first().textContent()), 'la ayuda explica qué es la autorización');
+  const opts = await page.locator('.stage-card').last().locator('select').first().evaluate(el => [...el.options].map(o => o.textContent));
+  ok(opts.some(o => /Todavía no compro/.test(o)) && opts.some(o => /Otro gasto que aún no anoté/.test(o)), 'se puede comparar antes de comprar o elegir otro gasto');
+  await go('#/t/TRM-028');
+  ok(/\(opcional\)/.test(await page.textContent('.view-title')), 'Cambiar el PEA dice que es opcional');
+  ok(await page.locator('.step-docs').count() === 1 && await page.locator('.tool-card').count() === 0, 'el formulario aparece una sola vez');
+  await go('#/t/TRM-030');
+  ok(/Pedir prórroga del PEA \(opcional\)/.test(await page.textContent('.view-title')) && /Duda abierta/.test(await page.textContent('.view')), 'la prórroga es un trámite aparte, opcional, y deja abierta la duda del canal');
+  await go('#/t/TRM-027');
+  ok(!/Pide la prórroga/.test(await page.textContent('.steps-card')) && /Pedir prórroga del PEA/.test(await page.textContent('.notes-card')), 'la prórroga ya no es un paso del PEA y queda enlazada');
+  await go('#/t/TRM-003');
+  ok(/No encontramos ese trámite/.test(await page.textContent('.view')), 'ya no existe «Ver si el gasto entra en fecha»');
+  await go('#/h/proyecto');
+  ok(!/Feriados \(para contar/.test(await page.textContent('.tool-page')), 'ya no se piden feriados a mano');
+  await go('#/h/gastos');
+});
+
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });
 
 /* ---- celular ---- */
