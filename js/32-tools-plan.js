@@ -29,7 +29,7 @@
         { id: 'no_usa', name: 'Soy contribuyente y NO uso el IVA (rindo el total con Anexo 1)' }],
         hint: 'Manual p. 7. Si dudas, pregunta a tu contador o al Organismo Colaborador.' }));
     root.appendChild(UI.section('Tu comunidad', [comFields]));
-    if (p) { var cv = RF.data.convenioDe(p); root.appendChild(UI.section('Reglas que se aplican', [h('p', { class: 'hint' }, h('strong', null, cv.nombre), ' · ' + cv.vigencia + '. ' + cv.fuente + '. Si CORFO cambia el Manual o tu comunidad rinde otro fondo, las reglas se actualizan aparte: tus datos no se tocan.')])); }
+    if (p) { var cv = RF.data.convenioDe(p); root.appendChild(UI.section('Reglas que se aplican', [h('p', { class: 'hint' }, h('strong', null, cv.nombre), ' · ' + cv.fuente + '. Si CORFO cambia el Manual o tu comunidad rinde otro fondo, las reglas se actualizan aparte: tus datos no se tocan.')])); }
 
     /* lista de proyectos */
     var list = h('div', { class: 'chips' });
@@ -78,7 +78,7 @@
     });
     return { title: 'Carta Gantt', subtitle: (project.name || 'Proyecto') + (project.code ? ' · ' + project.code : ''), sheet: 'Carta Gantt', footer: 'Generado con Rinde Fácil. Sirve para copiar la información a SGP («Configuración Gantt») o al PEA. Revisa que coincida con lo que aprobó CORFO.', blocks: [
       { t: 'kv', rows: [['Proyecto', project.name], ['Código', project.code], ['Comunidad', community.name], ['Inicio del proyecto', project.start ? U.fmtDate(project.start) : ''], ['Término del proyecto', project.end ? U.fmtDate(project.end) : '']] },
-      { t: 'table', head: ['Etapa', 'Actividad', 'Inicio', 'Término', 'Días', 'Resultado o hito'].concat(months.map(U.monthLabel)), types: ['text', 'text', 'date', 'date', 'num', 'text'].concat(months.map(function () { return 'text'; })), rows: rows }
+      { t: 'table', head: ['Etapa', 'Actividad', 'Inicio', 'Término', 'Días', 'Resultado o hito'].concat(months.map(U.monthLabel)), types: ['text', 'text', 'date', 'date', 'num', 'text'].concat(months.map(function () { return 'text'; })), widths: [26, 38, 13, 13, 7, 24].concat(months.map(function () { return 7; })), rows: rows }
     ] };
   }
   function sgpTsv(rows, head) { return [head.join('\t')].concat(rows.map(function (r) { return r.join('\t'); })).join('\n'); }
@@ -127,8 +127,8 @@
     root.appendChild(UI.section('Vista por meses', [monthsBox]));
     root.appendChild(UI.section('Revisión', [issuesBox]));
     root.appendChild(UI.section('Sacar la Carta Gantt', [UI.exportBar(function () { return ganttDoc(p, c.community); }, 'carta-gantt', [{ label: 'Copiar para SGP', icon: 'copy', run: function () {
-      var rows = L.allActivities(p).map(function (x) { return [x.stage.name, x.act.name, U.fmtDateShort(x.act.start), U.fmtDateShort(x.act.end), L.activityDays(x.act)]; });
-      U.copyText(sgpTsv(rows, ['Etapa', 'Actividad', 'Inicio', 'Término', 'Duración (días)'])).then(function (ok) { UI.toast(ok ? 'Copiado. Pégalo en una hoja de cálculo o en SGP.' : 'No se pudo copiar.', ok ? 'ok' : 'bad'); }); } }])]));
+      var rows = L.allActivities(p).map(function (x) { return [x.stage.name, x.act.name, U.fmtDateShort(x.act.start), U.fmtDateShort(x.act.end)]; });
+      U.copyText(sgpTsv(rows, ['Etapa', 'Actividad', 'Inicio', 'Término'])).then(function (ok) { UI.toast(ok ? 'Copiado en el orden en que SGP pide los datos (etapa, actividad, inicio y término, con fechas día-mes-año). SGP no recibe pegados: cópialos de a uno en cada campo.' : 'No se pudo copiar.', ok ? 'ok' : 'bad'); }); } }])]));
     return page('Carta Gantt', 'Ordena tu proyecto en etapas y actividades. Después la puedes sacar en Excel, PDF o texto para pegarla en SGP.', root);
   } };
 
@@ -180,8 +180,9 @@
     root.appendChild(UI.section('Líneas de presupuesto', [body]));
     root.appendChild(UI.section('Comparado con lo aprobado', [sum]));
     root.appendChild(UI.section('Sacar el presupuesto', [UI.exportBar(function () { return budgetDoc(p, c.community); }, 'presupuesto', [{ label: 'Copiar para SGP', icon: 'copy', run: function () {
-      var rows = p.budgetLines.map(function (l) { return [(D.CUENTA_BY_ID[l.cuenta] || {}).sgp || '', l.item, l.glosa, l.fuente === 'propio' ? 'F2' : 'F1', num(l.monto)]; });
-      U.copyText(sgpTsv(rows, ['Cuenta', 'Ítem', 'Glosa', 'Fuente', 'Monto'])).then(function (ok) { UI.toast(ok ? 'Copiado. Pégalo en una hoja de cálculo o en SGP.' : 'No se pudo copiar.', ok ? 'ok' : 'bad'); }); } }])]));
+      var acts = L.allActivities(p);
+      var rows = p.budgetLines.map(function (l) { var a = acts.filter(function (x) { return x.act.id === l.actId; })[0]; return [a ? a.stage.name : '', (D.CUENTA_BY_ID[l.cuenta] || {}).sgp || '', l.item, l.glosa, l.fuente === 'propio' ? 'Aporte de la comunidad' : 'Aporte CORFO', 'Pecuniario', num(l.monto)]; });
+      U.copyText(sgpTsv(rows, ['Etapa', 'Cuenta', 'Ítem', 'Descripción del gasto', 'Aporte', 'Tipo de aporte', 'Monto total'])).then(function (ok) { UI.toast(ok ? 'Copiado en el orden de los campos de SGP (etapa, cuenta, ítem, descripción, aporte, tipo y monto total). SGP no recibe pegados: cópialos de a uno en cada campo.' : 'No se pudo copiar.', ok ? 'ok' : 'bad'); }); } }])]));
     return page('Presupuesto', 'Cada gasto va en una de 4 cuentas. Aquí planificas cuánto vas a gastar en cada una.', root);
   } };
 

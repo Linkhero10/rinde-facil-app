@@ -6,7 +6,7 @@ Guía paso a paso para que las comunidades del Salar de Atacama rindan el conven
 
 | Área | Qué hace |
 |---|---|
-| **Mi ruta** | 6 fases en un menú de acordeón; avance por pasos que se pueden tachar; «siguiente paso»; diagrama en carriles de qué le toca a CORFO, la comunidad, Novandina y SMI (con los plazos del flujograma y del Manual). |
+| **Mi ruta** | 6 fases en un menú de acordeón; avance por pasos que se pueden tachar; «siguiente paso»; diagrama en carriles de qué le toca a CORFO, la comunidad, Novandino y SMI (con los plazos del flujograma y del Manual). |
 | **32 pantallas de trámite** | 29 trámites del inventario + 3 pasos del proceso, en lenguaje simple, con capturas reales de los documentos y sus fuentes. |
 | **Varios proyectos** | Selector de proyecto; cada uno con sus fechas, presupuesto, gastos, anexos y avance. |
 | **Carta Gantt** | Etapas y actividades con fechas, vista por meses, revisión; sale en Excel, Word, PDF, texto y «copiar para SGP». |

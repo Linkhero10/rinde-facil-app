@@ -382,8 +382,13 @@
       U.clear(savesBox);
       var list = (RF.store.get().cloud.saves || []);
       if (!list.length) { savesBox.appendChild(UI.empty('Aún no se guarda nada desde esta app.')); return; }
-      savesBox.appendChild(h('ul', { class: 'saves' }, list.slice(0, 8).map(function (x) {
-        return h('li', null, x.url ? h('a', { href: x.url, target: '_blank', rel: 'noopener' }, x.name) : h('span', null, x.name), h('span', { class: 'muted' }, ' · ' + (x.where || '') + ' · ' + new Date(x.at).toLocaleString('es-CL')));
+      savesBox.appendChild(h('ul', { class: 'saves' }, RF.drive.friendlySaves(list).slice(0, 8).map(function (i) {
+        var label = i.titulo || i.tipo, meta = [i.lugar, i.fecha].filter(Boolean).join(' · ');
+        return h('li', { class: 'save-item' },
+          h('span', { class: 'save-kind' }, i.tipo),
+          i.url ? h('a', { href: i.url, target: '_blank', rel: 'noopener' }, label) : h('span', null, label),
+          h('span', { class: 'muted save-meta' }, meta),
+          i.folderUrl ? h('a', { class: 'save-folder', href: i.folderUrl, target: '_blank', rel: 'noopener' }, 'Ver carpeta') : null);
       })));
     }
     var pj = RF.store.project();

@@ -225,7 +225,7 @@ await step('5. Carta Gantt: etapas, actividades, meses y Excel real', async () =
   ok(info.sheets[0] === 'Carta Gantt', 'nombre de hoja');
   await page.getByRole('button', { name: 'Copiar para SGP' }).click();
   const clip = await page.evaluate(() => navigator.clipboard.readText());
-  ok(/Preparación\tTaller de artesanía\t01-07-2026\t30-09-2026\t92/.test(clip), 'texto para SGP: ' + clip.slice(0, 80));
+  ok(/Preparación\tTaller de artesanía\t01-07-2026\t30-09-2026$/.test(clip.split('\n')[1] || ''), 'texto para SGP: ' + clip.slice(0, 80));
 });
 
 await step('6. Presupuesto: líneas por cuenta, avisa si supera lo aprobado', async () => {
@@ -361,7 +361,7 @@ await step('12. Foto de un comprobante: OCR en la nube (servicio de prueba) rell
   await page.getByLabel('Código de instalación').fill(SETUP_CODE);
   await page.getByRole('button', { name: 'Crear la cuenta del servicio' }).click();
   await page.getByLabel('Código de instalación').waitFor({ state: 'detached', timeout: 15000 });
-  ok(!/Cuenta creada/.test(await page.textContent('.tool-page')), 'crear la cuenta no muestra confirmación rutinaria');
+  ok(/Cuenta creada/.test(await page.textContent('.tool-page')), 'crear la cuenta confirma que salió bien');
   await go('#/h/gastos');
   stub.store.ocrDelay = 2200; /* el servicio de prueba se demora, como Google */
   const beforeUnsupported = await page.evaluate(() => RF.forms.ctxNow().project.expenses.length);
@@ -432,8 +432,7 @@ await step('12d. Lo que se saca (Excel de la Carta Gantt) queda también en el D
   await page.getByRole('button', { name: /Preparar mi carpeta/ }).click();
   await page.getByRole('link', { name: 'Abrir la carpeta en Drive' }).waitFor({ timeout: 8000 });
   const t = await page.textContent('.tool-page');
-  ok(!/Última copia en la nube/.test(t), 'no se muestra el estado rutinario de la última sincronización');
-  ok(/carta-gantt/.test(t) && /Planificaci[oó]n/i.test(t), 'lista lo guardado con su ubicación');
+  ok(/Carta Gantt/.test(t) && !/carta-gantt|Planificaci[oó]n \//i.test(t), 'lista lo guardado con un nombre legible, sin rutas');
   const exp = await page.evaluate(() => window.RF.store.exportJSON());
   ok(!/"key"/.test(JSON.stringify(JSON.parse(exp).cloud)), 'la copia no incluye claves');
   await shot('12d-drive');
@@ -476,7 +475,7 @@ await step('13. Guardar y traer la copia de la nube', async () => {
   await go('#/h/nube');
   await page.getByRole('button', { name: 'Guardar copia en la nube' }).click();
   await page.waitForTimeout(500);
-  ok(!/Copia guardada/.test(await page.textContent('.tool-page')), 'guardar correctamente no muestra confirmación rutinaria');
+  ok(/Copia guardada/.test(await page.textContent('.tool-page')), 'guardar correctamente lo confirma en verde');
   ok(stub.store.state && JSON.parse(stub.store.state).projects.length === 2, 'la nube guardó el estado con los dos proyectos');
 });
 

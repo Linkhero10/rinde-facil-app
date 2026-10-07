@@ -309,7 +309,7 @@
   };
   SCHEMAS.solicitud = {
     id: 'solicitud', title: 'Solicitud de aportes restantes del AIA', repeat: false, sheet: 'Solicitud',
-    defaults: function (ctx) { return { fecha: U.todayISO(), destinatario: 'Novandina Litio (ex SQM Litio)', cierreRevision: '', comentario: '', firma: v(com(ctx).legalRep) }; },
+    defaults: function (ctx) { return { fecha: U.todayISO(), destinatario: 'Novandino Litio (ex SQM Litio)', cierreRevision: '', comentario: '', firma: v(com(ctx).legalRep) }; },
     fields: [
       { k: 'destinatario', l: 'A quién va dirigida', t: 'text' }, { k: 'cierreRevision', l: 'Fecha en que CORFO finalizó la revisión de tu rendición', t: 'date' },
       { k: 'comentario', l: 'Comentario adicional (opcional)', t: 'textarea', rows: 3 }, { k: 'firma', l: 'Quién firma', t: 'text' }

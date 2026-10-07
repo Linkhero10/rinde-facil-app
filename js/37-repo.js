@@ -24,7 +24,7 @@
     { id: 'otro', name: 'Otro documento', folder: 'Otros', from: 'otro', pea: 'nose' }
   ];
   var TYPE_BY_ID = {}; DOC_TYPES.forEach(function (t) { TYPE_BY_ID[t.id] = t; });
-  var FROM = [{ id: 'corfo', name: 'CORFO' }, { id: 'comunidad', name: 'La comunidad' }, { id: 'novandina', name: 'Novandina (ex SQM)' }, { id: 'smi', name: 'Organismo Colaborador' }, { id: 'otro', name: 'Otro' }];
+  var FROM = [{ id: 'corfo', name: 'CORFO' }, { id: 'comunidad', name: 'La comunidad' }, { id: 'novandina', name: 'Novandino (ex SQM)' }, { id: 'smi', name: 'Organismo Colaborador' }, { id: 'otro', name: 'Otro' }];
   var PEA_OPTS = [{ id: 'no', name: 'No cambia nada del PEA' }, { id: 'si', name: 'Sí, cambia o pide cambiar algo del PEA' }, { id: 'nose', name: 'No estoy seguro' }];
   var ACTA_STATES = [{ id: 'borrador', name: 'Borrador' }, { id: 'firmada', name: 'Firmada' }, { id: 'enviada', name: 'Enviada a CORFO' }, { id: 'revisada', name: 'Revisada por CORFO' }, { id: 'observada', name: 'Observada por CORFO' }];
   var MODES = [{ id: 'presencial', name: 'Presencial' }, { id: 'online', name: 'Por videollamada' }, { id: 'mixta', name: 'Mixta' }];

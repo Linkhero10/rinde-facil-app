@@ -42,14 +42,17 @@
     if (sz === 'normal') el.removeAttribute('data-text'); else el.setAttribute('data-text', sz);
     applyThemeLabel();
   }
-  function applyThemeLabel() {
-    var t = RF.auth.phase() === 'open' ? (RF.store.get().ui.theme || 'system') : 'system', lbl = document.getElementById('themeLbl');
-    if (lbl) lbl.textContent = 'Tema: ' + (t === 'system' ? 'del dispositivo' : t === 'light' ? 'claro' : 'oscuro');
-    var tl = document.getElementById('textLbl'), sz = RF.auth.phase() === 'open' ? (RF.store.get().ui.textSize || 'normal') : 'normal';
-    if (tl) tl.textContent = 'Letra: ' + (sz === 'normal' ? 'normal' : sz === 'grande' ? 'grande' : 'muy grande');
+  function applyThemeLabel() { /* las listas desplegables ya muestran la opción elegida */ }
+  /* el tamaño de letra cambia el alto de todo: se guarda la posición del menú y de la página en proporción y se restituye */
+  function keepScroll(change) {
+    var side = document.getElementById('side'), ratioSide = side && side.scrollHeight ? side.scrollTop / side.scrollHeight : 0;
+    var de = document.documentElement, ratioPage = de.scrollHeight ? (window.pageYOffset || 0) / de.scrollHeight : 0;
+    change();
+    var restore = function () { var s2 = document.getElementById('side'); if (s2) s2.scrollTop = ratioSide * s2.scrollHeight; window.scrollTo(0, ratioPage * document.documentElement.scrollHeight); };
+    restore(); if (window.requestAnimationFrame) window.requestAnimationFrame(restore);
   }
-  app.cycleTheme = function () { var order = ['system', 'light', 'dark'], cur = RF.store.get().ui.theme || 'system'; RF.store.update(function (s) { s.ui.theme = order[(order.indexOf(cur) + 1) % 3]; }, { silent: true }); applyTheme(); };
-  app.cycleText = function () { var order = ['normal', 'grande', 'muy-grande'], cur = RF.store.get().ui.textSize || 'normal'; RF.store.update(function (s) { s.ui.textSize = order[(order.indexOf(cur) + 1) % 3]; }, { silent: true }); applyTheme(); };
+  app.setTheme = function (v) { if (['system', 'light', 'dark'].indexOf(v) < 0) return; keepScroll(function () { RF.store.update(function (s) { s.ui.theme = v; }, { silent: true }); applyTheme(); }); };
+  app.setText = function (v) { if (['normal', 'grande', 'muy-grande'].indexOf(v) < 0) return; keepScroll(function () { RF.store.update(function (s) { s.ui.textSize = v; }, { silent: true }); applyTheme(); }); };
   app.applyThemeLabel = applyThemeLabel;
 
   /* ---------- dibujo ---------- */

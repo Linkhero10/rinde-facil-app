@@ -6,7 +6,7 @@
   var ACTORS = [
     { id: 'corfo', name: 'CORFO', full: 'Corporación de Fomento de la Producción' },
     { id: 'comunidad', name: 'Comunidad', full: 'Titular del convenio' },
-    { id: 'novandina', name: 'Novandina (ex SQM)', full: 'Transfiere el dinero del AIA' },
+    { id: 'novandina', name: 'Novandino (ex SQM)', full: 'Transfiere el dinero del AIA' },
     { id: 'smi', name: 'Organismo Colaborador', full: 'Apoya a la comunidad si ella lo pide' }
   ];
 
@@ -99,7 +99,7 @@
   /* ---------- convenios y fondos: cada uno con SUS reglas, para que un cambio de Manual o un fondo nuevo no toque los datos de nadie ----------
      REGLAS (arriba) es el juego vigente; useConvenio() copia en él las reglas del convenio del proyecto. Hoy hay uno solo. */
   var CONVENIOS = {
-    'corfo-2026-09': { id: 'corfo-2026-09', nombre: 'Convenio CORFO – Novandina (ex SQM)', vigencia: 'Manual de rendición vigente a septiembre de 2026', fuente: 'Manual de rendición y flujograma del convenio, con la página citada en cada aviso', reglas: Object.assign({}, REGLAS) }
+    'corfo-2026-09': { id: 'corfo-2026-09', nombre: 'Convenio CORFO – Novandino (ex SQM)', fuente: 'Manual de rendición y flujograma del convenio, con la página citada en cada aviso', reglas: Object.assign({}, REGLAS) }
   };
   var CONVENIO_DEFECTO = 'corfo-2026-09';
   function convenioDe(project) { return CONVENIOS[(project && project.convenio) || CONVENIO_DEFECTO] || CONVENIOS[CONVENIO_DEFECTO]; }
@@ -111,7 +111,7 @@
     '1': ['corfo', 'Entrega el convenio', 'CORFO entrega el convenio a las comunidades. Ahí se detallan los aportes y cómo se pueden usar.', null, null, null, 'P-01'],
     '2': ['comunidad', 'Firma el convenio', 'La comunidad y CORFO firman el convenio.', null, null, null, 'P-01'],
     '3': ['comunidad', 'Abre cuenta corriente', 'La comunidad abre una cuenta corriente para recibir el Aporte Inicial Atribuible (AIA). Solo puede financiar proyectos de inversión y fomento de las comunidades de la cuenca del Salar de Atacama.', null, null, null, 'P-02'],
-    '4': ['novandina', 'Transfiere el 30 % del AIA', 'La empresa (SQM, hoy Novandina) transfiere el 30 % del AIA a la cuenta de la comunidad, dentro de 15 días hábiles desde que CORFO comunica la total tramitación de la resolución que aprueba el convenio.', '15 días hábiles', null, null, 'P-03'],
+    '4': ['novandina', 'Transfiere el 30 % del AIA', 'La empresa (SQM, hoy Novandino) transfiere el 30 % del AIA a la cuenta de la comunidad, dentro de 15 días hábiles desde que CORFO comunica la total tramitación de la resolución que aprueba el convenio.', '15 días hábiles', null, null, 'P-03'],
     '5': ['comunidad', 'Recibe la transferencia', 'La comunidad recibe el 30 % del AIA.', null, null, null, 'P-03'],
     '6': ['comunidad', 'Define sus proyectos', 'La comunidad define los proyectos que describirá en el PEA. Lo llena la comunidad, con apoyo del Organismo Colaborador si lo necesita, y lo presenta a CORFO para su aprobación.', null, null, null, 'TRM-027'],
     '7': ['comunidad', 'Pide a CORFO armar el PEA', 'La comunidad envía un correo a CORFO para poder confeccionar el PEA.', null, null, null, 'TRM-027'],
@@ -138,7 +138,7 @@
     '25': ['comunidad', 'Aclara y modifica en SGP', 'La comunidad aclara sus observaciones y las modifica en SGP. El gráfico no dibuja un regreso a la revisión: de aquí pasa al cierre (paso 26). El Manual (p. 10) agrega que CORFO revisa las respuestas, y que un gasto no aprobado puede presentarse en la rendición siguiente si se resolvieron las causas del rechazo.', null, null, null, 'TRM-015'],
     '26': ['corfo', 'Finaliza la rendición', 'CORFO finaliza el proceso de rendición.', null, null, null, 'TRM-029'],
     '27': ['comunidad', 'Solicita los aportes restantes', 'La comunidad solicita los aportes restantes del AIA.', null, null, null, 'TRM-029'],
-    '28': ['novandina', 'Transfiere los aportes', 'La empresa (SQM, hoy Novandina) transfiere los aportes. El flujograma no da plazo para esta transferencia.', 'sin plazo escrito', null, null, 'TRM-029']
+    '28': ['novandina', 'Transfiere los aportes', 'La empresa (SQM, hoy Novandino) transfiere los aportes. El flujograma no da plazo para esta transferencia.', 'sin plazo escrito', null, null, 'TRM-029']
   };
   var FLOW_BLOCKS = [
     { fase: 'F1', title: 'Convenio y primer dinero', ids: ['1', '2', '3', '4', '5'], edges: [['1', '2'], ['2', '3'], ['3', '4'], ['4', '5']] },

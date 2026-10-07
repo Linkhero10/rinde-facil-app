@@ -32,6 +32,14 @@
     return h('div', { class: 'acc' + (open ? ' open' : '') }, btn, body);
   }
 
+  /* lista desplegable de preferencias: el cambio se aplica al elegir, sin recargar la pantalla */
+  function prefSelect(id, options, current, onChange) {
+    var sel = h('select', { id: id, class: 'pref-select' }, options.map(function (o) { return h('option', { value: o[0] }, o[1]); }));
+    sel.value = current;
+    sel.addEventListener('change', function () { onChange(sel.value); });
+    return sel;
+  }
+
   function sidebar(route) {
     var s = RF.store.get(), p = project(), prog = L.progress(p || { done: {}, na: {} });
     var side = h('nav', { class: 'side', id: 'side', 'aria-label': 'Menú principal' });
@@ -62,14 +70,11 @@
       var open = route.name === 'tool' && g.tools.indexOf(route.id) >= 0;
       side.appendChild(accordion(g.id, g.name, '', g.tools.map(function (tid) { return h('a', { href: '#/h/' + tid, class: 'side-item tool' + (route.name === 'tool' && route.id === tid ? ' current' : '') }, h('span', { class: 'ck tool' }, UI.icon(RF.tools[tid].icon || 'file', 14)), h('span', { class: 'si-t' }, toolTitle(tid))); }), { open: open, cls: 'tools' }));
     });
-    var cvi = RF.data.convenioDe(RF.store.project());
     side.appendChild(h('div', { class: 'side-foot' },
-      h('p', { class: 'side-rules' }, 'Reglas: ' + cvi.vigencia),
       h('a', { href: '#/h/nube', class: 'side-link' + (route.name === 'tool' && route.id === 'nube' ? ' current' : '') }, UI.icon('cloud', 18), h('span', null, 'Nube y copias')),
       h('a', { href: '#/h/seguridad', class: 'side-link' + (route.name === 'tool' && route.id === 'seguridad' ? ' current' : '') }, UI.icon('shield', 18), h('span', null, 'Seguridad')),
-      h('button', { type: 'button', class: 'side-link', id: 'lockBtn', onclick: function () { RF.auth.lock('manual').catch(function () { RF.ui.toast('No se bloqueó la sesión porque los últimos cambios no se guardaron. Revisa el aviso superior y vuelve a intentarlo.', 'bad'); }); } }, UI.icon('shield', 18), h('span', null, 'Bloquear')),
-      h('button', { type: 'button', class: 'side-link', id: 'textBtn', onclick: function () { RF.app.cycleText(); } }, UI.icon('search', 18), h('span', { id: 'textLbl' }, 'Letra')),
-      h('button', { type: 'button', class: 'side-link', id: 'themeBtn', onclick: function () { RF.app.cycleTheme(); } }, UI.icon('sun', 18), h('span', { id: 'themeLbl' }, 'Tema'))));
+      h('div', { class: 'side-pref' }, h('label', { class: 'lbl-sm', for: 'prefText' }, 'Tamaño de letra'), prefSelect('prefText', [['normal', 'Normal'], ['grande', 'Grande'], ['muy-grande', 'Muy grande']], (s.ui.textSize || 'normal'), function (v) { RF.app.setText(v); })),
+      h('div', { class: 'side-pref' }, h('label', { class: 'lbl-sm', for: 'prefTheme' }, 'Tema'), prefSelect('prefTheme', [['system', 'Igual que mi dispositivo'], ['light', 'Claro'], ['dark', 'Oscuro']], (s.ui.theme || 'system'), function (v) { RF.app.setTheme(v); }))));
     return side;
   }
 

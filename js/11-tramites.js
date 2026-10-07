@@ -13,7 +13,7 @@
       steps: ['Abre una cuenta corriente para recibir el aporte.', 'Mejor si es exclusiva para este aporte: así es más fácil seguir cada peso. Si no puedes, crea un centro de costos separado en tu contabilidad.'],
       img: [['doc-004-79b28f1aad_p021.jpg', 'Manual, p. 21: cuenta corriente exclusiva']], src: ['Flujograma, paso 3', 'Manual CORFO, sección X (p. 21)'] },
     { id: 'P-03', fase: 'F1', kind: 'paso', title: 'Recibir el 30 % inicial', why: 'Es el primer pago del aporte. Desde aquí corren tus plazos.', who: 'novandina', when: 'Hasta 15 días hábiles después de la resolución de CORFO', need: ['Cuenta corriente abierta'],
-      steps: ['CORFO avisa que la resolución que aprueba el convenio está totalmente tramitada.', 'Novandina (ex SQM) transfiere el 30 % en un máximo de 15 días hábiles.', 'Anota la fecha en que llegó el dinero: desde ahí corren los 90 días del PEA.'],
+      steps: ['CORFO avisa que la resolución que aprueba el convenio está totalmente tramitada.', 'Novandino (ex SQM) transfiere el 30 % en un máximo de 15 días hábiles.', 'Anota la fecha en que llegó el dinero: desde ahí corren los 90 días del PEA.'],
       tools: ['proyecto'], img: [['flujograma_overview.jpg', 'Flujograma oficial, pasos 4 y 5']], src: ['Flujograma, pasos 4 y 5'] },
 
     /* ---------- Fase 2: PEA ---------- */
@@ -108,7 +108,7 @@
 
     /* ---------- Fase 6 ---------- */
     { id: 'TRM-029', fase: 'F6', title: 'Pedir los aportes restantes', why: 'Al cerrar la revisión de tu rendición, puedes pedir el resto del dinero.', who: 'comunidad', when: 'Cuando CORFO finaliza la revisión de la rendición', need: ['Rendición cerrada por CORFO'],
-      steps: ['Confirma que CORFO finalizó la revisión de tu rendición.', 'Presenta la solicitud de los aportes restantes.', 'Novandina (ex SQM) transfiere los aportes.', 'Recuerda: la rendición se hace cada 6 meses como máximo.'],
+      steps: ['Confirma que CORFO finalizó la revisión de tu rendición.', 'Presenta la solicitud de los aportes restantes.', 'Novandino (ex SQM) transfiere los aportes.', 'Recuerda: la rendición se hace cada 6 meses como máximo.'],
       tools: ['solicitud'], img: [['flujograma_overview.jpg', 'Flujograma oficial, pasos 26 a 28']], src: ['Flujograma, pasos 26 a 28', '«Introducción al Acuerdo», diapositiva 4'] },
 
     /* ---------- Ayuda ---------- */

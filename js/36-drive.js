@@ -340,6 +340,41 @@
     return saveWithFicha('acta', '', rec.date + ' · Acta de Mesa de Trabajo' + (rec.place ? ' · ' + rec.place : ''), rec, blob, actaMeta(rec), rec.date);
   }
 
+  /* «Últimos archivos guardados»: lo que ve la comunidad es el tipo de documento, a qué corresponde y cuándo se subió; sin rutas, números de carpeta ni nombres técnicos */
+  var MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  function describeSave(x) {
+    var name = String(x && x.name || ''), where = String(x && x.where || ''), parts = where.split(' / ');
+    var isFolder = /^Carpeta «/.test(name), isFicha = /\.datos(\s*\(|\.)/.test(name), isEstado = /^estado/i.test(name) || /seguridad/i.test(where);
+    var base = name.replace(/\.[A-Za-z0-9]{2,5}$/, '').replace(/\.datos/, '').replace(/\s*\(\d{8}-\d{6}\)\s*$/, '').replace(/_+/g, ' ').replace(/-\d{3,}$/, '').replace(/\s{2,}/g, ' ').trim();
+    var tipo, titulo = base, lugar = '';
+    var comp = /Comprobantes/i.test(where), plan = /Planificaci/i.test(where), anex = /Anexos/i.test(where), rend = /Rendici/i.test(where);
+    if (isFolder) { tipo = 'Carpeta'; titulo = name; lugar = parts.length > 1 ? 'Proyecto: ' + parts[1] : ''; }
+    else if (isEstado) { tipo = 'Copia de seguridad'; titulo = 'Copia de todos tus datos'; }
+    else if (/Actas/i.test(where)) { tipo = 'Acta'; }
+    else if (/oficiales/i.test(where)) { tipo = 'Documento oficial'; }
+    else if (comp) { tipo = isFicha ? 'Datos de la boleta' : 'Boleta'; }
+    else if (plan) { tipo = /gantt/i.test(name) ? 'Carta Gantt' : 'Planificación'; if (/gantt/i.test(name)) titulo = ''; }
+    else if (anex) { tipo = 'Anexo'; }
+    else if (rend) { tipo = 'Rendición'; }
+    else { tipo = 'Archivo'; }
+    var month = parts.filter(function (p) { return /^\d{4}-\d{2}$/.test(p); })[0];
+    if (month && !lugar) lugar = MONTHS[Number(month.slice(5)) - 1] + ' ' + month.slice(0, 4);
+    var d = x && x.at ? new Date(x.at) : null, fecha = d && !isNaN(d) ? d.toLocaleString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    return { tipo: tipo, titulo: titulo, lugar: lugar, fecha: fecha, url: x && x.url || '', folderUrl: x && x.folderUrl || '', ficha: isFicha, carpeta: isFolder, base: base, yaEstaba: !!(x && x.idempotent) };
+  }
+  /* una boleta y su ficha de datos se muestran como una sola línea; de las carpetas listas solo la última */
+  function friendlySaves(list) {
+    var seen = {}, out = [], infos = (list || []).map(describeSave), photos = {};
+    infos.forEach(function (i) { if (i.tipo === 'Boleta') photos[i.base] = true; });
+    infos.forEach(function (i) {
+      if (i.ficha && photos[i.base]) return;
+      var key = i.carpeta ? 'carpeta' : i.tipo + '|' + i.base + '|' + i.lugar;
+      if (seen[key]) return;
+      seen[key] = true; out.push(i);
+    });
+    return out;
+  }
+
   /* Deja armada la carpeta con su orden. */
   function setup(projectName_) {
     return RF.cloud.post('folders', { project: projectName_ || projectName() }, 60000).then(function (r) {
@@ -349,5 +384,5 @@
     });
   }
 
-  RF.drive = { flushOutbox: flushOutbox, enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, saveFicha: saveFicha, archiveExpense: archiveExpense, fichaText: fichaText, backupState: backupState, pushState: pushState, pullState: pullState, resolveConflict: resolveConflict, saveExternal: saveExternal, saveActa: saveActa, docMeta: docMeta, actaMeta: actaMeta, setup: setup, categoryFor: categoryFor, errText: errText };
+  RF.drive = { describeSave: describeSave, friendlySaves: friendlySaves, flushOutbox: flushOutbox, enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, saveFicha: saveFicha, archiveExpense: archiveExpense, fichaText: fichaText, backupState: backupState, pushState: pushState, pullState: pullState, resolveConflict: resolveConflict, saveExternal: saveExternal, saveActa: saveActa, docMeta: docMeta, actaMeta: actaMeta, setup: setup, categoryFor: categoryFor, errText: errText };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -49,15 +49,15 @@
   function excelSerial(iso) { var d = U.isoToDate(iso); if (!d) return null; return Math.round(d.getTime() / 86400000) + 25569; }
 
   /* estilos (índices en cellXfs) */
-  var STYLE = { normal: 0, bold: 1, header: 2, money: 3, date: 4, wrap: 5, moneyBold: 6, title: 7, pct: 8, note: 9 };
+  var STYLE = { normal: 0, bold: 1, header: 2, money: 3, date: 4, wrap: 5, moneyBold: 6, title: 7, pct: 8, note: 9, mark: 10 };
   var STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
     '<numFmts count="1"><numFmt numFmtId="165" formatCode="0&quot;%&quot;"/></numFmts>' +
     '<fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF555555"/><name val="Calibri"/></font></fonts>' +
-    '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD9E7E5"/><bgColor indexed="64"/></patternFill></fill></fills>' +
+    '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD9E7E5"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFD84D"/><bgColor indexed="64"/></patternFill></fill></fills>' +
     '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF999999"/></left><right style="thin"><color rgb="FF999999"/></right><top style="thin"><color rgb="FF999999"/></top><bottom style="thin"><color rgb="FF999999"/></bottom><diagonal/></border></borders>' +
     '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-    '<cellXfs count="10">' +
+    '<cellXfs count="11">' +
     '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
     '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
     '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>' +
@@ -68,6 +68,7 @@
     '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
     '<xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>' +
     '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+    '<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1"/>' +
     '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
 
   function cellXml(cell, r, c) {
@@ -139,7 +140,7 @@
   }
   function docToSheets(doc) {
     var rows = [], merges = [], widths = [34, 22, 22, 22, 22, 22, 22, 22];
-    var maxCols = 2;
+    var maxCols = 2, custom = {};
     function push(r) { rows.push(r); if (r.length > maxCols) maxCols = r.length; }
     push([{ v: doc.title, s: 'title' }]);
     if (doc.subtitle) push([{ v: doc.subtitle, s: 'note' }]);
@@ -151,11 +152,13 @@
       else if (b.t === 'kv') (b.rows || []).forEach(function (r) { push([{ v: r[0], s: 'bold' }, { v: r[1] === undefined ? '' : r[1], s: 'wrap' }]); });
       else if (b.t === 'table') {
         push([]);
+        if (b.widths) b.widths.forEach(function (w, i) { custom[i] = w; });
         push((b.head || []).map(function (x) { return { v: x, s: 'header' }; }));
         var first = rows.length + 1; /* 1-based, primera fila de datos */
         (b.rows || []).forEach(function (r) {
           push(r.map(function (v, i) {
             var ty = (b.types && b.types[i]) || 'text';
+            if (v === '■') return { v: '', s: 'mark' }; /* mes cubierto en la Carta Gantt: la celda completa va en amarillo, sin símbolo */
             if (v === null || v === undefined || v === '') return { v: '', s: ty === 'money' ? 'money' : 'wrap' };
             if (ty === 'money') return { v: Number(v) || 0, s: 'money' };
             if (ty === 'pct') return { v: Number(v) || 0, s: 'pct' };
@@ -176,7 +179,7 @@
       }
       else if (b.t === 'sign') { push([]); push(b.labels.map(function (l) { return { v: '______________________  ' + l, s: 'normal' }; })); }
     });
-    var cols = []; for (var i = 0; i < maxCols; i++) cols.push(widths[i] || 22);
+    var cols = []; for (var i = 0; i < maxCols; i++) cols.push(custom[i] || widths[i] || 22);
     return [{ name: doc.sheet || doc.title, rows: rows, cols: cols, merges: merges }];
   }
   function sumCol(rows, i) { var t = 0; rows.forEach(function (r) { t += Number(r[i]) || 0; }); return t; }
