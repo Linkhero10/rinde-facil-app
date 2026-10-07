@@ -369,7 +369,7 @@
     var warnE = evals.filter(function (x) { return x.r.status === 'warn'; }).length;
     if (!expenses.length) add(g4, 'info', 'Aún no anotas gastos.', { tool: 'gastos' });
     else {
-      if (bad) add(g4, 'error', bad + ' gasto(s) con errores que hay que corregir antes de enviar.', { tool: 'gastos', filtro: 'error' });
+      if (bad) add(g4, 'error', bad + ' gasto(s) pendientes de corregir antes de enviar.', { tool: 'gastos', filtro: 'error' });
       if (warnE) add(g4, 'warn', warnE + ' gasto(s) con avisos.', { tool: 'gastos', filtro: 'warn' });
       if (!bad && !warnE) add(g4, 'ok', expenses.length + ' gasto(s) sin problemas.');
     }

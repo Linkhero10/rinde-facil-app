@@ -9,7 +9,7 @@
   function ctx() { return RF.forms.ctxNow(); }
   function needProject() { return UI.callout('warn', 'Primero crea tu proyecto.', ' Ve a «Mi comunidad y proyectos» y agrega el primero.'); }
   function silent() { RF.store.update(function () { }, { silent: true }); }
-  var STATUS_LABEL = { ok: 'Listo', warn: 'Revisar', error: 'Falta algo' };
+  var STATUS_LABEL = { ok: 'Listo', warn: 'Revisar', error: 'Pendiente' };
 
   function newExpense() {
     return { id: U.uid('g'), cuenta: 'operacion', item: '', docType: 'boleta', folio: '', fecha: '', fechaPago: '', rutProveedor: '', proveedor: '', nombreComercial: '', neto: '', iva: '', total: '', montoRendir: '', pctUso: '', formaPago: 'transferencia', glosa: '', actId: '', has: {}, esViatico: false, servicioTecnico: false, esInmueble: false, verified: false, ocr: null, imgId: null, createdAt: new Date().toISOString() };
@@ -111,6 +111,8 @@
     camInput.addEventListener('change', function () { handleFiles(camInput.files); camInput.value = ''; });
 
     /* ---- lista ---- */
+    /* cuándo se subió o anotó el gasto (los anteriores a este dato usan la hora de la lectura de la foto, si la hay) */
+    function uploadedText(e) { var at = e.createdAt || (e.ocr && e.ocr.at); var d = at ? new Date(at) : null; return d && !isNaN(d) ? d.toLocaleString('es-CL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'; }
     function emptyExpenses() { return p.expenses.filter(function (x) { return !String(x.proveedor || '').trim() && !String(x.folio || '').trim() && !(num(x.total) > 0) && !String(x.glosa || '').trim() && !String(x.item || '').trim(); }); }
     function paintList() {
       var res = L.reconcile(p, c.community, U.todayISO(), RF.store.get().holidays);
@@ -122,7 +124,7 @@
         h('div', { class: 'stat' }, h('span', { class: 'stat-n' }, U.fmtCLP(tot)), h('span', null, 'a rendir')),
         h('div', { class: 'stat ok' }, h('span', { class: 'stat-n' }, String(counts.ok)), h('span', null, 'listos')),
         h('div', { class: 'stat warn' }, h('span', { class: 'stat-n' }, String(counts.warn)), h('span', null, 'por revisar')),
-        h('div', { class: 'stat bad' }, h('span', { class: 'stat-n' }, String(counts.error)), h('span', null, 'con errores'))),
+        h('div', { class: 'stat bad' }, h('span', { class: 'stat-n' }, String(counts.error)), h('span', null, 'pendientes'))),
         h('div', { class: 'row-actions' },
           UI.btn('Sacar foto al comprobante', { icon: 'camera', cls: 'primary', onclick: function () { camInput.click(); } }),
           UI.btn('Subir foto o PDF', { icon: 'file', onclick: function () { fileInput.click(); } }),
@@ -130,16 +132,16 @@
           emptyExpenses().length ? UI.btn('Quitar gastos vacíos (' + emptyExpenses().length + ')', { icon: 'trash', cls: 'ghost', title: 'Gastos sin datos, por ejemplo fotos que no se pudieron leer', onclick: function () { UI.confirmBox('¿Quitar ' + emptyExpenses().length + ' gasto(s) sin datos? Las fotos asociadas también se quitan.', 'Quitar').then(function (yes) { if (!yes) return; var ids = emptyExpenses().map(function (x) { return x.id; }); p.expenses.filter(function (x) { return ids.indexOf(x.id) >= 0 && x.imgId; }).forEach(function (x) { RF.blobs.del(x.imgId); }); p.expenses = p.expenses.filter(function (x) { return ids.indexOf(x.id) < 0; }); silent(); paint(); }); } }) : null),
         h('div', { class: 'expense-drop-wrap' }, UI.fileDrop(fileInput, { kind: 'expense', multiple: true, label: 'Suelta aquí las fotos o PDF', hint: 'La foto se guarda en este dispositivo y, si el OCR está conectado, se envía para leerla. No va al Drive hasta que revises y confirmes.', invalidText: 'Ese archivo no se puede usar como comprobante. Elige una foto compatible o un PDF.', onFiles: handleFiles })),
         RF.cloud.configured() ? h('p', { class: 'hint' }, 'Las fotos se leen en la nube con Google Cloud Vision, en la cuenta de tu comunidad. Siempre tienes que revisar los datos.') : UI.callout('info', 'Lectura automática desactivada.', ' Puedes anotar los gastos a mano o conectar el servicio en la nube en «Nube y copias».')]));
-      var chips = h('div', { class: 'chips' }, [['all', 'Todos'], ['error', 'Con errores'], ['warn', 'Por revisar'], ['ok', 'Listos']].map(function (f) { return h('button', { type: 'button', class: 'chip' + (st.filter === f[0] ? ' on' : ''), onclick: function () { st.filter = f[0]; paint(); } }, f[1]); }));
+      var chips = h('div', { class: 'chips' }, [['all', 'Todos'], ['error', 'Pendientes'], ['warn', 'Por revisar'], ['ok', 'Listos']].map(function (f) { return h('button', { type: 'button', class: 'chip' + (st.filter === f[0] ? ' on' : ''), onclick: function () { st.filter = f[0]; paint(); } }, f[1]); }));
       var rows = p.expenses.filter(function (e) { return st.filter === 'all' || evs[e.id].status === st.filter; }).slice().sort(function (a, b) { return String(b.fecha || 'z').localeCompare(String(a.fecha || 'z')); }).map(function (e) {
         var r = evs[e.id];
         return h('tr', { class: 'clickable', tabindex: 0, onclick: function () { st.editing = e.id; paint(); }, onkeydown: function (ev) { if (ev.key === 'Enter') { st.editing = e.id; paint(); } } },
           h('td', { 'data-label': 'Estado' }, UI.badge(STATUS_LABEL[r.status], r.status === 'ok' ? 'ok' : r.status === 'warn' ? 'warn' : 'bad')),
-          h('td', { 'data-label': 'Fecha' }, e.fecha ? U.fmtDateShort(e.fecha) : '—'), h('td', { 'data-label': 'Proveedor' }, e.proveedor || 'Sin proveedor'),
+          h('td', { 'data-label': 'Fecha del documento' }, e.fecha ? U.fmtDateShort(e.fecha) : '—'), h('td', { 'data-label': 'Subido' }, uploadedText(e)), h('td', { 'data-label': 'Proveedor' }, e.proveedor || 'Sin proveedor'),
           h('td', { 'data-label': 'Documento' }, ((D.DOC_BY_ID[e.docType] || {}).name || '—') + (e.folio ? ' N° ' + e.folio : '')), h('td', { 'data-label': 'Cuenta' }, (D.CUENTA_BY_ID[e.cuenta] || {}).name || '—'),
           h('td', { class: 'r', 'data-label': 'A rendir' }, U.fmtCLP(num(e.montoRendir))), h('td', { 'data-label': 'Problemas' }, r.errors ? r.errors + ' error(es)' : r.warns ? r.warns + ' aviso(s)' : '✓'));
       });
-      root.appendChild(UI.section('Tus gastos', [p.expenses.length ? chips : null, p.expenses.length ? h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid list-grid' }, h('thead', null, h('tr', null, ['Estado', 'Fecha', 'Proveedor', 'Documento', 'Cuenta', 'A rendir', 'Problemas'].map(function (x, i) { return h('th', { class: i === 5 ? 'r' : '' }, x); }))), h('tbody', null, rows))) : UI.empty('Aún no anotas gastos. Saca una foto al primer comprobante o anótalo a mano.')]));
+      root.appendChild(UI.section('Tus gastos', [p.expenses.length ? chips : null, p.expenses.length ? h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid list-grid' }, h('thead', null, h('tr', null, ['Estado', 'Fecha del documento', 'Subido', 'Proveedor', 'Documento', 'Cuenta', 'A rendir', 'Problemas'].map(function (x, i) { return h('th', { class: i === 6 ? 'r' : '' }, x); }))), h('tbody', null, rows))) : UI.empty('Aún no anotas gastos. Saca una foto al primer comprobante o anótalo a mano.')]));
       /* totales por cuenta */
       root.appendChild(UI.section('Por cuenta', [h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid' }, h('thead', null, h('tr', null, ['Cuenta', 'Gastos', 'Rendido', 'Presupuesto'].map(function (x, i) { return h('th', { class: i ? 'r' : '' }, x); }))), h('tbody', null, D.CUENTAS.map(function (cu) { var x = totals[cu.id], tope = x.presupuestado > 0 ? x.presupuestado : x.aprobado; return h('tr', { class: tope > 0 && x.rendido > tope ? 'row-bad' : '' }, h('th', { scope: 'row' }, cu.name), h('td', { class: 'r' }, String(x.cantidad)), h('td', { class: 'r' }, U.fmtCLP(x.rendido)), h('td', { class: 'r' }, tope ? U.fmtCLP(tope) : '—')); }))))]));
       root.appendChild(UI.section('Sacar la rendición', [UI.exportBar(function () { return rendicionDoc(p, c.community); }, 'rendicion-gastos'), h('div', { class: 'row-actions' }, UI.btn('Carpeta de respaldos por gasto', { icon: 'list', onclick: function () { RF.exp.printDoc(expedienteDoc(p, c.community)); } }), UI.btn('Ver el cuadre completo', { icon: 'check', onclick: function () { location.hash = '#/h/revision'; } }))]));

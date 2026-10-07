@@ -841,6 +841,7 @@ await step('15l. Mejoras del recorrido: volver a la lista desde el menú, feriad
   /* gastos vacíos: se pueden quitar */
   await page.getByRole('button', { name: 'Anotar a mano' }).click(); await page.getByRole('button', { name: 'Volver a la lista' }).click();
   ok(await page.getByRole('button', { name: /Quitar gastos vacíos/ }).count() === 1, 'aparece «Quitar gastos vacíos»');
+  { const lista = await page.textContent('.list-grid'); ok(/Pendiente/.test(lista) && !/Falta algo/.test(lista), 'el estado dice «Pendiente»'); ok(/Fecha del documento/.test(lista) && /Subido/.test(lista), 'la lista muestra la fecha del documento y cuándo se subió'); }
   await page.getByRole('button', { name: /Quitar gastos vacíos/ }).click(); await page.locator('dialog[open] button').last().click();
   await page.waitForTimeout(300);
   ok(await page.getByRole('button', { name: /Quitar gastos vacíos/ }).count() === 0, 'se quitaron los gastos vacíos');
