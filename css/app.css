@@ -580,3 +580,8 @@ body.menu-open{overflow:hidden}
 .cal-yearopt.cur{background:var(--action);color:var(--action-ink);border-color:var(--action)}
 .cal-yearform{display:flex;gap:10px;align-items:center;margin-top:10px;font-size:14px}
 .cal-yearin{width:90px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);color:var(--ink);font:600 15px var(--mono)}
+/* aviso de versión nueva: los dos botones se leen siempre (el botón «Después» quedaba sin texto visible sobre el fondo del aviso) */
+.update-bar{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.update-bar .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--ink-2)}
+.update-bar .btn.ghost:hover{background:var(--action-soft)}
+.update-bar .btn.primary{background:var(--action);color:var(--action-ink);border-color:var(--action)}
