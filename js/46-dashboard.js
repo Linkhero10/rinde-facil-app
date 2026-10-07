@@ -70,8 +70,8 @@
       var seen = {}; expenses.forEach(function (e) { var m = String(e.fecha || '').slice(0, 7); if (/^\d{4}-\d{2}$/.test(m)) seen[m] = true; });
       var keys = Object.keys(seen).sort(); if (!keys.length) return [];
       var out = [], cur = keys[0], end = keys[keys.length - 1];
-      while (cur <= end && out.length < 36) { out.push(cur); var y = +cur.slice(0, 4), m = +cur.slice(5, 7); m++; if (m > 12) { m = 1; y++; } cur = y + '-' + (m < 10 ? '0' : '') + m; }
-      return out.slice(-18);
+      while (cur <= end && out.length < 60) { out.push(cur); var y = +cur.slice(0, 4), m = +cur.slice(5, 7); m++; if (m > 12) { m = 1; y++; } cur = y + '-' + (m < 10 ? '0' : '') + m; }
+      return out;
     }
     function paintAccts() {
       U.clear(acct);
@@ -93,26 +93,50 @@
       if (st.cuenta || st.month) legend.appendChild(UI.btn('Quitar filtros', { cls: 'ghost small', onclick: function () { st.cuenta = ''; st.month = ''; paintAll(false); } }));
       legend.appendChild(h('span', { class: 'muted' }, st.cuenta || st.month ? 'Filtrando: ' + [st.cuenta ? D.CUENTA_BY_ID[st.cuenta].name : '', st.month ? monthLabel(st.month) : ''].filter(Boolean).join(' · ') : 'Toca una cuenta o un mes para filtrar la lista de gastos.'));
     }
+    /* gasto mes a mes: muestra una ventana de meses (los últimos 12 o todos); con más meses se desliza con las flechas o con el scroll */
+    function compact(n) { return n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace('.', ',') + ' M' : n >= 1e3 ? Math.round(n / 1e3) + ' mil' : String(Math.round(n)); }
     function paintChart() {
       U.clear(chart);
-      var months = monthsOf();
-      if (!months.length) { chart.appendChild(UI.empty('Cuando anotes gastos con su fecha, aquí ves cuánto rendiste cada mes.')); return; }
-      var sums = {}; months.forEach(function (m) { sums[m] = {}; D.CUENTAS.forEach(function (c) { sums[m][c.id] = 0; }); });
+      var all = monthsOf();
+      if (!all.length) { chart.appendChild(UI.empty('Cuando anotes gastos con su fecha, aquí ves cuánto rendiste cada mes.')); return; }
+      if (st.range == null) st.range = all.length > 12 ? '12' : 'todo';
+      var win = st.range === '12' && all.length > 12;
+      if (win) { if (st.start == null) st.start = all.length - 12; st.start = Math.max(0, Math.min(all.length - 12, st.start)); }
+      var months = win ? all.slice(st.start, st.start + 12) : all;
+      var sums = {}; all.forEach(function (m) { sums[m] = {}; D.CUENTAS.forEach(function (c) { sums[m][c.id] = 0; }); });
       expenses.forEach(function (e) { var m = String(e.fecha || '').slice(0, 7); if (sums[m] && sums[m][e.cuenta] != null) sums[m][e.cuenta] += num(e.montoRendir || e.total); });
       var totals = months.map(function (m) { return D.CUENTAS.reduce(function (a, c) { return a + sums[m][c.id]; }, 0); }), max = Math.max.apply(null, totals.concat([1]));
-      var bw = 34, gap = 14, left = 8, W = left + months.length * (bw + gap), H = 190, top = 14, base = H - 26, ph = base - top;
-      var g = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'dash-svg', role: 'group', 'aria-label': 'Gastos rendidos por mes' });
-      [0.5, 1].forEach(function (f) { g.appendChild(svg('line', { x1: 0, x2: W, y1: base - ph * f, y2: base - ph * f, class: 'dash-grid' })); });
+      /* controles: rango y flechas */
+      if (all.length > 12) {
+        chart.appendChild(h('div', { class: 'dash-range' },
+          win ? h('button', { type: 'button', class: 'cal-arrow', 'aria-label': 'Meses anteriores', disabled: st.start <= 0, onclick: function () { st.start -= 3; paintChart(); } }, '‹') : null,
+          win ? h('button', { type: 'button', class: 'cal-arrow', 'aria-label': 'Meses siguientes', disabled: st.start >= all.length - 12, onclick: function () { st.start += 3; paintChart(); } }, '›') : null,
+          h('span', { class: 'muted' }, monthLabel(months[0]) + ' a ' + monthLabel(months[months.length - 1])),
+          h('div', { class: 'seg', role: 'group', 'aria-label': 'Cuántos meses ver' }, h('button', { type: 'button', 'aria-pressed': win ? 'true' : 'false', onclick: function () { st.range = '12'; st.start = all.length - 12; paintChart(); } }, 'Últimos 12'), h('button', { type: 'button', 'aria-pressed': win ? 'false' : 'true', onclick: function () { st.range = 'todo'; paintChart(); } }, 'Todo'))));
+      }
+      var bw = 34, gap = 14, left = 58, top = 14, base = 168, ph = base - top, W = left + months.length * (bw + gap) + 6, H = 212;
+      var g = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, class: 'dash-svg', role: 'group', 'aria-label': 'Gastos rendidos por mes' });
+      [0, 0.5, 1].forEach(function (f) {
+        g.appendChild(svg('line', { x1: left - 6, x2: W, y1: base - ph * f, y2: base - ph * f, class: 'dash-grid' }));
+        var lab = svg('text', { x: left - 12, y: base - ph * f + 4, 'text-anchor': 'end', class: 'dash-axis' }); lab.textContent = f === 0 ? '$ 0' : '$ ' + compact(max * f); g.appendChild(lab);
+      });
+      var nowM = U.todayISO().slice(0, 7);
       months.forEach(function (m, i) {
-        var x = left + i * (bw + gap), y = base, grp = svg('g', { class: 'dash-bar' + (st.month === m ? ' on' : '') + (st.month && st.month !== m ? ' dim' : ''), tabindex: '0', role: 'button', 'aria-label': monthLabel(m) + ': ' + money(totals[i]), 'aria-pressed': st.month === m ? 'true' : 'false' });
+        var x = left + i * (bw + gap), y = base, mm = m.slice(5, 7);
+        var grp = svg('g', { class: 'dash-bar' + (st.month === m ? ' on' : '') + (st.month && st.month !== m ? ' dim' : ''), tabindex: '0', role: 'button', 'aria-label': monthLabel(m) + ': ' + money(totals[i]), 'aria-pressed': st.month === m ? 'true' : 'false' });
         D.CUENTAS.forEach(function (c) {
           var v = sums[m][c.id]; if (!v) return;
-          var hh = Math.max(2, v * ph / max); y -= hh;
+          var hh = Math.max(3, v * ph / max); y -= hh;
           grp.appendChild(svg('rect', { x: x, y: y, width: bw, height: hh, rx: 2, style: 'fill:' + COLOR[c.id] + ';opacity:' + (st.cuenta && st.cuenta !== c.id ? '.22' : '1') }));
         });
-        grp.appendChild(svg('rect', { x: x - 3, y: top, width: bw + 6, height: base - top + 22, fill: 'transparent', class: 'dash-hit' }));
-        var t = svg('text', { x: x + bw / 2, y: H - 8, 'text-anchor': 'middle', class: 'dash-axis' }); t.textContent = MONTHS[+m.slice(5, 7) - 1]; grp.appendChild(t);
-        if (m.slice(5, 7) === '01' || i === 0) { var yr = svg('text', { x: x + bw / 2, y: H + 4, 'text-anchor': 'middle', class: 'dash-axis dim' }); yr.textContent = m.slice(0, 4); grp.appendChild(yr); }
+        grp.appendChild(svg('rect', { x: x - 3, y: top, width: bw + 6, height: H - top, fill: 'transparent', class: 'dash-hit' }));
+        var t = svg('text', { x: x + bw / 2, y: base + 16, 'text-anchor': 'middle', class: 'dash-axis' + (m === nowM ? ' now' : '') }); t.textContent = MONTHS[+mm - 1]; grp.appendChild(t);
+        if (!totals[i]) { grp.appendChild(svg('line', { x1: x + 6, x2: x + bw - 6, y1: base - 1, y2: base - 1, class: 'dash-zero' })); }
+        /* el año se escribe completo en la primera barra y cada enero, con una raya que separa los años */
+        if (mm === '01' || i === 0) {
+          if (mm === '01' && i > 0) g.appendChild(svg('line', { x1: x - gap / 2, x2: x - gap / 2, y1: top, y2: H - 6, class: 'dash-year-line' }));
+          var yr = svg('text', { x: mm === '01' && i > 0 ? x - gap / 2 + 6 : x, y: base + 34, 'text-anchor': 'start', class: 'dash-year' }); yr.textContent = m.slice(0, 4); g.appendChild(yr);
+        }
         function lines() { return [monthLabel(m) + ': ' + money(totals[i])].concat(D.CUENTAS.filter(function (c) { return sums[m][c.id]; }).map(function (c) { return c.name + ': ' + money(sums[m][c.id]); })).concat(['Toca para filtrar la lista']); }
         grp.addEventListener('mousemove', function (ev) { showTip(ev, lines()); }); grp.addEventListener('mouseleave', hideTip); grp.addEventListener('focus', function (ev) { showTip(ev, lines()); }); grp.addEventListener('blur', hideTip);
         function pick() { st.month = st.month === m ? '' : m; paintAll(false); }
@@ -120,6 +144,7 @@
         g.appendChild(grp);
       });
       var wrap = h('div', { class: 'dash-scroll' }); wrap.appendChild(g); chart.appendChild(wrap);
+      if (!win) [0, 80, 250].forEach(function (ms) { setTimeout(function () { if (wrap.scrollWidth > wrap.clientWidth) wrap.scrollLeft = wrap.scrollWidth; }, ms); }); /* con todos los meses, se parte viendo lo más reciente */
       chart.appendChild(h('div', { class: 'dash-keys' }, D.CUENTAS.map(function (c) { return h('span', null, h('i', { style: { background: COLOR[c.id] } }), c.name); })));
     }
     function paintList() {
@@ -145,7 +170,7 @@
     if (!flagged.length) todo.appendChild(h('p', { class: 'dash-ok' }, 'Nada pendiente por ahora: lo anotado calza.'));
     else {
       var ul2 = h('ul', { class: 'dash-rows' });
-      flagged.slice(0, 5).forEach(function (i) { ul2.appendChild(h('li', null, h('span', { class: 'todo-i ' + i.level }, i.level === 'error' ? 'Error' : 'Aviso'), h('span', { class: 'todo-m' }, i.msg), i.tool && RF.tools[i.tool] ? h('a', { class: 'btn ghost small', href: '#/h/' + i.tool }, 'Ir') : null)); });
+      flagged.slice(0, 5).forEach(function (i) { ul2.appendChild(h('li', null, h('span', { class: 'todo-i ' + i.level }, i.level === 'error' ? 'Error' : 'Aviso'), h('span', { class: 'todo-m' }, i.msg), RF.rendicion && RF.rendicion.fixTarget(i.fix) ? h('a', { class: 'btn ghost small', href: RF.rendicion.fixTarget(i.fix) }, 'Arreglar') : null)); });
       todo.appendChild(ul2); todo.appendChild(h('a', { class: 'btn ghost small', href: '#/h/revision' }, 'Ver toda la revisión' + (flagged.length > 5 ? ' (' + flagged.length + ')' : '')));
     }
 

@@ -167,11 +167,11 @@ await step('1. Al inicio pide los datos de la comunidad y crea el proyecto', asy
 await step('2. El menú lateral es un acordeón por fase con avance', async () => {
   const heads = page.locator('.acc-head');
   ok((await heads.count()) >= 6, 'seis fases + herramientas');
-  const f2 = heads.filter({ hasText: 'El PEA' });
+  const f2 = page.locator('.acc-head', { has: page.locator('.acc-title', { hasText: /^PEA$/ }) });
   eq(await f2.getAttribute('aria-expanded'), 'false');
   await f2.click();
   eq(await f2.getAttribute('aria-expanded'), 'true');
-  ok(await page.locator('.side-item', { hasText: 'Armar el PEA' }).isVisible(), 'se ve el trámite dentro de la fase');
+  ok(await page.locator('.side-item', { hasText: 'PEA' }).first().isVisible(), 'se ve el trámite dentro de la fase');
   await f2.click();
   eq(await f2.getAttribute('aria-expanded'), 'false');
 });
@@ -1087,8 +1087,22 @@ await step('15r. Anexos como documentos en la ruta (con firma en la app y casill
 });
 
 await step('15s. Mi ruta como panel (cuentas, meses, gastos, filtros), expediente completo en un archivo y fuegos artificiales al terminar', async () => {
+  /* meses de sobra: 22 meses de gastos para ver cómo se comporta el gráfico a futuro */
+  await page.evaluate(() => { const p = RF.store.project(); for (let i = 0; i < 22; i++) { const d = new Date(Date.UTC(2025, i, 10)); p.expenses.push({ id: 'g-mes-' + i, createdAt: d.toISOString(), cuenta: i % 2 ? 'operacion' : 'inversion', docType: 'boleta', folio: String(7000 + i), fecha: d.toISOString().slice(0, 10), proveedor: 'Prueba mes ' + i, neto: 0, iva: 0, total: 10000 * (i + 1), montoRendir: 10000 * (i + 1), formaPago: 'transferencia', glosa: 'x', actId: '', has: {}, verified: true }); } RF.store.update(function () { }, { silent: true }); });
   await go('#/');
   await page.waitForSelector('.dash');
+  ok(await page.locator('.dash-bar').count() === 12, 'con más de 12 meses se ven los últimos 12: ' + await page.locator('.dash-bar').count());
+  const alto = await page.evaluate(() => { const sv = document.querySelector('.dash-svg'); const vb = sv.viewBox.baseVal.height; const ys = [...sv.querySelectorAll('text')].map(t => +t.getAttribute('y')); return { vb, maxY: Math.max(...ys) }; });
+  ok(alto.maxY < alto.vb - 3, 'el año y los meses caben dentro del gráfico (no quedan cortados): ' + JSON.stringify(alto));
+  ok(await page.locator('.dash-year').count() >= 2, 'se escribe el año al inicio y en cada enero');
+  const antesRango = await page.locator('.dash-range span.muted').textContent();
+  await page.getByRole('button', { name: 'Meses anteriores' }).click();
+  ok(await page.locator('.dash-range span.muted').textContent() !== antesRango, 'las flechas desplazan la ventana de meses');
+  await page.getByRole('button', { name: 'Todo', exact: true }).click();
+  ok(await page.locator('.dash-bar').count() >= 22, 'con «Todo» se ven todos los meses (con scroll): ' + await page.locator('.dash-bar').count());
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => { const w = document.querySelector('.dash-scroll'); return w.scrollWidth > w.clientWidth ? w.scrollLeft > 0 : true; }), 'con todos los meses parte mostrando lo más reciente');
+  ok(await page.locator('.home-check .check-list li').count() === await page.locator('.home-check .check-list li a:has-text("Arreglar")').count(), '«¿Cuadra todo?»: cada aviso trae su botón para ir a arreglarlo');
   ok(await page.locator('.dash-tile').count() === 4 && await page.locator('.dash-phase').count() === 6, 'hay cuatro cifras y las seis fases');
   ok(await page.locator('.dash-acct').count() === 4, 'una barra por cuenta');
   const antes = await page.locator('.dash-rows .dr-link').count();
@@ -1106,12 +1120,24 @@ await step('15s. Mi ruta como panel (cuentas, meses, gastos, filtros), expedient
   /* expediente completo */
   await go('#/h/expediente');
   ok(await page.locator('.exp-parts li').count() >= 10, 'el expediente lista lo que incluye');
-  await page.getByRole('button', { name: 'Word' }).first().click();
+  /* vista previa en Word, PDF y Excel */
+  const marco = page.frameLocator('.exp-frame');
+  await page.waitForSelector('.exp-frame');
+  ok(/Expediente del proyecto/i.test(await marco.locator('body').textContent()) && await marco.locator('figure.chart svg').count() >= 3 && await marco.locator('.cover').count() === 1, 'la vista previa en Word trae portada y gráficos');
+  await page.getByRole('button', { name: 'PDF', exact: true }).first().click();
+  ok(await page.frameLocator('.exp-frame').locator('figure.chart svg').count() >= 3, 'la vista previa en PDF trae los gráficos');
+  await page.getByRole('button', { name: 'Excel', exact: true }).first().click();
+  ok(await page.locator('.xl-tab').count() >= 6 && /Índice/.test(await page.locator('.xl-tabs').textContent()), 'la vista previa de Excel trae una hoja por sección y un índice');
+  await page.locator('.xl-tab').nth(1).click();
+  ok(await page.locator('.xl-grid tbody tr').count() >= 3, 'cada hoja se ve como tabla de Excel');
+  await page.getByRole('button', { name: 'Word', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Word' }).last().click();
   const fexp = tmp('expediente.docx'); await saveDownload(page, fexp);
   const docxText = fs.readFileSync(fexp, 'latin1');
-  ok(docxText.includes('word/document.xml') && fs.statSync(fexp).size > 4000, 'se genera el Word del expediente');
+  ok(docxText.includes('word/document.xml') && docxText.includes('word/media/firma1.png') && docxText.includes('word/footer1.xml') && fs.statSync(fexp).size > 8000, 'el Word del expediente trae gráficos como imagen y pie de página');
   const bloques = await page.evaluate(() => RF.dossier.build(RF.store.project(), RF.store.get()).blocks.filter(b => b.t === 'h').map(b => b.text));
   ok(bloques.some(t => /Datos de la comunidad/.test(t)) && bloques.some(t => /Todos los gastos/.test(t)) && bloques.some(t => /Avance de la ruta/.test(t)), 'incluye datos, gastos escritos y ruta: ' + bloques.slice(0, 6).join(' | '));
+  await page.evaluate(() => { const p = RF.store.project(); p.expenses = p.expenses.filter(x => !/^g-mes-/.test(x.id)); RF.store.update(function () { }, { silent: true }); });
   /* fuegos artificiales y felicitaciones */
   const fw = await page.evaluate(() => { RF.dash.fireworks(); return !!document.querySelector('canvas.fireworks') || window.matchMedia('(prefers-reduced-motion: reduce)').matches; });
   ok(fw, 'los fuegos artificiales se dibujan (o se omiten si pidió menos movimiento)');

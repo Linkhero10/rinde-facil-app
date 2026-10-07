@@ -178,6 +178,7 @@
       var d;
       try { d = getDoc(); } catch (e) { toast('No se pudo armar el documento: ' + e.message, 'bad'); return; }
       if (!d) return;
+      if (kind === 'doc' && RF.exp.rasterizeCharts && (d.blocks || []).some(function (b) { return b.t === 'chart' && !b.png; })) { RF.exp.rasterizeCharts(d).then(function (d2) { RF.exp.downloadWord(d2, base); if (RF.activity) RF.activity.log('documento', 'Sacó «' + String(d.title || base).slice(0, 80) + '» (Word).'); }, function () { toast('No se pudieron preparar los gráficos para el Word.', 'bad'); }); return; }
       if (RF.activity && kind !== 'txt') RF.activity.log('documento', 'Sacó «' + String(d.title || base).slice(0, 80) + '» (' + ({ xlsx: 'Excel', doc: 'Word', pdf: 'PDF', txtfile: 'texto', drive: 'Drive' }[kind] || kind) + ').');
       if (kind === 'xlsx') RF.exp.downloadDocXlsx(d, base);
       else if (kind === 'doc') RF.exp.downloadWord(d, base);

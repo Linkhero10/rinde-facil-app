@@ -610,5 +610,5 @@
     return page('Nube y copias', 'Lo que quede en este dispositivo puedes respaldarlo y llevarlo a otro.', root);
   } };
 
-  RF.rendicion = { rendicionDoc: rendicionDoc, expedienteDoc: expedienteDoc, newExpense: newExpense, addExpenseWithReceipt: addExpenseWithReceipt };
+  RF.rendicion = { fixTarget: fixTarget, rendicionDoc: rendicionDoc, expedienteDoc: expedienteDoc, newExpense: newExpense, addExpenseWithReceipt: addExpenseWithReceipt };
 })(typeof window !== 'undefined' ? window : globalThis);

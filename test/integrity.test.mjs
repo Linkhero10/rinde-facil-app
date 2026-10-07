@@ -339,3 +339,13 @@ test('firmas guardadas: se unen entre equipos sin duplicar', () => {
   RF.store.mergeRemote(remote); RF.store.mergeRemote(remote);
   assert.equal(RF.store.get().signatures.length, 2);
 });
+
+test('«¿Cuadra todo?»: todo aviso o error trae a dónde ir para arreglarlo', () => {
+  const RF = app(), s = state(RF), p = s.projects[0];
+  p.name = 'Mi proyecto'; p.expenses = [{ id: 'e1', docType: 'factura', fecha: '2026-09-10', proveedor: 'A', iva: 190000, neto: 1000000, total: 1190000, cuenta: 'operacion', has: {} }];
+  p.observations = [{ id: 'o1', titulo: 'x', recibida: '2020-01-02', respondida: false }];
+  const res = RF.logic.reconcile(p, { ivaModo: 'recupera' }, '2026-10-07', []);
+  const sinDestino = res.groups.flatMap(g => g.items.filter(i => i.level !== 'ok' && !i.fix).map(i => g.id + ': ' + i.msg));
+  assert.equal(sinDestino.length, 0, 'sin destino: ' + sinDestino.join(' | '));
+  assert.ok(res.groups.flatMap(g => g.items).filter(i => i.level === 'error' || i.level === 'warn').length >= 3);
+});

@@ -705,3 +705,21 @@ body.menu-open{overflow:hidden}
 .fireworks{position:fixed;inset:0;width:100vw;height:100vh;z-index:250;pointer-events:none}
 /* expediente */
 .exp-parts{list-style:none;margin:0;padding:0;display:grid;gap:2px}.exp-parts li{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;padding:9px 6px;border-bottom:1px solid var(--line);color:var(--muted)}.exp-parts li.on{color:var(--ink)}.ep-ck{color:var(--ok);font-weight:800}.ep-n{font:600 13px var(--mono)}
+
+.dash-svg{width:auto;max-width:none;min-width:0;height:auto}
+.dash-axis.now{fill:var(--action);font-weight:800}
+.dash-year{font:800 12px var(--display);fill:var(--ink-2);letter-spacing:.06em}
+.dash-year-line{stroke:var(--line);stroke-width:1.5}
+.dash-zero{stroke:var(--line);stroke-width:2;stroke-linecap:round}
+.dash-range{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin:0 0 8px}
+.dash-range .cal-arrow:disabled{opacity:.35;cursor:default}
+.dash-scroll{padding-bottom:4px}
+
+.exp-prev{display:grid;gap:10px}.exp-frame{width:100%;height:680px;border:1px solid var(--line);border-radius:var(--radius);background:#d9d9d9}
+.xl{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:#fff;color:#111}
+.xl-bar{display:flex;gap:8px;align-items:center;padding:6px 12px;background:#1d6f42;color:#fff;font:600 13px var(--body)}.xl-ico{display:grid;place-items:center;width:20px;height:20px;border-radius:3px;background:#fff;color:#1d6f42;font-weight:800}
+.xl-scroll{overflow:auto;max-height:520px}.xl-grid{border-collapse:collapse;font:12.5px Calibri,Arial,sans-serif}
+.xl-grid th{background:#f3f3f3;color:#555;font-weight:600;border:1px solid #d4d4d4;padding:2px 8px;position:sticky;top:0;z-index:1}.xl-grid th.xl-rn{position:sticky;left:0;top:auto;text-align:center;min-width:34px}.xl-corner{left:0;z-index:2}
+.xl-c{border:1px solid #e3e3e3;padding:2px 8px;min-width:90px;max-width:340px;white-space:pre-wrap;vertical-align:top;background:#fff}.xl-c.num{text-align:right;font-variant-numeric:tabular-nums}
+.xl-title{font-weight:800;font-size:15px}.xl-bold{font-weight:700}.xl-header{background:#d9e7e5!important;font-weight:700}.xl-note{color:#666;font-style:italic}.xl-moneyBold{font-weight:700;text-align:right}
+.xl-tabs{display:flex;gap:2px;flex-wrap:wrap;padding:4px 8px;background:#f3f3f3;border-top:1px solid #d4d4d4}.xl-tab{border:1px solid #d4d4d4;border-bottom:0;background:#e7e7e7;color:#333;padding:4px 12px;font:12.5px Calibri,Arial,sans-serif;cursor:pointer;border-radius:3px 3px 0 0}.xl-tab.on{background:#fff;font-weight:700;color:#1d6f42}

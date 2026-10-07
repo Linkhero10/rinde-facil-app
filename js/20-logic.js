@@ -389,7 +389,8 @@
   function reconcile(project, community, todayIso, holidays) {
     var groups = [];
     function grp(id, title) { var g = { id: id, title: title, items: [] }; groups.push(g); return g; }
-    function add(g, level, msg, fix) { g.items.push({ level: level, msg: msg, fix: fix || null }); }
+    var GROUP_FIX = { proyecto: { tool: 'proyecto' }, plan: { tool: 'necesidades' }, plazos: { tool: 'plazos' }, planificacion: { tool: 'presupuesto' }, gastos: { tool: 'gastos' }, anexos: { tool: 'f29' }, informe: { tramite: 'TRM-016' }, orden: { tramite: 'TRM-027' } };
+    function add(g, level, msg, fix) { g.items.push({ level: level, msg: msg, fix: fix || (level === 'ok' ? null : GROUP_FIX[g.id] || null) }); }
     var today = todayIso || U.todayISO();
     var expenses = project.expenses || [];
     var t = totalsByCuenta(project);

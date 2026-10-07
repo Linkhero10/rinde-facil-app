@@ -138,7 +138,10 @@
     if (type === 'date') return U.fmtDateShort(v);
     return String(v);
   }
-  function docToSheets(doc) {
+  function X(doc, fmt) { return RF.exp && RF.exp.expand ? RF.exp.expand(doc, fmt) : doc; }
+  function docToSheets(doc) { return doc.sheetsBy && RF.exp && RF.exp.sheetsPro ? RF.exp.sheetsPro(doc, docToSheetsBase) : docToSheetsBase(doc); }
+  function docToSheetsBase(doc) {
+    doc = X(doc, 'xlsx');
     var rows = [], merges = [], widths = [34, 22, 22, 22, 22, 22, 22, 22];
     var maxCols = 2, custom = {};
     function push(r) { rows.push(r); if (r.length > maxCols) maxCols = r.length; }
@@ -178,6 +181,7 @@
         }
       }
       else if (b.t === 'sign') { push([]); push(b.labels.map(function (l) { return { v: '______________________  ' + l, s: 'normal' }; })); }
+      else if (b.t === 'big') { push([]); push([{ v: b.text, s: 'bold' }]); }
     });
     var cols = []; for (var i = 0; i < maxCols; i++) cols.push(custom[i] || widths[i] || 22);
     return [{ name: doc.sheet || doc.title, rows: rows, cols: cols, merges: merges }];
@@ -185,6 +189,7 @@
   function sumCol(rows, i) { var t = 0; rows.forEach(function (r) { t += Number(r[i]) || 0; }); return t; }
 
   function docToText(doc) {
+    doc = X(doc, 'text');
     var out = [doc.title.toUpperCase()];
     if (doc.subtitle) out.push(doc.subtitle);
     out.push('');
@@ -199,16 +204,21 @@
         if (b.foot) out.push(b.foot.map(function (v, i) { if (v === 'SUM') return fmtCell(sumCol(b.rows, i), b.types && b.types[i]); return v == null ? '' : fmtCell(v, b.types && b.types[i]); }).join('\t'));
       }
       else if (b.t === 'sign') { out.push(''); out.push(b.labels.map(function (l) { return '______________________ ' + l; }).join('     ')); }
+      else if (b.t === 'big') { out.push(''); out.push(b.text); }
     });
     if (doc.footer) { out.push(''); out.push(doc.footer); }
     return out.join('\n');
   }
 
   function docToHtmlBody(doc) {
+    doc = X(doc, 'html');
     var e = U.esc, h = '<h1>' + e(doc.title) + '</h1>';
     if (doc.subtitle) h += '<p class="sub">' + e(doc.subtitle) + '</p>';
     (doc.blocks || []).forEach(function (b) {
-      if (b.t === 'h') h += '<h2>' + e(b.text) + '</h2>';
+      if (b.t === 'html') h += b.html;
+      else if (b.t === 'pagebreak') h += '<div class="pb"></div>';
+      else if (b.t === 'big') h += '<p class="big" style="font-size:' + (b.sz || 20) + 'pt;color:' + (b.color || '#111') + '">' + e(b.text) + '</p>';
+      else if (b.t === 'h') h += '<h2>' + e(b.text) + '</h2>';
       else if (b.t === 'p') h += '<p>' + e(b.text).replace(/\n/g, '<br>') + '</p>';
       else if (b.t === 'note') h += '<p class="note">' + e(b.text) + '</p>';
       else if (b.t === 'kv') { h += '<table class="kv">'; (b.rows || []).forEach(function (r) { h += '<tr><th>' + e(r[0]) + '</th><td>' + e(r[1] === undefined ? '' : r[1]).replace(/\n/g, '<br>') + '</td></tr>'; }); h += '</table>'; }
@@ -231,20 +241,22 @@
     'table{width:100%;border-collapse:collapse;margin:6pt 0}.kv th{width:36%;text-align:left;font-weight:bold;vertical-align:top;padding:3pt 6pt 3pt 0}.kv td{padding:3pt 0;border-bottom:1px dotted #999}' +
     '.grid th,.grid td{border:1px solid #444;padding:3pt 5pt;font-size:10.5pt;vertical-align:top}.grid thead th{background:#e3ecea;text-align:left}.grid tfoot th{background:#f2f2f2;text-align:left}.r{text-align:right!important;white-space:nowrap}' +
     '.empty{height:22pt}.sign{display:flex;gap:28pt;margin-top:46pt}.sign>div{flex:1;text-align:center;font-size:10.5pt}.sign span{display:block;border-top:1px solid #000;margin-bottom:3pt}';
-  function docToHtml(doc) {
-    return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + U.esc(doc.title) + '</title><style>' + DOC_CSS + '</style></head><body>' + docToHtmlBody(doc) + '</body></html>';
+  function docToHtml(doc, opts) {
+    var css = DOC_CSS + (doc.pro && RF.exp && RF.exp.PRO_CSS ? RF.exp.PRO_CSS : '') + (opts && opts.look && RF.exp && RF.exp.LOOK_CSS ? RF.exp.LOOK_CSS[opts.look] || '' : '');
+    return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + U.esc(doc.title) + '</title><style>' + css + '</style></head><body>' + docToHtmlBody(doc) + '</body></html>';
   }
   function docToWord(doc) { /* Word abre HTML con extensión .doc */
     return '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>' + U.esc(doc.title) + '</title><style>' + DOC_CSS + '</style></head><body>' + docToHtmlBody(doc) + '</body></html>';
   }
   /* .docx de verdad: párrafos, títulos y tablas con los mismos datos que el resto de las salidas */
   function docToDocx(doc) {
+    doc = X(doc, 'docx');
     var W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
     var media = [];
-    function imgPara(dataUrl) { /* firma dibujada: PNG dentro del documento */
+    function imgPara(dataUrl, cxo, cyo) { /* firma dibujada o gráfico: PNG dentro del documento */
       var m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || ''); if (!m) return '';
       var bin = atob(m[1]), bytes = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      media.push(bytes); var n = media.length, cx = 1800000, cy = 720000;
+      media.push(bytes); var n = media.length, cx = cxo || 1800000, cy = cyo || 720000;
       return '<w:p><w:pPr><w:spacing w:before="200" w:after="0"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="' + cx + '" cy="' + cy + '"/><wp:docPr id="' + n + '" name="Firma ' + n + '"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="' + n + '" name="firma' + n + '.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdImg' + n + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>';
     }
     function run(t, o) { o = o || {}; return '<w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>' + (o.b ? '<w:b/>' : '') + (o.i ? '<w:i/>' : '') + (o.color ? '<w:color w:val="' + o.color + '"/>' : '') + '<w:sz w:val="' + (o.sz || 22) + '"/></w:rPr><w:t xml:space="preserve">' + xmlEsc(t) + '</w:t></w:r>'; }
@@ -270,7 +282,10 @@
     var body = para(doc.title, { b: true, sz: 32, after: 60 });
     if (doc.subtitle) body += para(doc.subtitle, { i: true, color: '555555', after: 200 });
     (doc.blocks || []).forEach(function (b) {
-      if (b.t === 'h') body += para(b.text, { b: true, sz: 26, before: 200, keep: true });
+      if (b.t === 'pagebreak') body += '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+      else if (b.t === 'image') body += imgPara(b.png, 5600000, Math.round(5600000 * (b.h || 1) / (b.w || 1)));
+      else if (b.t === 'big') body += para(b.text, { b: true, sz: Math.round((b.sz || 20) * 2), color: (b.color || '111111').replace('#', ''), after: b.after == null ? 120 : b.after, before: b.before || 0 });
+      else if (b.t === 'h') body += para(b.text, { b: true, sz: 26, before: 200, keep: true, color: doc.pro ? '51247A' : undefined });
       else if (b.t === 'p') body += para(b.text);
       else if (b.t === 'note') body += para(b.text, { i: true, sz: 20, color: '555555' });
       else if (b.t === 'kv') body += table(null, (b.rows || []).map(function (r) { return [r[0], r[1] === undefined ? '' : r[1]]; }), null, null, wide);
@@ -278,13 +293,16 @@
       else if (b.t === 'sign') body += (b.images && b.images.some(Boolean) ? b.images.map(imgPara).join('') : para('', { after: 400 })) + para((b.labels || []).map(function (l) { return '______________________  ' + l; }).join('        '));
     });
     if (doc.footer) body += para(doc.footer, { i: true, sz: 18, color: '555555', before: 240 });
+    var footerXml = doc.pro ? '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ' + W + '><w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="4" w:space="4" w:color="BBBBBB"/></w:pBdr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="16"/><w:color w:val="666666"/></w:rPr><w:t xml:space="preserve">' + U.esc(doc.footTitle || doc.title) + ' · página </w:t></w:r><w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:t>1</w:t></w:r><w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>' : '';
     var sect = wide ? '<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="1000" w:right="1000" w:bottom="1000" w:left="1000"/></w:sectPr>' : '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1200" w:right="1100" w:bottom="1200" w:left="1100"/></w:sectPr>';
+    if (footerXml) sect = sect.replace('<w:pgSz', '<w:footerReference w:type="default" r:id="rIdFtr1"/><w:pgSz');
     var documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ' + W + '><w:body>' + body + sect + '</w:body></w:document>';
     var ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>';
     var rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
     var files = [{ name: '[Content_Types].xml', data: utf8(ct.replace('<Default Extension="rels"', media.length ? '<Default Extension="png" ContentType="image/png"/><Default Extension="rels"' : '<Default Extension="rels"')) }, { name: '_rels/.rels', data: utf8(rels) }, { name: 'word/document.xml', data: utf8(documentXml) }];
-    if (media.length) {
-      files.push({ name: 'word/_rels/document.xml.rels', data: utf8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + media.map(function (_, i) { return '<Relationship Id="rIdImg' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/firma' + (i + 1) + '.png"/>'; }).join('') + '</Relationships>') });
+    if (footerXml) { files.push({ name: 'word/footer1.xml', data: utf8(footerXml) }); files[0] = { name: '[Content_Types].xml', data: utf8(ct.replace('<Default Extension="rels"', (media.length ? '<Default Extension="png" ContentType="image/png"/>' : '') + '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Default Extension="rels"')) }; }
+    if (media.length || footerXml) {
+      files.push({ name: 'word/_rels/document.xml.rels', data: utf8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + (footerXml ? '<Relationship Id="rIdFtr1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>' : '') + media.map(function (_, i) { return '<Relationship Id="rIdImg' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/firma' + (i + 1) + '.png"/>'; }).join('') + '</Relationships>') });
       media.forEach(function (bytes, i) { files.push({ name: 'word/media/firma' + (i + 1) + '.png', data: bytes }); });
     }
     return zipStore(files);

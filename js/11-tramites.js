@@ -19,7 +19,7 @@
       tools: ['proyecto'], img: [['flujograma_overview.jpg', 'Flujograma oficial, pasos 4 y 5']], src: ['Flujograma, pasos 4 y 5'] },
 
     /* ---------- Fase 2: PEA ---------- */
-    { id: 'TRM-027', fase: 'F2', title: 'Armar el PEA', why: 'El PEA (Programa de Ejecución de Actividades) explica qué proyectos harás, con qué plazos y presupuesto.', who: 'comunidad', when: '90 días corridos desde el primer pago (se puede prorrogar 30 días, una vez)', need: ['Primer pago recibido', 'Ideas de proyectos', 'Apoyo del Organismo Colaborador (opcional)'],
+    { id: 'TRM-027', fase: 'F2', title: 'Armar PEA', why: 'El PEA (Programa de Ejecución de Actividades) explica qué proyectos harás, con qué plazos y presupuesto.', who: 'comunidad', when: '90 días corridos desde el primer pago (se puede prorrogar 30 días, una vez)', need: ['Primer pago recibido', 'Ideas de proyectos', 'Apoyo del Organismo Colaborador (opcional)'],
       notes: ['Tienes 90 días corridos desde el primer pago; CORFO activa ese plazo.'],
       steps: ['Si necesitas ayuda, pídela al Organismo Colaborador antes de redactar (Componente 3).', 'Arma los 3 documentos: información general, un formulario por proyecto y el presupuesto con la Carta Gantt.', 'Envía el PEA a CORFO. Si lo observan, corrígelo y reenvíalo.'], stepTools: { 1: ['pea', 'gantt', 'presupuesto'], 2: ['pea'] }, opt: { 0: 'Opcional' }, related: ['TRM-030'], auto: { 1: 'pea_docs' },
       tools: ['necesidades', 'pea', 'gantt', 'presupuesto'], img: [['flujograma_overview.jpg', 'Flujograma oficial, pasos 6 a 14']], src: ['Flujograma, pasos 6 a 14', '«Introducción al Acuerdo», diapositiva 2'] },

@@ -60,3 +60,23 @@ test('el Word es un .docx de verdad (zip con word/document.xml) y trae el texto 
   const xml = Buffer.from(bytes).toString('utf8');
   assert.ok(xml.includes('Prueba Word') && xml.includes('$ 1.500') && xml.includes('<w:tbl>'));
 });
+
+test('documento «pro»: portada, índice y gráficos salen en HTML (dibujo), Word (imagen y pie de página), texto y Excel (una hoja por sección con índice)', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const doc = { pro: true, sheetsBy: 'h', title: 'Expediente', subtitle: 'Comunidad', footTitle: 'Expediente · Prueba', blocks: [
+    { t: 'cover', title: 'Proyecto', subtitle: 'Comunidad', rows: [['Comunidad', 'Sol'], ['RUT', '']] }, { t: 'toc' },
+    { t: 'h', text: '1. Plata por cuenta' },
+    { t: 'chart', kind: 'hbar', title: 'Rendido', items: [{ label: 'Operación', value: 50, max: 100, color: '#2a5db0', text: '$ 50 de $ 100' }], png },
+    { t: 'chart', kind: 'vbar', title: 'Mes a mes', cats: [{ label: 'ene', year: '2026' }, { label: 'feb' }], series: [{ name: 'Operación', color: '#2a5db0', values: [10, 20] }] },
+    { t: 'chart', kind: 'donut', title: 'Estado', center: '3', items: [{ label: 'Listos', value: 2, color: '#2e7d4f' }, { label: 'Pendientes', value: 1, color: '#b3261e' }] },
+    { t: 'table', head: ['A', 'B'], types: ['text', 'money'], rows: [['x', 5]] },
+    { t: 'h', text: '2. Gastos' }, { t: 'table', head: ['N°'], rows: [[1]] }] };
+  const html = RF.exp.docToHtml(doc, { look: 'word' });
+  assert.ok(/class="cover"/.test(html) && (html.match(/<figure class="chart">/g) || []).length === 3 && /<svg/.test(html) && /Contenido/.test(html));
+  const zip = Buffer.from(RF.exp.docToDocx(doc)).toString('latin1');
+  assert.ok(zip.includes('word/footer1.xml') && zip.includes('word/media/firma1.png') && zip.includes('w:br w:type="page"') && zip.includes('PAGE'), 'Word con imagen, salto de página y número de página');
+  assert.ok(/Rendido/.test(RF.exp.docToText(doc)) && !/<svg/.test(RF.exp.docToText(doc)));
+  const sheets = RF.exp.docToSheets(doc);
+  assert.equal(sheets[0].name, 'Índice'); assert.ok(sheets.length >= 3, 'una hoja por sección: ' + sheets.map(s => s.name).join('|'));
+  assert.equal(String.fromCharCode(...RF.exp.buildXlsx(sheets).slice(0, 2)), 'PK');
+});
