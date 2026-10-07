@@ -811,6 +811,22 @@ await step('15j. Tamaño de letra y tema se eligen en una lista, sin mover el me
   await page.locator('#prefTheme').selectOption('system'); await page.locator('#prefText').selectOption('normal');
 });
 
+await step('15k. Cotizaciones se puede sacar en Excel (antes fallaba con «status is not a function») y el buscador encuentra Calendario y Seguridad', async () => {
+  await go('#/h/cotizaciones');
+  await page.getByRole('button', { name: 'Agregar compra' }).click();
+  const before = await page.evaluate(() => window.__rfDownloads.length);
+  await page.getByRole('button', { name: 'Excel', exact: true }).click();
+  await page.waitForFunction(n => window.__rfDownloads.length > n, before, { timeout: 5000 });
+  ok(!/No se pudo armar el documento/.test(await page.textContent('.tool-page')), 'el documento se arma sin error');
+  ok(/cotizaciones/.test(await page.evaluate(() => window.__rfDownloads[window.__rfDownloads.length - 1].filename)), 'se descargó el Excel de cotizaciones');
+  for (const [q, esperado] of [['calendario', 'Calendario'], ['google calendar', 'Calendario'], ['cerrar sesión', 'Seguridad']]) {
+    await page.keyboard.press('/'); await page.keyboard.type(q); await page.waitForTimeout(500);
+    const txt = await page.evaluate(() => { const d = document.querySelector('dialog[open], [role=dialog]'); return d ? d.innerText : ''; });
+    ok(txt.includes(esperado), 'el buscador encuentra «' + q + '» → ' + esperado);
+    await page.keyboard.press('Escape');
+  }
+});
+
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });
 
 /* ---- celular ---- */

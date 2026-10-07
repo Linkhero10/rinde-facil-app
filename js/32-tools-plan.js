@@ -129,7 +129,7 @@
     root.appendChild(UI.section('Sacar la Carta Gantt', [UI.exportBar(function () { return ganttDoc(p, c.community); }, 'carta-gantt', [{ label: 'Copiar para SGP', icon: 'copy', run: function () {
       var rows = L.allActivities(p).map(function (x) { return [x.stage.name, x.act.name, U.fmtDateShort(x.act.start), U.fmtDateShort(x.act.end)]; });
       U.copyText(sgpTsv(rows, ['Etapa', 'Actividad', 'Inicio', 'Término'])).then(function (ok) { UI.toast(ok ? 'Copiado en el orden en que SGP pide los datos (etapa, actividad, inicio y término, con fechas día-mes-año). SGP no recibe pegados: cópialos de a uno en cada campo.' : 'No se pudo copiar.', ok ? 'ok' : 'bad'); }); } }])]));
-    return page('Carta Gantt', 'Ordena tu proyecto en etapas y actividades. Después la puedes sacar en Excel, PDF o texto para pegarla en SGP.', root);
+    return page('Carta Gantt', 'Ordena tu proyecto en etapas y actividades. Después la puedes sacar en Excel, PDF o texto, ordenada como la pide SGP, para ir llenándola campo por campo.', root);
   } };
 
   /* ================= Presupuesto ================= */
@@ -260,10 +260,19 @@
     return page('Cambios al PEA', 'Si necesitas mover plata entre cuentas o cambiar fechas, se pide antes de gastar.', root);
   } };
 
+  /* estado de una compra respecto de las cotizaciones; lo usan la pantalla y el documento */
+  function cotStatus(cq) {
+    var neto = num(cq.neto);
+    if (neto <= D.REGLAS.COTIZACION_UMBRAL) return { kind: 'info', msg: 'No llega a $10.000.000 netos: no se exigen 2 cotizaciones, pero guarda el respaldo del precio.' };
+    if (cq.servicioTecnico) return { kind: 'ok', msg: 'Servicio técnico-profesional: no se exigen cotizaciones.' };
+    if (L.cotizacionOk(cq)) return { kind: 'ok', msg: 'Cumple: 2 o más proveedores distintos.' };
+    if (cq.autorizacion) return { kind: 'ok', msg: 'Tienes autorización previa de CORFO para comprar con menos cotizaciones.' };
+    return { kind: 'bad', msg: 'Faltan cotizaciones: necesitas 2 proveedores distintos o la autorización previa de CORFO.' };
+  }
   function cotDoc(p) {
 
       var blocks = [];
-      p.cotizaciones.forEach(function (cq, i) { blocks.push({ t: 'h', text: (i + 1) + '. ' + (cq.descripcion || 'Compra') + ' · neto ' + U.fmtCLP(num(cq.neto)) }); blocks.push({ t: 'table', head: ['Proveedor', 'Monto neto ($)', 'Fecha'], types: ['text', 'money', 'date'], rows: (cq.cots || []).map(function (x) { return [x.proveedor, num(x.monto), x.fecha]; }) }); blocks.push({ t: 'p', text: 'Elección y motivo: ' + (cq.justificacion || '') + ' · ' + status(cq).msg }); });
+      p.cotizaciones.forEach(function (cq, i) { blocks.push({ t: 'h', text: (i + 1) + '. ' + (cq.descripcion || 'Compra') + ' · neto ' + U.fmtCLP(num(cq.neto)) }); blocks.push({ t: 'table', head: ['Proveedor', 'Monto neto ($)', 'Fecha'], types: ['text', 'money', 'date'], rows: (cq.cots || []).map(function (x) { return [x.proveedor, num(x.monto), x.fecha]; }) }); blocks.push({ t: 'p', text: 'Elección y motivo: ' + (cq.justificacion || '') + ' · ' + cotStatus(cq).msg }); });
       return { title: 'Cuadro comparativo de cotizaciones', subtitle: p.name, sheet: 'Cotizaciones', footer: 'Generado con Rinde Fácil. Guárdalo en el expediente junto con las cotizaciones originales.', blocks: blocks };
     
   }
@@ -272,20 +281,12 @@
   TOOLS.cotizaciones = { title: 'Cotizaciones', icon: 'scale', desc: 'Compara cotizaciones. Sobre $10 M netos se piden 2 de proveedores distintos.', render: function () {
     var c = ctx(), p = c.project; if (!p) return page('Cotizaciones', '', needProject(c));
     var root = h('div'), body = h('div');
-    function status(cq) {
-      var neto = num(cq.neto);
-      if (neto <= D.REGLAS.COTIZACION_UMBRAL) return { kind: 'info', msg: 'No llega a $10.000.000 netos: no se exigen 2 cotizaciones, pero guarda el respaldo del precio.' };
-      if (cq.servicioTecnico) return { kind: 'ok', msg: 'Servicio técnico-profesional: no se exigen cotizaciones.' };
-      if (L.cotizacionOk(cq)) return { kind: 'ok', msg: 'Cumple: 2 o más proveedores distintos.' };
-      if (cq.autorizacion) return { kind: 'ok', msg: 'Tienes autorización previa de CORFO para comprar con menos cotizaciones.' };
-      return { kind: 'bad', msg: 'Faltan cotizaciones: necesitas 2 proveedores distintos o la autorización previa de CORFO.' };
-    }
     function paint() {
       U.clear(body);
       if (!p.cotizaciones.length) body.appendChild(UI.empty('Aún no registras compras grandes. Agrega la primera.'));
       p.cotizaciones.forEach(function (cq, i) {
         if (!Array.isArray(cq.cots)) cq.cots = [{}, {}];
-        var st = h('div'); var refreshSt = function () { U.clear(st); var s = status(cq); st.appendChild(UI.callout(s.kind, '', s.msg)); };
+        var st = h('div'); var refreshSt = function () { U.clear(st); var s = cotStatus(cq); st.appendChild(UI.callout(s.kind, '', s.msg)); };
         var rows = h('tbody');
         cq.cots.forEach(function (x, j) {
           rows.appendChild(h('tr', null, h('td', { 'data-label': 'Proveedor' }, UI.bind(x, 'proveedor', { type: 'text', aria: 'Proveedor', onChange: refreshSt })), h('td', { 'data-label': 'Monto neto' }, UI.bind(x, 'monto', { type: 'money', aria: 'Monto', onChange: refreshSt })), h('td', { 'data-label': 'Fecha' }, UI.bind(x, 'fecha', { type: 'date', aria: 'Fecha' })),

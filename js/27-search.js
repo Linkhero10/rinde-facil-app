@@ -157,6 +157,8 @@
       g.tools.forEach(function (tid) { addTool(tid, ['Herramientas', g.name]); });
     });
     addTool('nube', []);
+    addTool('calendario', []);
+    addTool('seguridad', []);
     function addTool(tid, path) {
       var tl = RF.tools && RF.tools[tid]; if (!tl || seen[tid]) return; seen[tid] = true;
       var fields = [{ text: tl.desc || '', label: '' }];
