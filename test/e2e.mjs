@@ -154,7 +154,7 @@ await step('0. Primera vez: crea la cuenta con la contraseña y muestra el códi
 
 await step('1. Al inicio pide los datos de la comunidad y crea el proyecto', async () => {
   eq(await page.textContent('h1'), 'Rinde Fácil te guía en tu rendición');
-  await page.getByLabel('Nombre de tu comunidad').fill('Comunidad de Prueba');
+  ok(await page.getByLabel('Nombre de tu comunidad').count() === 0, 'ya no se vuelve a pedir el nombre de la comunidad que se escribió al crear la cuenta');
   await page.getByLabel('RUT de la comunidad').fill('11111111-1');
   await page.getByLabel('Nombre de tu proyecto').fill('Sede comunitaria');
   await page.getByRole('button', { name: 'Empezar' }).click();
@@ -305,7 +305,7 @@ await step('9. Anexo 4: días y montos se calculan; Word, PDF y texto salen', as
   ok(/120\.000/.test(await page.textContent('.edit-grid')), '3 días × 40.000 = 120.000');
   await shot('09-anexo4');
   await page.getByRole('button', { name: 'Word' }).first().click();
-  const f = tmp('anexo4.doc'); await saveDownload(page, f);
+  const f = tmp('anexo4.docx'); await saveDownload(page, f);
   ok(fs.readFileSync(f, 'utf8').includes('Juana Pérez'), 'el Word trae el nombre');
   await page.getByRole('button', { name: 'PDF' }).first().click();
   await page.waitForSelector('.print-overlay iframe');
@@ -427,7 +427,8 @@ await step('12d. Lo que se saca (Excel de la Carta Gantt) queda también en el D
   eq(c[0].mimeType, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   await page.getByRole('button', { name: 'Guardar en Drive' }).click();
   await page.waitForTimeout(600);
-  eq(stub.store.calls.filter(x => x.action === 'saveFile' && x.category === 'planificacion').length, 2);
+  eq(stub.store.calls.filter(x => x.action === 'saveFile' && x.category === 'planificacion').length, 1, 'el mismo documento sin cambios no se guarda otra vez');
+  ok(/no ha cambiado/.test(await page.evaluate(() => Array.from(document.querySelectorAll('.toast')).map(t => t.textContent).join(' '))), 'avisa que ya estaba guardado');
   await go('#/h/nube');
   await page.getByRole('button', { name: /Preparar mi carpeta/ }).click();
   await page.getByRole('link', { name: 'Abrir la carpeta en Drive' }).waitFor({ timeout: 8000 });
@@ -440,6 +441,8 @@ await step('12d. Lo que se saca (Excel de la Carta Gantt) queda también en el D
 
 await step('12e. Sin conexión: el archivo queda en una cola cifrada y se sube solo al volver', async () => {
   await go('#/h/gantt');
+  await page.evaluate(() => RF.store.update(function () { var p = RF.store.project(); p.gantt.stages[0].name = p.gantt.stages[0].name + ' II'; }, { silent: true }));
+  await go('#/h/proyecto'); await go('#/h/gantt');
   const before = stub.store.calls.filter(x => x.action === 'saveFile').length;
   testNetworkOffline = true;
   await ctx.setOffline(true);
@@ -825,6 +828,44 @@ await step('15k. Cotizaciones se puede sacar en Excel (antes fallaba con «statu
     ok(txt.includes(esperado), 'el buscador encuentra «' + q + '» → ' + esperado);
     await page.keyboard.press('Escape');
   }
+});
+
+await step('15l. Mejoras del recorrido: volver a la lista desde el menú, feriados de Chile, enviar el resumen, adjuntar un respaldo y gastos vacíos', async () => {
+  /* volver a la lista tocando «Gastos» en el menú estando dentro de un gasto */
+  await go('#/h/gastos');
+  const filas = page.locator('.list-grid tbody tr'); if (!(await filas.count())) { await page.getByRole('button', { name: 'Anotar a mano' }).click(); } else await filas.first().click();
+  await page.waitForSelector('button:has-text("Volver a la lista")');
+  await page.evaluate(() => document.querySelector('a.side-item.tool[href="#/h/gastos"]').click());
+  await page.waitForSelector('.list-grid, .gastos-top', { timeout: 5000 });
+  ok(await page.getByRole('button', { name: 'Volver a la lista' }).count() === 0, 'tocar «Gastos» en el menú vuelve a la lista');
+  /* gastos vacíos: se pueden quitar */
+  await page.getByRole('button', { name: 'Anotar a mano' }).click(); await page.getByRole('button', { name: 'Volver a la lista' }).click();
+  ok(await page.getByRole('button', { name: /Quitar gastos vacíos/ }).count() === 1, 'aparece «Quitar gastos vacíos»');
+  await page.getByRole('button', { name: /Quitar gastos vacíos/ }).click(); await page.locator('dialog[open] button').last().click();
+  await page.waitForTimeout(300);
+  ok(await page.getByRole('button', { name: /Quitar gastos vacíos/ }).count() === 0, 'se quitaron los gastos vacíos');
+  /* feriados nacionales */
+  await go('#/h/proyecto');
+  await page.getByRole('button', { name: /Agregar los feriados nacionales/ }).click(); await page.waitForTimeout(300);
+  ok(await page.evaluate(() => RF.store.get().holidays.length) >= 25, 'se agregaron los feriados nacionales de 2026 y 2027');
+  /* resumen para el Organismo: correo y WhatsApp */
+  await go('#/h/compartir');
+  const cbs = page.locator('main input[type=checkbox]'); for (let i = 0; i < await cbs.count(); i++) await cbs.nth(i).check();
+  await page.waitForTimeout(400);
+  ok(/^mailto:/.test(await page.getByRole('link', { name: 'Enviar por correo' }).getAttribute('href')), 'enlace de correo');
+  ok(/^https:\/\/wa\.me\//.test(await page.getByRole('link', { name: 'Enviar por WhatsApp' }).getAttribute('href')), 'enlace de WhatsApp');
+  /* adjuntar un respaldo a un gasto con pago por transferencia */
+  await go('#/h/gastos'); await page.getByRole('button', { name: 'Anotar a mano' }).click(); await page.waitForTimeout(300);
+  await page.locator('select', { has: page.locator('option[value=factura]') }).selectOption('factura'); await page.getByLabel('Número (folio)').fill('7001'); await page.getByLabel('Fecha del documento').fill('2026-09-10'); await page.getByLabel('Nombre del proveedor').fill('Ferretería de prueba');
+  await page.getByLabel('Total del documento').fill('119.000'); await page.getByLabel('Monto neto').fill('100.000'); await page.getByLabel('IVA ($)').fill('19.000');
+  await page.getByLabel('Forma de pago').selectOption({ label: 'Transferencia' }); await page.waitForTimeout(300);
+  const adj = page.getByRole('button', { name: 'Adjuntar archivo' }).first();
+  ok(await page.getByRole('button', { name: 'Adjuntar archivo' }).count() >= 1, 'el respaldo se puede adjuntar: ' + (await page.textContent('main')).slice(-400));
+  await page.locator('input[type=file][aria-label^="Adjuntar:"]').first().setInputFiles(FIXTURE); await page.waitForTimeout(800);
+  ok(/Adjunto: boleta-ficticia\.jpg/.test(await page.textContent('main')), 'queda el nombre del archivo adjunto');
+  ok(await page.evaluate(() => RF.store.project().expenses.some(e => e.attach && Object.keys(e.attach).length)), 'el adjunto queda anotado en el gasto');
+  await page.getByRole('button', { name: 'Volver a la lista' }).click();
+  await page.getByRole('button', { name: /Quitar gastos vacíos/ }).count();
 });
 
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });

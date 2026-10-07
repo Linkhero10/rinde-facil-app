@@ -237,6 +237,47 @@
   function docToWord(doc) { /* Word abre HTML con extensión .doc */
     return '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>' + U.esc(doc.title) + '</title><style>' + DOC_CSS + '</style></head><body>' + docToHtmlBody(doc) + '</body></html>';
   }
+  /* .docx de verdad: párrafos, títulos y tablas con los mismos datos que el resto de las salidas */
+  function docToDocx(doc) {
+    var W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    function run(t, o) { o = o || {}; return '<w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>' + (o.b ? '<w:b/>' : '') + (o.i ? '<w:i/>' : '') + (o.color ? '<w:color w:val="' + o.color + '"/>' : '') + '<w:sz w:val="' + (o.sz || 22) + '"/></w:rPr><w:t xml:space="preserve">' + xmlEsc(t) + '</w:t></w:r>'; }
+    function para(text, o) {
+      o = o || {};
+      var lines = String(text == null ? '' : text).split('\n');
+      var runs = lines.map(function (l, i) { return (i ? '<w:r><w:br/></w:r>' : '') + run(l, o); }).join('');
+      return '<w:p><w:pPr><w:spacing w:before="' + (o.before == null ? 0 : o.before) + '" w:after="' + (o.after == null ? 120 : o.after) + '"/>' + (o.keep ? '<w:keepNext/>' : '') + '</w:pPr>' + runs + '</w:p>';
+    }
+    function cell(text, o) {
+      o = o || {};
+      return '<w:tc><w:tcPr><w:tcW w:w="' + (o.w || 2000) + '" w:type="dxa"/>' + (o.shade ? '<w:shd w:val="clear" w:color="auto" w:fill="' + o.shade + '"/>' : '') + '</w:tcPr>' + para(text, { b: o.b, sz: 20, after: 40 }) + '</w:tc>';
+    }
+    function table(head, rows, foot, types, wide) {
+      var cols = Math.max(head ? head.length : 0, rows.length ? rows[0].length : 0, 1), total = wide ? 14000 : 9600, w = Math.floor(total / cols);
+      var x = '<w:tbl><w:tblPr><w:tblW w:w="' + total + '" w:type="dxa"/><w:tblBorders>' + ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(function (k) { return '<w:' + k + ' w:val="single" w:sz="4" w:space="0" w:color="999999"/>'; }).join('') + '</w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>' + new Array(cols + 1).join('<w:gridCol w:w="' + w + '"/>') + '</w:tblGrid>';
+      if (head && head.length) x += '<w:tr><w:trPr><w:tblHeader/></w:trPr>' + head.map(function (t) { return cell(t, { w: w, b: true, shade: 'D9E7E5' }); }).join('') + '</w:tr>';
+      rows.forEach(function (r) { x += '<w:tr>' + r.map(function (v, i) { return cell(fmtCell(v, types && types[i]), { w: w }); }).join('') + '</w:tr>'; });
+      if (foot) x += '<w:tr>' + foot.map(function (v, i) { return cell(v === 'SUM' ? fmtCell(sumCol(rows, i), types && types[i]) : (v == null ? '' : fmtCell(v, types && types[i])), { w: w, b: true }); }).join('') + '</w:tr>';
+      return x + '</w:tbl>' + para('', { after: 80 });
+    }
+    var wide = (doc.blocks || []).some(function (b) { return b.t === 'table' && (b.head || []).length > 7; });
+    var body = para(doc.title, { b: true, sz: 32, after: 60 });
+    if (doc.subtitle) body += para(doc.subtitle, { i: true, color: '555555', after: 200 });
+    (doc.blocks || []).forEach(function (b) {
+      if (b.t === 'h') body += para(b.text, { b: true, sz: 26, before: 200, keep: true });
+      else if (b.t === 'p') body += para(b.text);
+      else if (b.t === 'note') body += para(b.text, { i: true, sz: 20, color: '555555' });
+      else if (b.t === 'kv') body += table(null, (b.rows || []).map(function (r) { return [r[0], r[1] === undefined ? '' : r[1]]; }), null, null, wide);
+      else if (b.t === 'table') body += table(b.head || [], b.rows || [], b.foot, b.types, wide);
+      else if (b.t === 'sign') body += para('', { after: 400 }) + para((b.labels || []).map(function (l) { return '______________________  ' + l; }).join('        '));
+    });
+    if (doc.footer) body += para(doc.footer, { i: true, sz: 18, color: '555555', before: 240 });
+    var sect = wide ? '<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="1000" w:right="1000" w:bottom="1000" w:left="1000"/></w:sectPr>' : '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1200" w:right="1100" w:bottom="1200" w:left="1100"/></w:sectPr>';
+    var documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ' + W + '><w:body>' + body + sect + '</w:body></w:document>';
+    var ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>';
+    var rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
+    return zipStore([{ name: '[Content_Types].xml', data: utf8(ct) }, { name: '_rels/.rels', data: utf8(rels) }, { name: 'word/document.xml', data: utf8(documentXml) }]);
+  }
+  var DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   function fileName(base, ext) {
     var b = U.slug(base) || 'documento';
     return b + '-' + U.todayISO() + '.' + ext;
@@ -248,7 +289,7 @@
     U.download(new Blob([bytes], { type: XLSX_MIME }), fileName(base, 'xlsx'));
   }
   function downloadDocXlsx(doc, base) { downloadXlsx(docToSheets(doc), base || doc.title); }
-  function downloadWord(doc, base) { U.download(new Blob(['﻿', docToWord(doc)], { type: 'application/msword' }), fileName(base || doc.title, 'doc')); }
+  function downloadWord(doc, base) { U.download(new Blob([docToDocx(doc)], { type: DOCX_MIME }), fileName(base || doc.title, 'docx')); }
   function downloadText(doc, base) { U.download(new Blob(['﻿', docToText(doc)], { type: 'text/plain;charset=utf-8' }), fileName(base || doc.title, 'txt')); }
   function printDoc(doc) { /* vista previa dentro de la página; desde ahí se imprime o se guarda como PDF */
     var host = document.createElement('div');
@@ -272,7 +313,7 @@
   RF.exp = {
     crc32: crc32, zipStore: zipStore, buildXlsx: buildXlsx, XLSX_MIME: XLSX_MIME,
     docToSheets: docToSheets, docToText: docToText, docToHtml: docToHtml, docToWord: docToWord, docToHtmlBody: docToHtmlBody,
-    fileName: fileName, downloadXlsx: downloadXlsx, downloadDocXlsx: downloadDocXlsx, downloadWord: downloadWord, downloadText: downloadText, printDoc: printDoc,
+    docToDocx: docToDocx, DOCX_MIME: DOCX_MIME, fileName: fileName, downloadXlsx: downloadXlsx, downloadDocXlsx: downloadDocXlsx, downloadWord: downloadWord, downloadText: downloadText, printDoc: printDoc,
     excelSerial: excelSerial
   };
 })(typeof window !== 'undefined' ? window : globalThis);

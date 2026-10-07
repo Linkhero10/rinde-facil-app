@@ -109,6 +109,7 @@
       var e = (ctx.project.expenses || []).filter(function (x) { return x.id === d.gastoId; })[0]; if (!e) return;
       d.proveedorNombre = e.proveedor || d.proveedorNombre; d.proveedorRut = e.rutProveedor || d.proveedorRut; d.monto = num(e.total) || d.monto;
       d.documentos = ((RF.data.DOC_BY_ID[e.docType] || {}).name || 'documento') + ' N° ' + (e.folio || '');
+      if (e.fechaPago || e.fecha) d.fecha = e.fechaPago || e.fecha; /* la declaración lleva la fecha en que se pagó */
     },
     check: function (d) { var o = []; if (!(num(d.monto) > 0)) o.push({ level: 'error', msg: 'Falta el monto.' }); if (!d.proveedorNombre) o.push({ level: 'error', msg: 'Falta el nombre de quien recibió.' }); if (d.proveedorRut && !U.rutValid(d.proveedorRut)) o.push({ level: 'warn', msg: 'El RUT no parece válido.' }); return o; },
     doc: function (d) {

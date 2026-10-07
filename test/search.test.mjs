@@ -68,3 +68,9 @@ test('también busca en lo que la persona anotó y lleva a esa pantalla', () => 
   assert.ok(S('4521', 5).some(x => x.item.kind === 'Tu gasto'), 'por folio');
   assert.ok(S('condores', 5).some(x => x.item.kind === 'Tu gasto'), 'sin tildes');
 });
+
+test('frases de todos los días llevan a la herramienta correcta', () => {
+  const top = q => S(q, 5).map(r => r.item.href + ' ' + r.item.title);
+  assert.ok(top('no se como subir una foto').some(t => /h\/gastos/.test(t)), 'subir una foto → Gastos');
+  assert.ok(top('donde abro la cuenta bancaria').some(t => /P-02/.test(t)), 'cuenta bancaria → Abrir la cuenta corriente');
+});

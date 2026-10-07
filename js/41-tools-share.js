@@ -69,6 +69,16 @@
         h('pre', { class: 'share-preview' }, RF.exp.docToText(d))));
       if (!consent.checked) { bar.appendChild(UI.callout('warn', 'Falta tu autorización.', ' Marca la casilla de abajo para poder sacar el archivo.')); return; }
       bar.appendChild(UI.exportBar(function () { RF.store.update(function (s) { s.shares = (s.shares || []).concat([{ at: new Date().toISOString(), with: 'Organismo Colaborador', parts: PARTS.filter(function (x) { return chosen[x.id]; }).map(function (x) { return x.id; }) }]).slice(-50); }, { silent: true }); return docModel(); }, 'resumen-organismo-colaborador'));
+      /* mandarlo: la comunidad elige por dónde; nada sale hasta que ella pulsa */
+      var textOut = RF.exp.docToText(d);
+      function noted(via) { RF.store.update(function (st) { st.shares = (st.shares || []).concat([{ at: new Date().toISOString(), with: 'Organismo Colaborador (' + via + ')', parts: PARTS.filter(function (x) { return chosen[x.id]; }).map(function (x) { return x.id; }) }]).slice(-50); }, { silent: true }); }
+      function clip(t, n) { return t.length > n ? t.slice(0, n - 1) + '…\n\n(El resumen completo va en el archivo adjunto.)' : t; }
+      var send = h('div', { class: 'row-actions' },
+        h('a', { class: 'btn', href: 'mailto:?subject=' + encodeURIComponent('Resumen de avance · ' + (c.community.name || 'Comunidad')) + '&body=' + encodeURIComponent(clip(textOut, 1500)), onclick: function () { noted('correo'); } }, UI.icon('link', 14), 'Enviar por correo'),
+        h('a', { class: 'btn', href: 'https://wa.me/?text=' + encodeURIComponent(clip(textOut, 1400)), target: '_blank', rel: 'noopener', onclick: function () { noted('WhatsApp'); } }, UI.icon('link', 14), 'Enviar por WhatsApp'),
+        root.navigator && root.navigator.share ? UI.btn('Compartir desde este equipo…', { icon: 'link', cls: 'ghost', onclick: function () { root.navigator.share({ title: 'Resumen de avance', text: clip(textOut, 3000) }).then(function () { noted('menú de compartir'); }, function () { }); } }) : null);
+      bar.appendChild(h('p', { class: 'hint' }, 'También puedes mandarlo directamente. El correo y WhatsApp se abren con el texto ya escrito; tú eliges a quién y pulsas enviar. Para mandar el archivo completo, descárgalo arriba y adjúntalo.'));
+      bar.appendChild(send);
     }
     consent.addEventListener('change', paint);
     root.appendChild(UI.section('1. Qué incluir', [h('div', { class: 'checks' }, boxes)]));

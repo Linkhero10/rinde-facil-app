@@ -114,7 +114,7 @@
     } else if (type === 'money') {
       el = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off', placeholder: opts.ph || '0' });
       el.value = obj[key] === '' || obj[key] == null || obj[key] === 0 && !opts.showZero ? (obj[key] === 0 && opts.showZero ? '0' : '') : money(obj[key]);
-      el.addEventListener('input', function () { commit(U.parseCLP(el.value)); });
+      el.addEventListener('input', function () { var atEnd = el.selectionStart === el.value.length; commit(U.parseCLP(el.value)); if (atEnd && obj[key]) el.value = money(obj[key]); });
       el.addEventListener('blur', function () { el.value = obj[key] ? money(obj[key]) : (opts.showZero && obj[key] === 0 ? '0' : ''); });
     } else if (type === 'number' || type === 'pct') {
       el = h('input', { type: 'number', inputmode: 'decimal', min: opts.min != null ? opts.min : (type === 'pct' ? 0 : null), max: opts.max != null ? opts.max : (type === 'pct' ? 100 : null), step: opts.step || 'any', placeholder: opts.ph || '' });
@@ -172,7 +172,7 @@
       else if (kind === 'txtfile') RF.exp.downloadText(d, base);
       /* todo lo que se saca queda también en la carpeta «Rinde fácil» del Drive de la comunidad (salvo copiar texto) */
       if (RF.drive && kind !== 'txt' && (kind === 'drive' || RF.drive.auto())) {
-        RF.drive.saveDoc(d, base, kind === 'doc' ? 'doc' : kind === 'txtfile' ? 'txt' : 'xlsx').catch(function () { });
+        RF.drive.saveDoc(d, base, 'xlsx').then(function (r) { if (kind === 'drive' && r && r.unchanged) toast('Ya está en el Drive y no ha cambiado desde la última vez.', 'ok'); }).catch(function () { });
       }
     }
     bar.appendChild(h('span', { class: 'export-label' }, 'Sacar documento:'));

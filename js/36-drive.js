@@ -136,13 +136,18 @@
   startOutbox();
 
   /* Guarda un documento armado por la app (Gantt, anexos, rendición…) en la carpeta del proyecto. kind: xlsx | doc | txt */
+  function hash32(str) { var h = 2166136261; for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
   function saveDoc(doc, base, kind) {
     if (!enabled()) return Promise.reject(new Error('NO_CONFIGURADO'));
     var payload = { project: projectName(), category: categoryFor(base) }, E = RF.exp;
     if (kind === 'doc') { payload.mimeType = 'application/msword'; payload.fileName = E.fileName(base || doc.title, 'doc'); payload.base64 = textToB64('﻿' + E.docToWord(doc)); }
     else if (kind === 'txt') { payload.mimeType = 'text/plain'; payload.fileName = E.fileName(base || doc.title, 'txt'); payload.base64 = textToB64('﻿' + E.docToText(doc)); }
     else { payload.mimeType = XLSX; payload.fileName = E.fileName(base || doc.title, 'xlsx'); payload.base64 = bytesToB64(E.buildXlsx(E.docToSheets(doc))); }
-    return send(payload);
+    /* una sola copia por documento y solo si cambió: sacar el mismo documento en Excel y en Word no llena el Drive de repetidos */
+    var fp = payload.category + '|' + payload.fileName + '|' + payload.base64.length + '|' + hash32(payload.base64);
+    var seen = (cfg().docHashes || {});
+    if (seen[payload.fileName] === fp) return Promise.resolve({ ok: true, remote: true, queued: false, unchanged: true });
+    return send(payload).then(function (r) { if (r && r.remote) RF.store.update(function (st) { st.cloud.docHashes = Object.assign({}, st.cloud.docHashes || {}); st.cloud.docHashes[payload.fileName] = fp; }, { silent: true }); return r; });
   }
 
   /* Archiva la foto o PDF original de un comprobante en «4 Comprobantes/AAAA-MM» del proyecto. */
@@ -156,6 +161,17 @@
         return send({ project: (project && project.name) || projectName(), category: 'comprobante', fileName: String(e.proveedor || 'comprobante').replace(/\s+/g, '_') + '-' + (e.folio || 'sn') + ext, mimeType: blob.type || 'image/jpeg', base64: b64, issueDate: e.fecha }, 'comprobante', !!quiet, { expId: e.id, kind: 'foto' });
       });
     }).then(function (r) { if (!r.remote) return r; e.driveId = r.fileId; e.driveUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); return r; });
+  }
+
+  /* Archiva un respaldo adjunto (comprobante de pago, cartola, F29…) junto a la foto del gasto, en «4 Comprobantes/AAAA-MM». */
+  function saveAttachment(e, project, key, label, blob, quiet) {
+    if (!enabled()) return Promise.reject(new Error('NO_CONFIGURADO'));
+    if (!e.fecha) { RF.ui.toast('Primero anota la fecha del documento: se usa para la carpeta del mes.', 'bad'); return Promise.reject(new Error('SIN_FECHA')); }
+    var ext = /pdf/.test(blob.type) ? '.pdf' : /png/.test(blob.type) ? '.png' : /webp/.test(blob.type) ? '.webp' : '.jpg';
+    return RF.cloud.blobToBase64(blob).then(function (b64) {
+      var tag = String(label || key).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30);
+      return send({ project: (project && project.name) || projectName(), category: 'comprobante', fileName: baseName(e) + '-respaldo-' + tag + ext, mimeType: blob.type || 'image/jpeg', base64: b64, issueDate: e.fecha }, 'respaldo ' + label, !!quiet, { expenseId: e.id });
+    });
   }
 
   /* ---------- ficha del gasto: todos los datos ordenados en un texto, junto a la foto ---------- */
@@ -384,5 +400,5 @@
     });
   }
 
-  RF.drive = { describeSave: describeSave, friendlySaves: friendlySaves, flushOutbox: flushOutbox, enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, saveFicha: saveFicha, archiveExpense: archiveExpense, fichaText: fichaText, backupState: backupState, pushState: pushState, pullState: pullState, resolveConflict: resolveConflict, saveExternal: saveExternal, saveActa: saveActa, docMeta: docMeta, actaMeta: actaMeta, setup: setup, categoryFor: categoryFor, errText: errText };
+  RF.drive = { saveAttachment: saveAttachment, describeSave: describeSave, friendlySaves: friendlySaves, flushOutbox: flushOutbox, enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, saveFicha: saveFicha, archiveExpense: archiveExpense, fichaText: fichaText, backupState: backupState, pushState: pushState, pullState: pullState, resolveConflict: resolveConflict, saveExternal: saveExternal, saveActa: saveActa, docMeta: docMeta, actaMeta: actaMeta, setup: setup, categoryFor: categoryFor, errText: errText };
 })(typeof window !== 'undefined' ? window : globalThis);

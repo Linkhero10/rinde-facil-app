@@ -58,6 +58,9 @@
       })));
     } else kids.push(h('span', { class: 'where-in' }, 'No es un paso de la ruta: la puedes usar cuando quieras.'));
     var status = null;
+    if (role.kind === 'segun' && p && steps.length && !L.needsAnswered(p)) {
+      status = h('span', { class: 'where-status no' }, 'Todavía no sabemos si te toca. ', h('a', { href: '#/h/necesidades' }, 'Marca lo que necesitará tu proyecto'), ' y te lo decimos.');
+    }
     if (role.kind === 'segun' && p && steps.length && L.needsAnswered(p)) {
       var applies = steps.some(function (t) { return L.applies(p, t.id); });
       status = h('span', { class: 'where-status ' + (applies ? 'yes' : 'no') }, applies ? 'Según lo que marcaste, te toca.' : 'Según lo que marcaste, hoy no te toca. Puedes verla igual.');
@@ -102,7 +105,7 @@
     side.appendChild(h('div', { class: 'side-sep' }, 'Herramientas'));
     TOOL_GROUPS.forEach(function (g) {
       var open = route.name === 'tool' && g.tools.indexOf(route.id) >= 0;
-      side.appendChild(accordion(g.id, g.name, '', g.tools.map(function (tid) { return h('a', { href: '#/h/' + tid, class: 'side-item tool' + (route.name === 'tool' && route.id === tid ? ' current' : '') }, h('span', { class: 'ck tool' }, UI.icon(RF.tools[tid].icon || 'file', 14)), h('span', { class: 'si-t' }, toolTitle(tid), h('span', { class: 'si-tag' }, toolTag(tid)))); }), { open: open, cls: 'tools' }));
+      side.appendChild(accordion(g.id, g.name, '', g.tools.map(function (tid) { return h('a', { href: '#/h/' + tid, onclick: function () { if (location.hash === '#/h/' + tid) { if (RF.tools[tid] && RF.tools[tid].reset) RF.tools[tid].reset(); RF.app.render(); } }, class: 'side-item tool' + (route.name === 'tool' && route.id === tid ? ' current' : '') }, h('span', { class: 'ck tool' }, UI.icon(RF.tools[tid].icon || 'file', 14)), h('span', { class: 'si-t' }, toolTitle(tid), h('span', { class: 'si-tag' }, toolTag(tid)))); }), { open: open, cls: 'tools' }));
     });
     side.appendChild(h('div', { class: 'side-foot' },
       h('a', { href: '#/h/nube', class: 'side-link' + (route.name === 'tool' && route.id === 'nube' ? ' current' : '') }, UI.icon('cloud', 18), h('span', null, 'Nube y copias')),
@@ -118,12 +121,15 @@
     if (!p) return onboarding();
     var prog = L.progress(p), res = L.reconcile(p, s.community, U.todayISO(), s.holidays);
     var f = fase(prog.faseActual), nx = prog.next, nt = nx && RF.tramites.byId[nx.tramiteId];
+    var flagged = res.groups.reduce(function (a, g) { return a.concat(g.items.filter(function (i) { return i.level === 'error' || i.level === 'warn'; })); }, []);
+    var fresh = !(p.expenses || []).length && !((p.gantt && p.gantt.stages) || []).length && !(p.budgetLines || []).length;
+    var doneWithIssues = !nx && flagged.length > 0;
     root.appendChild(h('section', { class: 'hero' },
       h('p', { class: 'kicker' }, (s.community.name || 'Tu comunidad') + ' · ' + (p.name || 'Proyecto')),
-      h('h1', null, nx ? 'Vas en la fase ' + f.n + ': ' + f.name : '¡Terminaste todos los pasos!'),
-      h('p', { class: 'lead' }, nx ? f.blurb : 'Revisa el cuadre final y guarda tu copia.'),
+      h('h1', null, nx ? 'Vas en la fase ' + f.n + ': ' + f.name : doneWithIssues ? 'Marcaste todos los pasos, pero aún faltan correcciones' : '¡Terminaste todos los pasos!'),
+      h('p', { class: 'lead' }, nx ? f.blurb : doneWithIssues ? 'La revisión encontró ' + flagged.length + (flagged.length === 1 ? ' aviso' : ' avisos') + ' que conviene arreglar antes de enviar la rendición.' : 'Revisa el cuadre final y guarda tu copia.'),
       h('div', { class: 'hero-row' },
-        nt ? h('a', { class: 'btn primary big', href: '#/t/' + nt.id }, 'Continuar: ' + nt.title, UI.icon('right', 20)) : h('a', { class: 'btn primary big', href: '#/h/revision' }, 'Ver la revisión final'),
+        nt ? h('a', { class: 'btn primary big', href: '#/t/' + nt.id }, 'Continuar: ' + nt.title, UI.icon('right', 20)) : h('a', { class: 'btn primary big', href: '#/h/revision' }, doneWithIssues ? 'Ver qué corregir' : 'Ver la revisión final'),
         h('div', { class: 'ring-wrap' }, UI.progressBar(prog.tramDone, prog.tramTotal, 'Avance total'), h('span', { class: 'ring-t' }, prog.tramDone + ' de ' + prog.tramTotal + ' trámites listos'))),
       nt ? h('p', { class: 'next-step' }, 'Siguiente paso: ', h('strong', null, nt.steps[nx.stepIdx])) : null));
     if (!L.needsAnswered(p)) root.appendChild(h('section', { class: 'card need-banner' }, h('h2', { class: 'card-title' }, 'Cuéntanos qué necesitará tu proyecto'), h('p', null, 'Marca lo que vas a usar (viáticos, insumos, inmuebles…) y te mostramos solo los trámites que te tocan. Hoy ves todos.'), h('a', { class: 'btn primary', href: '#/h/necesidades' }, 'Marcar lo que necesito')));
@@ -131,8 +137,7 @@
     var soon = RF.calendar.collect(s, p).filter(function (e) { return e.date >= U.todayISO(); }).slice(0, 3);
     if (soon.length) root.appendChild(UI.section('Próximas fechas', [h('ul', { class: 'cal-list' }, soon.map(function (e) { return h('li', { class: 'cal-ev' }, h('span', { class: 'cal-ev-t' }, h('strong', null, U.fmtDate(e.date) + ' · '), e.title)); })), h('a', { class: 'btn ghost small', href: '#/h/calendario' }, UI.icon('calendar', 14), 'Ver el calendario completo')]));
     /* alertas */
-    var flagged = res.groups.reduce(function (a, g) { return a.concat(g.items.filter(function (i) { return i.level === 'error' || i.level === 'warn'; })); }, []);
-    root.appendChild(UI.section('¿Cuadra todo?', [flagged.length ? h('ul', { class: 'check-list' }, flagged.slice(0, 4).map(function (i) { return h('li', { class: 'lv-' + i.level }, h('span', { class: 'lv-ico' }, UI.icon('alert', 18)), h('span', { class: 'lv-msg' }, i.msg)); })) : UI.callout('ok', 'Nada por corregir por ahora.', ''), h('div', { class: 'row-actions' }, h('a', { class: 'btn', href: '#/h/revision' }, 'Ver la revisión completa' + (flagged.length > 4 ? ' (' + flagged.length + ' avisos)' : '')))], 'home-check'));
+    root.appendChild(fresh ? UI.section('Para empezar', [h('p', null, 'Anota primero las fechas del proyecto y lo que CORFO te aprobó en cada cuenta. Cuando tengas datos, aquí verás si algo no cuadra.'), h('div', { class: 'row-actions' }, h('a', { class: 'btn', href: '#/h/proyecto' }, UI.icon('user', 14), 'Completar mi comunidad y proyecto'))], 'home-check') : UI.section('¿Cuadra todo?', [flagged.length ? h('ul', { class: 'check-list' }, flagged.slice(0, 4).map(function (i) { return h('li', { class: 'lv-' + i.level }, h('span', { class: 'lv-ico' }, UI.icon('alert', 18)), h('span', { class: 'lv-msg' }, i.msg)); })) : h('p', { class: 'hint' }, 'Nada por corregir por ahora.'), h('div', { class: 'row-actions' }, h('a', { class: 'btn', href: '#/h/revision' }, 'Ver la revisión completa' + (flagged.length > 4 ? ' (' + flagged.length + ' avisos)' : '')))], 'home-check'));
     /* fases */
     var cards = h('div', { class: 'phase-cards' }, D.FASES.map(function (fa) {
       var pf = prog.porFase[fa.id];
@@ -150,7 +155,7 @@
     var s = RF.store.get(), st = { proyecto: '' }, root = h('div', { class: 'view home' });
     root.appendChild(h('section', { class: 'hero' }, h('p', { class: 'kicker' }, 'Bienvenida y bienvenido'), h('h1', null, 'Rinde Fácil te guía en tu rendición'), h('p', { class: 'lead' }, 'Paso a paso, con los formularios ya armados, y avisándote si algo no cuadra. Empecemos con dos datos.')));
     var go = UI.btn('Empezar', { cls: 'primary big', onclick: function () { if (!s.community.name.trim()) { UI.toast('Escribe el nombre de tu comunidad.', 'bad'); return; } RF.store.addProject(st.proyecto.trim() || 'Mi proyecto'); location.hash = '#/'; } });
-    root.appendChild(UI.section('Cuéntanos', [h('div', { class: 'form-grid' }, UI.field('Nombre de tu comunidad', s.community, 'name', { type: 'text', cls: 'wide', ph: 'Ej: Comunidad Atacameña de …' }), UI.field('RUT de la comunidad', s.community, 'rut', { type: 'rut' }), UI.field('Nombre de tu proyecto', st, 'proyecto', { type: 'text', ph: 'Ej: Sede comunitaria' })), h('div', { class: 'row-actions' }, go)]));
+    root.appendChild(UI.section('Cuéntanos', [h('div', { class: 'form-grid' }, (s.community.name || '').trim() ? h('p', { class: 'lead wide' }, 'Comunidad: ', h('strong', null, s.community.name)) : UI.field('Nombre de tu comunidad', s.community, 'name', { type: 'text', cls: 'wide', ph: 'Ej: Comunidad Atacameña de …' }), UI.field('RUT de la comunidad', s.community, 'rut', { type: 'rut' }), UI.field('Nombre de tu proyecto', st, 'proyecto', { type: 'text', ph: 'Ej: Sede comunitaria' })), h('div', { class: 'row-actions' }, go)]));
     root.appendChild(h('section', null, h('h2', { class: 'sec-title' }, 'Cómo funciona'), h('div', { class: 'cards-3' },
       h('div', { class: 'mini-card' }, h('strong', null, '1. Sigue la ruta'), h('p', null, 'Seis fases, cada una con sus trámites. Marca lo que ya hiciste.')),
       h('div', { class: 'mini-card' }, h('strong', null, '2. Completa aquí'), h('p', null, 'Carta Gantt, presupuesto, anexos e informes: todo se rellena y sale en Excel, Word, PDF o texto.')),

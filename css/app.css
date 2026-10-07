@@ -488,3 +488,16 @@ html[data-text="muy-grande"] body{zoom:1.3}
 .cal-cell.today .cal-num{color:var(--action);text-decoration:underline}
 .cal-cell.sel{outline:2px solid var(--action);outline-offset:-2px}
 @media (max-width:560px){.cal-grid td{height:52px}.cal-day{min-height:52px;padding:3px}.cal-num{font-size:14px}}
+
+/* 7: nombres de actividad legibles en la Carta Gantt */
+.edit-grid td[data-label="Actividad"] input,.edit-grid td[data-label="Actividad"] textarea{min-width:260px;width:100%}
+/* 16: lista de gastos compacta en el celular: proveedor y monto arriba, el resto en una línea pequeña */
+@media (max-width:700px){
+  .list-grid tr{display:grid;grid-template-columns:1fr auto;gap:1px 10px}
+  .list-grid td::before{display:none}
+  .list-grid td[data-label="Proveedor"]{grid-column:1;grid-row:1;font-weight:700}
+  .list-grid td[data-label="A rendir"]{grid-column:2;grid-row:1;font-weight:700;text-align:right}
+  .list-grid td[data-label="Estado"]{grid-column:1;grid-row:2}
+  .list-grid td[data-label="Fecha"]{grid-column:2;grid-row:2;text-align:right;color:var(--muted);font-size:14px}
+  .list-grid td[data-label="Documento"],.list-grid td[data-label="Cuenta"],.list-grid td[data-label="Problemas"]{grid-column:1 / span 2;color:var(--muted);font-size:14px}
+}

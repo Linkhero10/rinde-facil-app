@@ -212,6 +212,13 @@
 
   RF.blobs = blobs;
   RF.outbox = outbox;
-  RF.cloud = { configured: configured, validUrl: validUrl, trustedUrl: trustedUrl, post: post, postRaw: postRaw, postRawTo: postRawTo, postRetry: postRetry, ping: ping, downscale: downscale, blobToBase64: blobToBase64 };
+  /* explica un error de conexión sin tecnicismos («Failed to fetch» no le dice nada a nadie) */
+  function humanError(e) {
+    var m = String((e && e.message) || e || '');
+    if (/Failed to fetch|NetworkError|Load failed|ERR_INTERNET|fetch/i.test(m)) return 'No hay conexión a internet, o el servicio no responde.';
+    if (/TIMEOUT|abort/i.test(m)) return 'El servicio tardó demasiado en responder.';
+    return m || 'error desconocido';
+  }
+  RF.cloud = { humanError: humanError, configured: configured, validUrl: validUrl, trustedUrl: trustedUrl, post: post, postRaw: postRaw, postRawTo: postRawTo, postRetry: postRetry, ping: ping, downscale: downscale, blobToBase64: blobToBase64 };
   RF.ocr = { recognize: recognize, toExpenseFields: toExpenseFields };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -224,9 +224,49 @@
     return items;
   }
 
+  /* frases comunes → palabras que sí están en la app */
+  var INTENTS = [
+    [/(subir|sacar|tomar|cargar|mandar|mandar).*(foto|boleta|factura|comprobante|pdf)|leer.*(foto|boleta)/, 'subir foto'],
+    [/cuenta (bancaria|corriente|del banco)|banco|chequera/, 'cuenta corriente'],
+    [/(pagar|pago|pagarle).*(sueldo|honorario|trabajador|persona)|contratar/, 'sueldos honorarios'],
+    [/(donde|dónde|como|cómo).*(guard|respald|copia)|perder.*(dato|todo)|guardar mis datos/, 'copia nube'],
+    [/(olvide|olvidé|perdi|perdí|no recuerdo).*(clave|contrasena|contraseña)|cambiar.*(clave|contrasena|contraseña)|clave/, 'contraseña'],
+    [/cuanto tiempo|cuándo vence|cuando vence|hasta cuando|hasta cuándo|fecha limite|fecha límite|me quedan/, 'plazo'],
+    [/recordar|recordatorio|agenda|aviso de fecha|no olvidar/, 'calendario'],
+    [/duda|ayuda|no se que hacer|no sé qué hacer|no entiendo|preguntar/, 'duda consulta'],
+    [/firma(r)?.*convenio|convenio/, 'convenio'],
+    [/viaje|pasaje|hospedaje|alojamiento|bencina|combustible|vi[aá]tico/, 'viáticos'],
+    [/efectivo|plata en mano|billete/, 'efectivo'],
+    [/sueldo|liquidaci/, 'sueldos'],
+    [/iva|impuesto/, 'iva']
+  ];
+  var STOP = { a: 1, al: 1, algo: 1, como: 1, con: 1, cual: 1, de: 1, del: 1, donde: 1, el: 1, en: 1, es: 1, esta: 1, esto: 1, hacer: 1, la: 1, las: 1, lo: 1, los: 1, me: 1, mi: 1, mis: 1, no: 1, para: 1, por: 1, puedo: 1, que: 1, quiero: 1, se: 1, si: 1, su: 1, sus: 1, necesito: 1, tengo: 1, un: 1, una: 1, uno: 1, unos: 1, unas: 1, y: 1 };
+  function interpret(query) {
+    var n = norm(query), extra = [];
+    INTENTS.forEach(function (it) { if (it[0].test(n)) extra.push(it[1]); });
+    var words = tokens(query).filter(function (t) { return !STOP[t]; });
+    return { extra: extra, words: words };
+  }
   function search(query, limit) {
     if (!staticCache) staticCache = buildStatic();
-    return rank(staticCache.concat(buildUser()), query, limit || 40);
+    var pool = staticCache.concat(buildUser()), lim = limit || 40;
+    var direct = rank(pool, query, lim);
+    if (direct.length || tokens(query).length < 2) return direct;
+    /* sin resultados exactos: se prueba sin las palabras de relleno y con lo que la frase quiere decir */
+    var it = interpret(query), tried = [];
+    if (!it.extra.length && it.words.length === tokens(query).length) return direct; /* una búsqueda exacta sin resultados sigue sin resultados */
+    var attempts = [];
+    if (it.words.length && it.words.join(' ') !== norm(query)) attempts.push(it.words.join(' '));
+    it.extra.forEach(function (e) { attempts.push(e); });
+    var merged = {}, order = [];
+    attempts.forEach(function (q) {
+      if (tried.indexOf(q) >= 0) return; tried.push(q);
+      rank(pool, q, lim).forEach(function (r, i) { var k = r.item.href + '|' + r.item.title; if (!merged[k]) { merged[k] = r; order.push(k); } });
+    });
+    if (!order.length) { /* última salida: cada palabra por separado */
+      it.words.filter(function (w) { return w.length >= 4; }).forEach(function (w) { rank(pool, w, lim).slice(0, 8).forEach(function (r) { var k = r.item.href + '|' + r.item.title; if (!merged[k]) { merged[k] = r; order.push(k); } }); });
+    }
+    return order.map(function (k) { return merged[k]; }).slice(0, lim);
   }
   function resetIndex() { staticCache = null; }
 

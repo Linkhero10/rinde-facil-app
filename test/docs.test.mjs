@@ -50,3 +50,13 @@ test('lo que escribe una persona no se convierte en HTML en los documentos', () 
   assert.ok(!/<img/i.test(o.html) && !/<img/i.test(o.word), 'sin etiqueta viva');
   assert.match(o.html, /&lt;img/);
 });
+
+test('el Word es un .docx de verdad (zip con word/document.xml) y trae el texto y la tabla', () => {
+  const doc = { title: 'Prueba Word', subtitle: 'Sub', blocks: [{ t: 'h', text: 'Detalle' }, { t: 'table', head: ['A', 'Monto ($)'], types: ['text', 'money'], rows: [['Uno', 1500]], foot: ['Total', 'SUM'] }] };
+  const bytes = RF.exp.docToDocx(doc);
+  assert.equal(bytes[0], 0x50); assert.equal(bytes[1], 0x4b); /* PK */
+  const text = Buffer.from(bytes).toString('latin1');
+  assert.ok(text.includes('word/document.xml') && text.includes('[Content_Types].xml'));
+  const xml = Buffer.from(bytes).toString('utf8');
+  assert.ok(xml.includes('Prueba Word') && xml.includes('$ 1.500') && xml.includes('<w:tbl>'));
+});

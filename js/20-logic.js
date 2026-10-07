@@ -87,6 +87,9 @@
       var diff = Math.abs(neto + iva - total);
       if (diff > R.TOLERANCIA_IVA) add('error', 'aritmetica', 'Neto + IVA no suma el total (hay ' + U.fmtCLP(diff) + ' de diferencia).', 'total');
       else if (iva > 0 && Math.abs(iva - Math.round(neto * R.IVA)) > 2) add('warn', 'iva_raro', 'El IVA no es el 19 % del neto. Revisa las cifras.', 'iva');
+
+    } else if (!dt.iva && neto > 0 && iva > 0 && total > 0 && Math.abs(neto + iva - total) > R.TOLERANCIA_IVA) {
+      add('warn', 'aritmetica_boleta', 'En la boleta, neto + IVA no suma el total (hay ' + U.fmtCLP(Math.abs(neto + iva - total)) + ' de diferencia). Compara con el documento.', 'total');
     }
 
     /* monto a rendir */
@@ -94,7 +97,7 @@
     var mr = num(exp.montoRendir);
     if (total > 0 && mr > 0 && Math.abs(mr - esp) > R.TOLERANCIA_IVA) {
       if (community && community.ivaModo === 'recupera' && dt.iva && neto > 0 && Math.abs(mr - total) <= R.TOLERANCIA_IVA) add('error', 'rendir_bruto', 'Como recuperas el IVA, debes rendir el valor neto (' + U.fmtCLP(neto) + ').', 'montoRendir');
-      else add('warn', 'monto_distinto', 'El monto a rendir (' + U.fmtCLP(mr) + ') no coincide con el que corresponde (' + U.fmtCLP(esp) + ').', 'montoRendir');
+      else add('warn', 'monto_distinto', 'El monto a rendir (' + U.fmtCLP(mr) + ') no coincide con el que corresponde (' + U.fmtCLP(esp) + ').' + (exp.cuenta === 'administracion' ? ' Si el gasto lo comparten varios proyectos, anota el «Porcentaje que corresponde al proyecto» y el monto se calcula solo (se pide el Anexo 5).' : ''), 'montoRendir');
     }
     if (total > 0 && !(mr > 0)) add('error', 'sin_rendir', 'Falta el monto a rendir.', 'montoRendir');
 
@@ -200,10 +203,10 @@
       var a = x.act, label = (a.name || 'Actividad sin nombre');
       if (!String(a.name || '').trim()) out.push({ level: 'error', msg: 'Hay una actividad sin nombre.' });
       if (!a.start || !a.end) out.push({ level: 'error', msg: '«' + label + '»: faltan fechas de inicio o término.' });
-      else if (a.end < a.start) out.push({ level: 'error', msg: '«' + label + '»: el término es anterior al inicio.' });
       else {
-        if (project.start && a.start < project.start) out.push({ level: 'warn', msg: '«' + label + '» empieza antes del inicio del proyecto.' });
-        if (project.end && a.end > project.end) out.push({ level: 'warn', msg: '«' + label + '» termina después del término del proyecto.' });
+        if (a.end < a.start) out.push({ level: 'error', msg: '«' + label + '»: el término es anterior al inicio.' });
+        if (project.start && (a.start < project.start || a.end < project.start)) out.push({ level: 'warn', msg: '«' + label + '» queda antes del inicio del proyecto (' + U.fmtDateShort(project.start) + ').' });
+        if (project.end && (a.end > project.end || a.start > project.end)) out.push({ level: 'warn', msg: '«' + label + '» queda después del término del proyecto (' + U.fmtDateShort(project.end) + ').' });
       }
     });
     return out;

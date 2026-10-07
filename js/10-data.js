@@ -101,6 +101,11 @@
   var CONVENIOS = {
     'corfo-2026-09': { id: 'corfo-2026-09', nombre: 'Convenio CORFO – Novandino (ex SQM)', fuente: 'Manual de rendición y flujograma del convenio, con la página citada en cada aviso', reglas: Object.assign({}, REGLAS) }
   };
+  /* feriados nacionales de Chile en días de semana o fin de semana, sin los regionales; cambian por ley: confirma con el calendario oficial */
+  var FERIADOS_CL = {
+    2026: ['2026-01-01', '2026-04-03', '2026-04-04', '2026-05-01', '2026-05-21', '2026-06-21', '2026-06-29', '2026-07-16', '2026-08-15', '2026-09-18', '2026-09-19', '2026-10-12', '2026-10-31', '2026-11-01', '2026-12-08', '2026-12-25'],
+    2027: ['2027-01-01', '2027-03-26', '2027-03-27', '2027-05-01', '2027-05-21', '2027-06-20', '2027-06-28', '2027-07-16', '2027-08-15', '2027-09-18', '2027-09-19', '2027-10-11', '2027-11-01', '2027-12-08', '2027-12-25']
+  };
   var CONVENIO_DEFECTO = 'corfo-2026-09';
   function convenioDe(project) { return CONVENIOS[(project && project.convenio) || CONVENIO_DEFECTO] || CONVENIOS[CONVENIO_DEFECTO]; }
   function useConvenio(project) { var c = convenioDe(project); Object.keys(REGLAS).forEach(function (k) { delete REGLAS[k]; }); Object.assign(REGLAS, c.reglas); return c; }
@@ -150,7 +155,7 @@
     { fase: 'F6', title: 'Cierre', ids: ['26', '27', '28'], edges: [['26', '27'], ['27', '28']] }
   ];
 
-  RF.data = {
+  RF.data = { FERIADOS_CL: FERIADOS_CL,
     ACTORS: ACTORS, FASES: FASES, AYUDA: AYUDA, CUENTAS: CUENTAS, CUENTA_BY_ID: CUENTA_BY_ID,
     TIPOS_PROYECTO: TIPOS_PROYECTO, DOC_TYPES: DOC_TYPES, DOC_BY_ID: DOC_BY_ID, RESPALDOS: RESPALDOS,
     FORMAS_PAGO: FORMAS_PAGO, REGLAS: REGLAS, CONVENIOS: CONVENIOS, CONVENIO_DEFECTO: CONVENIO_DEFECTO, convenioDe: convenioDe, useConvenio: useConvenio, FLOW: FLOW, FLOW_BLOCKS: FLOW_BLOCKS
