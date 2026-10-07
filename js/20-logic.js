@@ -82,14 +82,14 @@
     if (!(num(exp.total) > 0)) add('error', 'sin_total', 'Falta el monto total.', 'total');
 
     /* aritmética */
-    var neto = num(exp.neto), iva = num(exp.iva), total = num(exp.total);
+    var neto = num(exp.neto), iva = num(exp.iva), total = num(exp.total), otros = num(exp.otrosImpuestos);
     if (dt.iva && neto > 0 && total > 0) {
-      var diff = Math.abs(neto + iva - total);
+      var diff = Math.abs(neto + iva + otros - total);
       if (diff > R.TOLERANCIA_IVA) add('error', 'aritmetica', 'Neto + IVA no suma el total (hay ' + U.fmtCLP(diff) + ' de diferencia).', 'total');
       else if (iva > 0 && Math.abs(iva - Math.round(neto * R.IVA)) > 2) add('warn', 'iva_raro', 'El IVA no es el 19 % del neto. Revisa las cifras.', 'iva');
 
-    } else if (!dt.iva && neto > 0 && iva > 0 && total > 0 && Math.abs(neto + iva - total) > R.TOLERANCIA_IVA) {
-      add('warn', 'aritmetica_boleta', 'En la boleta, neto + IVA no suma el total (hay ' + U.fmtCLP(Math.abs(neto + iva - total)) + ' de diferencia). Compara con el documento.', 'total');
+    } else if (!dt.iva && neto > 0 && iva > 0 && total > 0 && Math.abs(neto + iva + otros - total) > R.TOLERANCIA_IVA) {
+      add('warn', 'aritmetica_boleta', 'En la boleta, neto + IVA no suma el total (hay ' + U.fmtCLP(Math.abs(neto + iva + otros - total)) + ' de diferencia). Compara con el documento.', 'total');
     }
 
     /* monto a rendir */

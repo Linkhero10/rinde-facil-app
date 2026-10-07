@@ -12,7 +12,7 @@
   var STATUS_LABEL = { ok: 'Listo', warn: 'Revisar', error: 'Pendiente' };
 
   function newExpense() {
-    return { id: U.uid('g'), cuenta: 'operacion', item: '', docType: 'boleta', folio: '', fecha: '', fechaPago: '', rutProveedor: '', proveedor: '', nombreComercial: '', neto: '', iva: '', total: '', montoRendir: '', pctUso: '', formaPago: 'transferencia', glosa: '', actId: '', has: {}, esViatico: false, servicioTecnico: false, esInmueble: false, verified: false, ocr: null, imgId: null, createdAt: new Date().toISOString() };
+    return { id: U.uid('g'), cuenta: 'operacion', item: '', docType: 'boleta', folio: '', fecha: '', fechaPago: '', rutProveedor: '', proveedor: '', nombreComercial: '', neto: '', iva: '', otrosImpuestos: '', total: '', montoRendir: '', pctUso: '', formaPago: 'transferencia', glosa: '', actId: '', has: {}, esViatico: false, servicioTecnico: false, esInmueble: false, verified: false, ocr: null, imgId: null, createdAt: new Date().toISOString() };
   }
   function addExpenseWithReceipt(project, file) {
     if (!project || !Array.isArray(project.expenses) || !file) return Promise.reject(new Error('Falta el proyecto o la foto del comprobante.'));
@@ -242,7 +242,7 @@
         h('h3', { class: 'grp' }, '1. El documento'),
         h('div', { class: 'form-grid' }, fld('Tipo de documento', 'docType', { type: 'select', options: docOpts, noEmpty: true, cls: 'span2' }), fld('Número (folio)', 'folio', { type: 'text' }), fld('Fecha del documento', 'fecha', { type: 'date' }), fld('Nombre del proveedor', 'proveedor', { type: 'text', cls: 'wide' }), fld('Nombre comercial o local (opcional)', 'nombreComercial', { type: 'text', cls: 'wide', hint: 'Solo para reconocerlo; el proveedor es quien tiene el RUT.' }), fld('RUT del proveedor', 'rutProveedor', { type: 'rut' })),
         h('h3', { class: 'grp' }, '2. Los montos'),
-        h('div', { class: 'form-grid' }, fld('Monto neto ($)', 'neto', { type: 'money' }), fld('IVA ($)', 'iva', { type: 'money' }), fld('Total del documento ($)', 'total', { type: 'money' }),
+        h('div', { class: 'form-grid' }, fld('Monto neto ($)', 'neto', { type: 'money' }), fld('IVA ($)', 'iva', { type: 'money' }), fld('Otros impuestos ($)', 'otrosImpuestos', { type: 'money', hint: 'Solo si el total incluye impuestos que no son IVA, como el de los combustibles.' }), fld('Total del documento ($)', 'total', { type: 'money' }),
           h('div', { class: 'field wide' }, h('div', { class: 'row-actions' },
             UI.btn('Calcular IVA y total desde el neto', { cls: 'ghost', onclick: function () { var n = num(e.neto); e.iva = Math.round(n * D.REGLAS.IVA); e.total = n + e.iva; paint(); } }),
             UI.btn('Calcular neto e IVA desde el total', { cls: 'ghost', onclick: function () { var t = num(e.total); e.neto = Math.round(t / (1 + D.REGLAS.IVA)); e.iva = t - e.neto; paint(); } }))),

@@ -256,7 +256,8 @@
       if (h) { f.total = h.bruto; f.neto = ''; f.iva = ''; checks.cuadra = true; notes.push('Honorarios: bruto ' + U.fmtCLP(h.bruto) + ', retención ' + U.fmtCLP(h.retencion) + ' y líquido ' + U.fmtCLP(h.liquido) + '. Se anota el bruto como total del gasto.'); }
     } else {
       tri = findTriple(am);
-      if (tri) { f.neto = tri.neto; f.iva = tri.iva; f.total = tri.total; checks.cuadra = true; if (tri.extras && tri.extras.length) notes.push('El total incluye otros impuestos (' + tri.extras.map(function (e) { return U.fmtCLP(e); }).join(' + ') + '), como en los combustibles.'); }
+      if (tri) { f.neto = tri.neto; f.iva = tri.iva; f.total = tri.total; checks.cuadra = true; if (tri.extras && tri.extras.length) f.otrosImpuestos = tri.extras.reduce(function (a, x) { return a + x; }, 0);
+      if (tri.extras && tri.extras.length) notes.push('El total incluye otros impuestos (' + tri.extras.map(function (e) { return U.fmtCLP(e); }).join(' + ') + '), como en los combustibles.'); }
       else {
         var inc = findIvaIncluded(am);
         if (inc) { f.neto = inc.neto; f.iva = inc.iva; f.total = inc.total; checks.cuadra = true; notes.push('El comprobante indica el IVA incluido; el neto se calculó restando.'); }

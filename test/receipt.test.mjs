@@ -161,3 +161,21 @@ test('voucher de tarjeta: el nombre del local es el que va antes del RUT, no el 
   assert.equal(out.fields.proveedor, 'ABASTECEDORA DE ALIMENTOS JOSE CARRENO O');
   assert.equal(out.fields.total, 7390);
 });
+
+test('factura de combustible: los otros impuestos van aparte y el total cuadra (antes daba un error de aritmética falso)', () => {
+  const r = ex(`RUT: 77215640-5
+FACTURA ELECTRONICA
+NRO. 23581519
+R.Social: ADMINISTRADORA DE VENTAS AL DETAL LE LTDA
+GIRO : VENTA DE COMBUSTIBLES
+Fecha Emision: 03-06-2026
+Monto Neto $78.650
+IVA 19% $14.944
+Impuesto Especifico $7.146
+Impuesto Especifico $1.261
+Total $102.001`);
+  assert.equal(r.fields.total, 102001); assert.equal(r.fields.otrosImpuestos, 8407);
+  const e = { docType: 'factura', total: 102001, neto: 78650, iva: 14944, otrosImpuestos: r.fields.otrosImpuestos, montoRendir: 102001, cuenta: 'operacion', has: {} };
+  const out = RF.logic.evaluateExpense(e, { expenses: [e], start: '2026-01-01', end: '2027-01-01' }, {}, [e]);
+  assert.ok(!out.issues.some(i => i.id === 'aritmetica'), 'sin error de aritmética: ' + out.issues.map(i => i.id));
+});
