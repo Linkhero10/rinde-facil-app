@@ -892,6 +892,8 @@ await step('17. Celular: menú en cajón, sin desborde horizontal, botones grand
   ok(!(await m.locator('#side').isVisible().catch(() => false)) || true);
   await m.locator('.menu-btn').click();
   await m.waitForTimeout(350);
+  const alto = await m.evaluate(() => { const s = document.getElementById('side'); return [s.clientHeight, s.scrollHeight, innerHeight]; });
+  ok(alto[0] <= alto[2] + 1 && alto[1] > alto[0], 'el menú del celular mide lo que la ventana y se puede bajar hasta el final: ' + alto);
   const box = await m.locator('#side').boundingBox();
   ok(box && box.x >= -2, 'el cajón se abre');
   await m.screenshot({ path: path.join(SHOTS, '17-mobile-menu.png') });

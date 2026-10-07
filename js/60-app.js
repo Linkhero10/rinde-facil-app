@@ -97,14 +97,24 @@
     var scrim = h('div', { class: 'scrim', onclick: closeMenu });
     var sideEl = RF.views.sidebar(r);
     host.appendChild(h('div', { class: 'shell' }, top, sideEl, scrim, main));
-    sideEl.scrollTop = sideScroll;
+    fitSide(); sideEl.scrollTop = sideScroll;
     U.$$('a', sideEl).forEach(function (a) { a.addEventListener('click', closeMenu); });
     applyThemeLabel();
     if (app.pendingHighlight && RF.searchui) { var toks = app.pendingHighlight; app.pendingHighlight = null; RF.searchui.highlight(main, toks); } /* viene del buscador: marca lo encontrado */
     var key = location.hash;
     if (key !== lastKey) { window.scrollTo(0, 0); lastKey = key; main.focus({ preventScroll: true }); }
   }
-  function toggleMenu() { var open = document.body.classList.toggle('menu-open'); var b = document.querySelector('.menu-btn'); if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+  /* el menú lateral en pantallas angostas mide el alto real de la ventana: así siempre se puede bajar hasta el final, aunque el navegador (o un panel integrado) calcule mal «bottom:0» */
+  function fitSide() {
+    var side = document.getElementById('side'); if (!side) return;
+    var narrow = window.matchMedia && window.matchMedia('(max-width:900px)').matches;
+    var vv = window.visualViewport, h = vv ? Math.min(window.innerHeight, Math.round(vv.height)) : window.innerHeight;
+    side.style.height = narrow && h > 200 ? h + 'px' : '';
+  }
+  app.fitSide = fitSide;
+  window.addEventListener('resize', fitSide);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', fitSide);
+  function toggleMenu() { var open = document.body.classList.toggle('menu-open'); var b = document.querySelector('.menu-btn'); if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false'); fitSide(); }
   function closeMenu() { document.body.classList.remove('menu-open'); var b = document.querySelector('.menu-btn'); if (b) b.setAttribute('aria-expanded', 'false'); }
   app.render = render;
 
