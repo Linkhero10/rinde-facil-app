@@ -113,6 +113,7 @@
   /* Cambia lo que muestra el escenario con una animación corta (se omite si la persona pidió menos movimiento).
    * 'slide': el mes nuevo entra desde el lado hacia el que se avanza · 'zoom-in': el mes crece desde el mini-mes que se tocó · 'zoom-out': el año aparece desde el mes. */
   function swap(stage, next, kind, dir, rect) {
+    while (stage.children.length > 1) stage.removeChild(stage.firstElementChild); /* restos de un cambio anterior que no alcanzó a terminar */
     var old = stage.firstElementChild;
     if (!old || reduced() || !old.animate) { U.clear(stage); stage.appendChild(next); return; }
     var box = stage.getBoundingClientRect();
@@ -136,7 +137,7 @@
     stage.classList.add('moving');
     var a = next.animate(inFrames, { duration: dur, easing: ease }), b = old.animate(outFrames, { duration: dur * .8, easing: ease, fill: 'forwards' });
     var done = false;
-    function finish() { if (done) return; done = true; if (old.parentNode === stage) stage.removeChild(old); next.style.transformOrigin = ''; stage.classList.remove('moving'); }
+    function finish() { if (done) return; done = true; Array.prototype.slice.call(stage.children).forEach(function (c) { if (c !== next) stage.removeChild(c); }); next.style.transformOrigin = ''; stage.classList.remove('moving'); }
     a.onfinish = finish; a.oncancel = finish; setTimeout(finish, dur + 120);
     return b;
   }
@@ -151,7 +152,7 @@
       h('p', { class: 'lead' }, 'Aquí aparece toda fecha que anotas en la app: el inicio y el término del proyecto, los plazos, las actividades de la Carta Gantt, las boletas y las reuniones. También puedes agregar tus propios eventos, con hora y lugar.'));
     var upcoming = h('div'), allBox = h('div', { class: 'cal-all' }), chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Qué fechas mostrar' }),
       stage = h('div', { class: 'cal-stage' }), toolbar = h('div', { class: 'cal-head' }), dayBox = h('div', { class: 'cal-daybox' });
-    var title = h('h2', { class: 'cal-month', 'aria-live': 'polite' });
+    var title = h('h2', { class: 'cal-month', 'aria-live': 'polite' }), pickBox = h('div', { class: 'cal-yearpick-wrap' });
     var segMes, segAnio;
 
     function visible() { return collect(RF.store.get(), RF.store.project()).filter(function (e) { return st.kinds[e.kind]; }); }
@@ -205,7 +206,30 @@
       toolbar.appendChild(nav); toolbar.appendChild(title); toolbar.appendChild(h('div', { class: 'seg', role: 'group', 'aria-label': 'Vista' }, segMes, segAnio));
       paintTitle();
     }
-    function paintTitle() { title.textContent = st.view === 'mes' ? cap(MONTHS[+st.month.slice(5, 7) - 1]) + ' ' + st.month.slice(0, 4) : String(st.year); }
+    function paintTitle() {
+      U.clear(title);
+      if (st.view === 'mes') { title.textContent = cap(MONTHS[+st.month.slice(5, 7) - 1]) + ' ' + st.month.slice(0, 4); closePick(); return; }
+      title.appendChild(h('button', { type: 'button', class: 'cal-yearbtn', 'aria-haspopup': 'true', 'aria-expanded': pickBox.firstChild ? 'true' : 'false', title: 'Elegir otro año', onclick: togglePick }, String(st.year), h('span', { class: 'cal-caret', 'aria-hidden': 'true' }, '▾')));
+    }
+    function closePick() { U.clear(pickBox); var b = title.querySelector('.cal-yearbtn'); if (b) b.setAttribute('aria-expanded', 'false'); }
+    function goYear(y) {
+      y = Math.max(1900, Math.min(2100, Math.round(+y) || st.year)); if (y === st.year) { closePick(); return; }
+      var dir = y > st.year ? 1 : -1; st.year = y; swap(stage, buildYear(), 'slide', dir); paintTitle(); closePick();
+    }
+    function togglePick() {
+      if (pickBox.firstChild) { closePick(); return; }
+      var rangeEl = h('span', { class: 'cal-yearrange' }), base = Math.floor(st.year / 12) * 12, grid = h('div', { class: 'cal-years' }), inp = h('input', { type: 'number', min: '1900', max: '2100', value: String(st.year), 'aria-label': 'Escribir un año', class: 'cal-yearin' });
+      function fill() {
+        U.clear(grid); rangeEl.textContent = base + ' – ' + (base + 11);
+        for (var y = base; y < base + 12; y++) (function (yy) { grid.appendChild(h('button', { type: 'button', class: 'cal-yearopt' + (yy === st.year ? ' cur' : '') + (yy === +today.slice(0, 4) ? ' now' : ''), onclick: function () { goYear(yy); } }, String(yy))); })(y);
+      }
+      fill();
+      pickBox.appendChild(h('div', { class: 'cal-yearpick', role: 'group', 'aria-label': 'Elegir año' },
+        h('div', { class: 'cal-yearpick-nav' }, h('button', { type: 'button', class: 'cal-arrow', 'aria-label': 'Años anteriores', onclick: function () { base -= 12; fill(); } }, '‹'), rangeEl, h('button', { type: 'button', class: 'cal-arrow', 'aria-label': 'Años siguientes', onclick: function () { base += 12; fill(); } }, '›')),
+        grid,
+        h('form', { class: 'cal-yearform', onsubmit: function (ev) { ev.preventDefault(); goYear(inp.value); } }, h('label', null, 'O escribe un año ', inp), h('button', { type: 'submit', class: 'btn small' }, 'Ir'))));
+      var b = title.querySelector('.cal-yearbtn'); if (b) b.setAttribute('aria-expanded', 'true');
+    }
     function setSeg() { if (!segMes) return; segMes.setAttribute('aria-pressed', st.view === 'mes' ? 'true' : 'false'); segAnio.setAttribute('aria-pressed', st.view === 'anio' ? 'true' : 'false'); }
     function paintChips() {
       U.clear(chips);
@@ -267,6 +291,7 @@
       swap(stage, st.view === 'mes' ? buildMonth() : buildYear(), 'slide', dir); paintTitle(); paintDay();
     }
     function showMonth(first, fromEl) {
+      closePick();
       if (first) { st.month = first; st.day = (first.slice(0, 7) === today.slice(0, 7)) ? today : first; st.form = EMPTY_FORM(st.day); }
       st.view = 'mes'; setSeg(); paintTitle();
       var rect = fromEl ? fromEl.getBoundingClientRect() : null;
@@ -326,7 +351,7 @@
     paintAll();
 
     root.appendChild(UI.section('Lo que viene', [upcoming]));
-    root.appendChild(UI.section('Mi calendario', [toolbar, chips, h('div', { class: 'cal-layout' }, h('div', { class: 'cal-main' }, stage), dayBox)]));
+    root.appendChild(UI.section('Mi calendario', [toolbar, pickBox, chips, h('div', { class: 'cal-layout' }, h('div', { class: 'cal-main' }, stage), dayBox)]));
     return root;
   } };
 

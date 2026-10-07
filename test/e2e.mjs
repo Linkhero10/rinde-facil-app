@@ -794,6 +794,12 @@ await step('15i. Calendario: mes y año con animación, evento con hora y lugar,
   ok(await page.locator('.cal-stage > .cal-view').count() === 1, 'al terminar la animación queda una sola vista');
   await page.getByRole('button', { name: 'Año', exact: true }).click(); await page.waitForTimeout(600);
   ok(await page.locator('.mini').count() === 12, 'la vista de año muestra los 12 meses');
+  ok(await page.locator('.cal-stage > .cal-view').count() === 1, 'la vista de año no deja el mes dibujado debajo');
+  await page.locator('.cal-yearbtn').click();
+  await page.getByRole('button', { name: '2027', exact: true }).click(); await page.waitForTimeout(600);
+  ok(/2027/.test(await page.textContent('.cal-month')) && await page.locator('.mini').count() === 12 && await page.locator('.cal-stage > .cal-view').count() === 1, 'se puede elegir otro año');
+  await page.locator('.cal-yearbtn').click(); await page.locator('.cal-yearin').fill('2026'); await page.getByRole('button', { name: 'Ir', exact: true }).click(); await page.waitForTimeout(600);
+  ok(/2026/.test(await page.textContent('.cal-month')), 'también se puede escribir el año');
   await page.locator('.mini').nth(9).click(); await page.waitForTimeout(600);
   ok(/Octubre/.test(await page.textContent('.cal-month')) && await page.locator('.cal-days .cal-cell').count() >= 28, 'al tocar un mes se abre ese mes');
   await page.locator('.cal-cell:not(.empty)').nth(14).click();

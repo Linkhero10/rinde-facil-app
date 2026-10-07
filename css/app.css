@@ -567,3 +567,16 @@ body.menu-open{overflow:hidden}
 .cal-daybox .form-grid{grid-template-columns:minmax(0,1fr)}.cal-daybox .form-grid .span2{grid-column:auto}
 .cal-daybox input[type=text],.cal-daybox input[type=date],.cal-daybox input[type=time]{max-width:100%;box-sizing:border-box;width:100%}
 .cal-page .chip.on{background:var(--action-soft);color:var(--ink);border-color:var(--action)}
+
+.cal-yearbtn{display:inline-flex;align-items:center;gap:8px;border:0;background:none;color:inherit;font:inherit;text-transform:inherit;letter-spacing:inherit;cursor:pointer;padding:0 6px;border-radius:var(--radius);border-bottom:2px dotted var(--action)}
+.cal-yearbtn:hover{background:var(--action-soft)}
+.cal-caret{font-size:.5em;color:var(--action)}
+.cal-yearpick{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);padding:12px;margin:0 0 12px;max-width:420px;box-shadow:var(--shadow)}
+.cal-yearpick-nav{display:flex;justify-content:space-between;margin-bottom:8px}
+.cal-years{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.cal-yearopt{border:1px solid var(--line);background:var(--card-2);color:var(--ink);font:600 15px var(--mono);padding:9px 0;border-radius:var(--radius);cursor:pointer;min-height:40px}
+.cal-yearopt:hover{border-color:var(--action);background:var(--action-soft)}
+.cal-yearopt.now{border-color:var(--action)}
+.cal-yearopt.cur{background:var(--action);color:var(--action-ink);border-color:var(--action)}
+.cal-yearform{display:flex;gap:10px;align-items:center;margin-top:10px;font-size:14px}
+.cal-yearin{width:90px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);color:var(--ink);font:600 15px var(--mono)}
