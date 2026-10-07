@@ -127,3 +127,19 @@ test('si Apps Script contesta a una acción con la respuesta de «ping», la app
   const p = await app.cloud.postRawTo(approved, 'ping', {});
   assert.equal(p.version, '3.0.0'); assert.equal(n, 1);
 });
+
+test('un 404 o 429 transitorio se repite; el aviso explica qué hacer; sin direcciones aprobadas no hay lista', async () => {
+  const approved = 'https://script.google.com/macros/s/APROBADO/exec';
+  let n = 0;
+  const app = loadApp(undefined, {
+    RF_SERVICE_TRUST: { approvedAppsScriptUrls: [approved] },
+    fetch: async () => { n++; return n < 2 ? { ok: false, status: 404, text: async () => '' } : { ok: true, text: async () => JSON.stringify({ ok: true, exists: true, saltP: 'AAAA', it: 600000 }) }; }
+  });
+  assert.deepEqual(app.cloud.approvedUrls(), [approved]);
+  const r = await app.cloud.postRawTo(approved, 'challenge', {});
+  assert.equal(r.exists, true); assert.equal(n, 2);
+  assert.match(app.cloud.humanError(new Error('HTTP 404')), /espera un minuto/);
+  assert.match(app.cloud.humanError(new Error('Failed to fetch')), /conexión a internet/);
+  const none = loadApp(undefined, { RF_SERVICE_TRUST: { approvedAppsScriptUrls: [] } });
+  assert.deepEqual(none.cloud.approvedUrls(), []);
+});

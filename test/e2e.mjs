@@ -877,11 +877,11 @@ await routeTestService(m);
 const merr = []; m.on('pageerror', e => merr.push(e.message));
 await m.goto(BASE);
 await m.waitForSelector('.auth-card');
-await m.getByRole('button', { name: 'Ya tengo un servicio de mi comunidad y este equipo es nuevo' }).click();
-await m.getByLabel('Dirección del servicio (termina en /exec)').fill(TEST_API_URL);
+await m.getByRole('button', { name: /Ya tengo cuenta: entrar en este equipo|Ya tengo un servicio de mi comunidad/ }).click();
+if (await m.locator('details.adv summary').count()) { await m.locator('details.adv summary').click(); await m.getByLabel('Dirección del servicio (termina en /exec)').fill(TEST_API_URL); } else await m.getByLabel('Dirección del servicio (termina en /exec)').fill(TEST_API_URL);
 await m.getByLabel('Nombre de la comunidad').fill('comunidad DE prueba');
 await m.locator('input[type=password]').fill(PW2);
-await m.getByRole('button', { name: 'Conectar este equipo' }).click();
+await m.getByRole('button', { name: /Entrar en este equipo|Conectar este equipo/ }).click();
 await m.waitForSelector('.side, .menu-btn', { timeout: 30000 });
 await step('17. Celular: menú en cajón, sin desborde horizontal, botones grandes', async () => {
   const sw = await m.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);

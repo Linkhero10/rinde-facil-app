@@ -347,6 +347,8 @@
   /* ================= Nube y copias ================= */
   TOOLS.nube = { title: 'Nube y copias', icon: 'cloud', desc: 'Conecta el servicio de tu comunidad, guarda en la nube y haz copias.', render: function () {
     var s = RF.store.get(), root = h('div'), out = h('div');
+    /* si la app trae un único servicio aprobado y todavía no hay uno anotado, ya viene puesto: no hace falta pegar nada */
+    if (!s.cloud.apiUrl && RF.cloud.approvedUrls().length === 1) { s.cloud.apiUrl = RF.cloud.approvedUrls()[0]; RF.store.update(function () { }, { silent: true }); }
     function msg(kind, t) { U.clear(out); if (t) out.appendChild(UI.callout(kind, '', t)); }
     function reportResolution(res) {
       if (!res) { msg('bad', 'No se recibió respuesta al resolver la copia.'); return; }

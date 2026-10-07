@@ -116,7 +116,7 @@
     } }, name.node, p1.node, hints.node, p2.node, err, h('button', { type: 'submit', class: 'btn primary big' }, legacy ? 'Proteger mis datos' : 'Crear cuenta'));
     return shell(legacy ? 'Protege los datos de tu comunidad' : 'Crea la cuenta de tu comunidad',
       legacy ? 'Tus datos de antes se van a guardar cifrados con una contraseña. Elige una que puedas recordar; sin ella nadie podrá abrirlos, ni siquiera nosotros.' : 'La contraseña protege lo que guardas en este equipo: gastos, fotos y documentos. Nadie más puede abrirlo sin ella.',
-      [form, h('p', { class: 'hint' }, 'Los datos se guardan cifrados en este equipo y, si conectas el servicio de tu comunidad, en el Drive de tu comunidad.'), h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('connect'); } }, 'Ya tengo un servicio de mi comunidad y este equipo es nuevo')]);
+      [form, h('p', { class: 'hint' }, 'Los datos se guardan cifrados en este equipo y, si conectas el servicio de tu comunidad, en el Drive de tu comunidad.'), h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('connect'); } }, approvedList().length ? 'Ya tengo cuenta: entrar en este equipo con mi nombre y contraseña' : 'Ya tengo un servicio de mi comunidad y este equipo es nuevo')]);
   }
 
   /* ---------- entrar ---------- */
@@ -162,15 +162,22 @@
   }
 
   /* ---------- equipo nuevo ---------- */
+  function approvedList() { return RF.cloud && RF.cloud.approvedUrls ? RF.cloud.approvedUrls() : []; }
   function connectScreen() {
-    var url = textField('Dirección del servicio (termina en /exec)', { autocomplete: 'off' });
+    var approved = approvedList();
     var name = textField('Nombre de la comunidad'), pw = passField('Contraseña');
-    var err = errBox();
+    var err = errBox(), url = null, pick = null;
+    if (approved.length > 1) { pick = h('select', { 'aria-label': 'Servicio de tu comunidad' }, approved.map(function (u, i) { return h('option', { value: u }, 'Servicio ' + (i + 1) + ' (…' + u.replace(/\/exec$/, '').slice(-8) + ')'); })); }
+    if (!approved.length) url = textField('Dirección del servicio (termina en /exec)', { autocomplete: 'off' });
+    var other = approved.length ? textField('Dirección del servicio (termina en /exec)', { autocomplete: 'off' }) : null; /* solo para quien administra el servicio o prueba en su propio equipo */
     var form = h('form', { class: 'auth-form', onsubmit: function (ev) {
       ev.preventDefault(); showErr(err, '');
-      work(A.connectDevice(url.input.value.trim(), name.input.value, pw.input.value), 'Conectando…').then(function () { }).catch(function (e) { showErr(err, e.message, e); });
-    } }, url.node, name.node, pw.node, err, h('button', { type: 'submit', class: 'btn primary big' }, 'Conectar este equipo'));
-    return shell('Conectar este equipo', 'Esta publicación no trae una dirección de servicio aprobada. No pegues una URL recibida por mensaje: hasta verificar y aprobar el servicio de tu comunidad, Rinde Fácil no enviará contraseñas ni documentos.', [UI.callout('info', 'Servicio aún no configurado', 'La app sigue funcionando en este equipo. La conexión con OCR y Drive se habilitará cuando exista una publicación aprobada para el servicio de tu comunidad.'), form, h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('none'); } }, 'Volver')]);
+      var target = other && other.input.value.trim() ? other.input.value.trim() : approved.length === 1 ? approved[0] : pick ? pick.value : url.input.value.trim();
+      work(A.connectDevice(target, name.input.value, pw.input.value), 'Conectando…').then(function () { }).catch(function (e) { showErr(err, (RF.cloud && RF.cloud.humanError ? RF.cloud.humanError(e) : e.message), e); });
+    } }, pick ? h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Servicio de tu comunidad'), pick) : null, url ? url.node : null, name.node, pw.node, other ? h('details', { class: 'adv' }, h('summary', null, 'Usar otra dirección de servicio'), h('p', { class: 'hint' }, 'Solo si te la entregó quien administra el servicio de tu comunidad. Debe estar aprobada en esta versión de la app.'), other.node) : null, err, h('button', { type: 'submit', class: 'btn primary big' }, 'Entrar en este equipo'));
+    var back = h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('none'); } }, 'Volver');
+    if (approved.length) return shell('Entrar en este equipo', 'Escribe el nombre y la contraseña de tu comunidad. Este equipo se conecta al servicio de tu comunidad y trae tus datos; no hace falta pegar ninguna dirección.', [form, back]);
+    return shell('Conectar este equipo', 'Esta publicación no trae una dirección de servicio aprobada. No pegues una URL recibida por mensaje: hasta verificar y aprobar el servicio de tu comunidad, Rinde Fácil no enviará contraseñas ni documentos.', [UI.callout('info', 'Servicio aún no configurado', 'La app sigue funcionando en este equipo. La conexión con OCR y Drive se habilitará cuando exista una publicación aprobada para el servicio de tu comunidad.'), form, back]);
   }
 
   function insecureScreen() {

@@ -138,6 +138,8 @@
     if (!Array.isArray(list)) return false;
     return list.some(function (approved) { return canonicalUrl(approved) === key; });
   }
+  /* direcciones de servicio que esta versión de la app aprueba (la lista vive en 00-service-trust.js) */
+  function approvedUrls() { var t = root.RF_SERVICE_TRUST || {}; return Array.isArray(t.approvedAppsScriptUrls) ? t.approvedAppsScriptUrls.filter(function (u) { return validUrl(u); }) : []; }
   function trustError() { return Object.assign(new Error('La dirección del servicio no está aprobada en esta versión de Rinde Fácil. No se enviaron datos ni claves.'), { code: 'SERVICIO_NO_APROBADO' }); }
   function connectionError(u) { return u && validUrl(u) && !trustedUrl(u) ? trustError() : Object.assign(new Error('No hay un servicio aprobado configurado.'), { code: 'NO_CONFIGURADO' }); }
   function configured() { return trustedUrl(cfg().apiUrl); }
@@ -150,6 +152,10 @@
         if (!isStrayPing(action, r)) return r;
         if (n >= 3) throw new Error('RESPUESTA_INVALIDA');
         return new Promise(function (res) { setTimeout(res, 900 * (n + 1)); }).then(function () { return attempt(n + 1); });
+      }, function (e) {
+        /* un 404 o un 429 no ejecutó nada (por ejemplo, mientras se publica una versión nueva del servicio): se repite */
+        if (e && (e.httpStatus === 404 || e.httpStatus === 429) && n < 2) return new Promise(function (res) { setTimeout(res, 1500 * (n + 1)); }).then(function () { return attempt(n + 1); });
+        throw e;
       });
     }
     return attempt(0);
@@ -160,7 +166,7 @@
     var to = ctl ? setTimeout(function () { ctl.abort(); }, timeoutMs || 90000) : null;
     var body = JSON.stringify(Object.assign({ action: action }, payload || {}));
     return fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body, signal: ctl ? ctl.signal : undefined, redirect: 'follow', credentials: 'omit', referrerPolicy: 'no-referrer' })
-      .then(function (r) { if (to) clearTimeout(to); if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(function (r) { if (to) clearTimeout(to); if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { httpStatus: r.status }); return r.text(); })
       .then(function (t) { try { return JSON.parse(t); } catch (e) { throw new Error('RESPUESTA_INVALIDA'); } }) /* Google a veces devuelve una página de error en vez de datos */
       .catch(function (e) { if (to) clearTimeout(to); if (e && e.name === 'AbortError') throw new Error('TIMEOUT'); throw e; });
   }
@@ -230,8 +236,11 @@
     var m = String((e && e.message) || e || '');
     if (/Failed to fetch|NetworkError|Load failed|ERR_INTERNET|fetch/i.test(m)) return 'No hay conexión a internet, o el servicio no responde.';
     if (/TIMEOUT|abort/i.test(m)) return 'El servicio tardó demasiado en responder.';
+    if (/HTTP 404/.test(m)) return 'No se encontró el servicio (error 404). Si acaban de actualizarlo en Apps Script, espera un minuto y vuelve a intentar.';
+    if (/HTTP 429/.test(m)) return 'El servicio está recibiendo muchas solicitudes. Espera un momento y vuelve a intentar.';
+    if (/^HTTP \d+/.test(m)) return 'El servicio respondió con un error (' + m + '). Vuelve a intentar en un momento.';
     return m || 'error desconocido';
   }
-  RF.cloud = { humanError: humanError, configured: configured, validUrl: validUrl, trustedUrl: trustedUrl, post: post, postRaw: postRaw, postRawTo: postRawTo, postRetry: postRetry, ping: ping, downscale: downscale, blobToBase64: blobToBase64 };
+  RF.cloud = { approvedUrls: approvedUrls, humanError: humanError, configured: configured, validUrl: validUrl, trustedUrl: trustedUrl, post: post, postRaw: postRaw, postRawTo: postRawTo, postRetry: postRetry, ping: ping, downscale: downscale, blobToBase64: blobToBase64 };
   RF.ocr = { recognize: recognize, toExpenseFields: toExpenseFields };
 })(typeof window !== 'undefined' ? window : globalThis);
