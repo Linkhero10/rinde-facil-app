@@ -13,7 +13,7 @@ test('una boleta y su ficha se muestran como una sola línea, sin folio ni exten
   ];
   const out = RF.drive.friendlySaves(list);
   assert.equal(out.length, 1);
-  assert.equal(out[0].tipo, 'Boleta');
+  assert.equal(out[0].tipo, 'Comprobante');
   assert.equal(out[0].titulo, 'SANCAN PRODUCCIONES SPA');
   assert.equal(out[0].lugar, 'septiembre 2026');
   assert.match(out[0].fecha, /2026/);
@@ -30,4 +30,10 @@ test('de las carpetas listas solo queda la última; copia de seguridad y Carta G
   assert.equal(out[0].tipo, 'Carpeta');
   assert.equal(out[0].lugar, 'Proyecto: Prueba');
   assert.equal(out[1].tipo, 'Carta Gantt');
+});
+
+test('un respaldo adjunto se muestra con su nombre y a qué documento pertenece', () => {
+  const out = RF.drive.friendlySaves([{ name: 'COMERCIAL_LOS_ANDES-9912-respaldo-Comprobante_de_pago.jpg', where: 'Prueba / 4 Comprobantes / 2026-09', at: '2026-10-07T06:53:00' }]);
+  assert.equal(out[0].tipo, 'Respaldo');
+  assert.match(out[0].titulo, /Comprobante de pago · COMERCIAL LOS ANDES/);
 });

@@ -98,7 +98,7 @@
       });
     }
     function applyOcr(e, res) {
-      if (!res || !res.ok) { e._ocrNote = 'El servicio respondió con un error: ' + ((res && res.error) || 'desconocido') + '. Anota los datos mirando la foto.'; return; }
+      if (!res || !res.ok) { e._ocrNote = (/no devolvi[oó] texto|SIN_TEXTO/i.test(String((res && res.error) || '')) ? 'No se pudo leer texto en la foto. Prueba con otra más clara, de frente y con buena luz, o anota los datos mirando la foto.' : 'No se pudo leer la foto (' + String((res && res.error) || 'error desconocido').replace(/\.+$/, '') + '). Anota los datos mirando la foto.'); return; }
       var out = RF.ocr.toExpenseFields(res.raw_text, 'cloud_vision', { communityRut: c.community && c.community.rut, communityName: c.community && c.community.name }), f = out.fields;
       Object.keys(f).forEach(function (k) { e[k] = f[k]; });
       if (!f.docType && f.total != null) e.docType = e.docType || 'boleta';

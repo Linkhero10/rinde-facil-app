@@ -169,7 +169,7 @@
     if (!e.fecha) { RF.ui.toast('Primero anota la fecha del documento: se usa para la carpeta del mes.', 'bad'); return Promise.reject(new Error('SIN_FECHA')); }
     var ext = /pdf/.test(blob.type) ? '.pdf' : /png/.test(blob.type) ? '.png' : /webp/.test(blob.type) ? '.webp' : '.jpg';
     return RF.cloud.blobToBase64(blob).then(function (b64) {
-      var tag = String(label || key).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30);
+      var tag = String(label || key).split('(')[0].trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
       return send({ project: (project && project.name) || projectName(), category: 'comprobante', fileName: baseName(e) + '-respaldo-' + tag + ext, mimeType: blob.type || 'image/jpeg', base64: b64, issueDate: e.fecha }, 'respaldo ' + label, !!quiet, { expenseId: e.id });
     });
   }
@@ -362,13 +362,14 @@
     var name = String(x && x.name || ''), where = String(x && x.where || ''), parts = where.split(' / ');
     var isFolder = /^Carpeta «/.test(name), isFicha = /\.datos(\s*\(|\.)/.test(name), isEstado = /^estado/i.test(name) || /seguridad/i.test(where);
     var base = name.replace(/\.[A-Za-z0-9]{2,5}$/, '').replace(/\.datos/, '').replace(/\s*\(\d{8}-\d{6}\)\s*$/, '').replace(/_+/g, ' ').replace(/-\d{3,}$/, '').replace(/\s{2,}/g, ' ').trim();
-    var tipo, titulo = base, lugar = '';
+    var respaldo = /-respaldo-/.test(name), tipo, titulo = base, lugar = '';
     var comp = /Comprobantes/i.test(where), plan = /Planificaci/i.test(where), anex = /Anexos/i.test(where), rend = /Rendici/i.test(where);
     if (isFolder) { tipo = 'Carpeta'; titulo = name; lugar = parts.length > 1 ? 'Proyecto: ' + parts[1] : ''; }
     else if (isEstado) { tipo = 'Copia de seguridad'; titulo = 'Copia de todos tus datos'; }
     else if (/Actas/i.test(where)) { tipo = 'Acta'; }
     else if (/oficiales/i.test(where)) { tipo = 'Documento oficial'; }
-    else if (comp) { tipo = isFicha ? 'Datos de la boleta' : 'Boleta'; }
+    else if (comp && respaldo) { tipo = 'Respaldo'; var parts2 = base.split('-respaldo-'); titulo = (parts2[1] || 'adjunto').replace(/ /g, ' ') + ' · ' + parts2[0]; }
+    else if (comp) { tipo = isFicha ? 'Datos del comprobante' : 'Comprobante'; }
     else if (plan) { tipo = /gantt/i.test(name) ? 'Carta Gantt' : 'Planificación'; if (/gantt/i.test(name)) titulo = ''; }
     else if (anex) { tipo = 'Anexo'; }
     else if (rend) { tipo = 'Rendición'; }
@@ -381,7 +382,7 @@
   /* una boleta y su ficha de datos se muestran como una sola línea; de las carpetas listas solo la última */
   function friendlySaves(list) {
     var seen = {}, out = [], infos = (list || []).map(describeSave), photos = {};
-    infos.forEach(function (i) { if (i.tipo === 'Boleta') photos[i.base] = true; });
+    infos.forEach(function (i) { if (i.tipo === 'Comprobante') photos[i.base] = true; });
     infos.forEach(function (i) {
       if (i.ficha && photos[i.base]) return;
       var key = i.carpeta ? 'carpeta' : i.tipo + '|' + i.base + '|' + i.lugar;

@@ -204,7 +204,20 @@
     checkProjects(remote && remote.projects); checkProjects(get().projects);
     var added = 0, r = migrate(U.safeParse(JSON.stringify(remote))), s = migrate(U.safeParse(JSON.stringify(get())));
     var mergeLists = ['expenses', 'cotizaciones', 'observations', 'budgetLines', 'needsCustom'];
-    Object.keys(r).concat(Object.keys(s)).forEach(function (k) { if (['projects', 'repo', 'cloud', 'ui', 'activeProjectId', 'events'].indexOf(k) < 0 && !equalData(s[k], r[k])) conflict(k); });
+    /* los datos de la comunidad se juntan campo a campo: lo que un equipo dejó vacío se completa con lo del otro; solo hay conflicto si ambos tienen un valor distinto */
+    (function () {
+      var rc = r.community || {}, sc = s.community || {};
+      function empty(v) { return v === undefined || v === null || v === ''; }
+      Object.keys(rc).concat(Object.keys(sc)).forEach(function (k) {
+        var a = sc[k], b = rc[k];
+        if (empty(a) && !empty(b)) sc[k] = b;
+        else if (!empty(a) && !empty(b) && !equalData(a, b)) conflict('community');
+      });
+      s.community = sc;
+      /* feriados: se unen (son fechas sueltas, no hay nada que pelear) */
+      s.holidays = Array.from(new Set((s.holidays || []).concat(r.holidays || []))).sort();
+    })();
+    Object.keys(r).concat(Object.keys(s)).forEach(function (k) { if (['projects', 'repo', 'cloud', 'ui', 'activeProjectId', 'events', 'community', 'holidays'].indexOf(k) < 0 && !equalData(s[k], r[k])) conflict(k); });
     (function () {
       var haveP = new Map(); s.projects.forEach(function (p) { haveP.set(p.id, p); });
       r.projects.forEach(function (rp) {
@@ -223,7 +236,7 @@
       s.repo.docs = d.list; s.repo.actas = a.list; added += d.added + a.added;
       var ev = unionById(s.events, r.events); s.events = ev.list; added += ev.added;
     })();
-    update(function (current) { current.projects = s.projects; current.repo = s.repo; current.events = s.events; });
+    update(function (current) { current.projects = s.projects; current.repo = s.repo; current.events = s.events; current.community = s.community; current.holidays = s.holidays; });
     return added;
   }
   function isDone(p, tid, i) { return !!(p && p.done[tid + ':' + i]); }

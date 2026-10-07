@@ -95,3 +95,18 @@ test('merge compara contenido de registros sin depender del orden de claves', ()
   const remote = structuredClone(s); remote.projects[0].expenses = [{ total: 10, id: 'e1' }];
   assert.doesNotThrow(() => RF.store.mergeRemote(remote));
 });
+
+test('merge completa los datos de la comunidad campo a campo y junta los feriados; solo hay conflicto si ambos tienen un valor distinto', () => {
+  const RF = app(), s = state(RF);
+  s.community = { name: 'Comunidad A', rut: '', address: 'Calle 1', phone: '' };
+  s.holidays = ['2026-09-18'];
+  const remote = structuredClone(s);
+  remote.community = { name: 'Comunidad A', rut: '76.543.210-3', address: '', phone: '+56 9 1111 2222' };
+  remote.holidays = ['2026-09-19'];
+  RF.store.mergeRemote(remote);
+  const out = RF.store.get();
+  assert.equal(out.community.rut, '76.543.210-3'); assert.equal(out.community.address, 'Calle 1'); assert.equal(out.community.phone, '+56 9 1111 2222');
+  assert.equal(JSON.stringify(out.holidays), JSON.stringify(['2026-09-18', '2026-09-19']));
+  const clash = structuredClone(RF.store.get()); clash.community.address = 'Otra calle';
+  assert.throws(() => RF.store.mergeRemote(clash), /community|comunidad|Conflicto|conflict/i);
+});
