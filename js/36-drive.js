@@ -48,7 +48,7 @@
     return RF.cloud.post('saveFile', payload, 90000).then(function (r) {
       if (!r || !r.ok) { var er = new Error(errText(r && r.error)); er.server = true; er.code = r && r.error; throw er; }
       remember({ at: new Date().toISOString(), name: r.fileName || payload.fileName, where: r.where, url: r.url, folderUrl: r.folderUrl, idempotent: !!r.idempotent });
-      if (!quiet) RF.ui.toast((r.idempotent ? 'Ya estaba en el Drive: ' : 'Guardado en el Drive: ') + r.where, 'ok', { href: r.folderUrl || r.url });
+      if (!quiet) RF.ui.toast((r.idempotent ? 'Ya estaba en el Drive: ' : 'Guardado en el Drive: ') + '«' + (r.fileName || payload.fileName) + '» en ' + String(r.where || '').split(' / ').map(function (x) { return x.replace(/^\d+\s+/, ''); }).join(' › '), 'ok', { href: r.folderUrl || r.url });
       return Object.assign({ remote: true, queued: false }, r);
     }).catch(function (e) {
       if (retryable(e)) return RF.outbox.add(outKey(payload), label || payload.fileName, payload, Object.assign({}, meta || {}, { action: 'saveFile', serviceUrl: serviceKey() })).then(function (id) {

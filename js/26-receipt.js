@@ -198,8 +198,10 @@
       }
     }
     if (rut) {
-      for (i = rut.line + 1; i <= Math.min(rut.line + 4, lines.length - 1); i++) { s = cleanName(lines[i]); if (nameLike(s, communityName) && s.split(' ').length >= 2) return s; } /* 3. justo después del RUT (vouchers) */
-      for (i = rut.line - 1; i >= Math.max(0, rut.line - 6); i--) { s = cleanName(lines[i]); if (nameLike(s, communityName) && s.split(' ').length >= 3) return s; } /* 4. justo antes del RUT */
+      /* 3. el nombre del local suele ir justo antes del RUT, con la dirección entre medio (vouchers de tarjeta); se prueba primero porque después del RUT hay códigos y a veces ruido del OCR («A3 BTASS») */
+      for (i = rut.line - 1; i >= Math.max(0, rut.line - 4); i--) { s = cleanName(lines[i]); if (nameLike(s, communityName) && s.split(' ').length >= 3) return s; }
+      for (i = rut.line + 1; i <= Math.min(rut.line + 4, lines.length - 1); i++) { s = cleanName(lines[i]); if (nameLike(s, communityName) && s.split(' ').length >= 2) return s; } /* 4. justo después del RUT */
+      for (i = rut.line - 5; i >= Math.max(0, rut.line - 6); i--) { s = cleanName(lines[i]); if (nameLike(s, communityName) && s.split(' ').length >= 3) return s; }
     }
     return null;
   }

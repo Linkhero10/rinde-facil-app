@@ -154,3 +154,10 @@ test('la copia lleva solo un extracto del texto del OCR y no toca el original', 
   assert.equal(copia.raw.length, 2000); assert.equal(copia.cortado, true);
   assert.equal(RF.store.get().projects[0].expenses[0].ocr.raw.length, largo.length, 'en el equipo queda completo');
 });
+
+test('voucher de tarjeta: el nombre del local es el que va antes del RUT, no el ruido que el OCR deja después («A3 BTASS»)', () => {
+  const live = ['Jengib shetallid 6.J', '>sdans', 'TRANSBANK', 'eb', '6X09 VENTA Y COPTA CLIENTE', '76) TARJETA DE PREPAGO', 'LA QUESERIA', 'ABASTECEDORA DE ALIMENTOS JOSE CARRENO O', 'HUGO BRAVO 574 SN', 'SANTIAGO', 'RUT: 76.571.338-2', '597032013937 F3V68963 125.3A0', 'VALIDO COMO BOLETA', 'A3 BTASS', '12/09/2026', '17:36:28', 'DEBIT MASTERCARD', 'MONTO VENTA:', 'IVA:', 'TOTAL:', 'A0000000041010', '*7127 C-DB', '$6.210', 'Anders', 'MONEDA:', 'inul obnalog13', 'OPERACION: 166505', '$1.180', '$7.390', 'PESO', 'AUTORIZACION: 029323', '900%'].join('\n');
+  const out = RF.ocr.toExpenseFields(live, 'cloud_vision', {});
+  assert.equal(out.fields.proveedor, 'ABASTECEDORA DE ALIMENTOS JOSE CARRENO O');
+  assert.equal(out.fields.total, 7390);
+});
