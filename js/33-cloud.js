@@ -146,6 +146,16 @@
   /* Apps Script a veces contesta a un POST con la respuesta de «ping» (la de doGet) sin haber ejecutado la acción. Esa respuesta tiene solo ok, service y version;
      como la acción no se ejecutó, repetirla es seguro. Sin esto, la primera llamada de «Conectar este equipo» decía «el servicio no tiene cuenta» aunque la tuviera. */
   function isStrayPing(action, r) { return action !== 'ping' && !!r && r.ok === true && r.service === 'rinde-facil' && !!r.version && Object.keys(r).length === 3; }
+  /* «Chrome en Windows»: solo para que el registro de accesos diga desde qué equipo se entró; no identifica a la persona */
+  function deviceLabel() {
+    try {
+      var n = root.navigator || {}, ua = String(n.userAgent || ''), os = '', br = '';
+      var ch = n.userAgentData && n.userAgentData.platform;
+      if (/Android/i.test(ua)) os = 'Android'; else if (/iPhone|iPad|iPod/i.test(ua)) os = 'iPhone/iPad'; else if (/Windows/i.test(ua) || /^Win/i.test(ch || '')) os = 'Windows'; else if (/Mac/i.test(ua) || /mac/i.test(ch || '')) os = 'Mac'; else if (/Linux|CrOS/i.test(ua)) os = 'Linux';
+      if (/Edg\//.test(ua)) br = 'Edge'; else if (/OPR\/|Opera/.test(ua)) br = 'Opera'; else if (/Firefox\//.test(ua)) br = 'Firefox'; else if (/Brave/i.test(ua) || (n.brave && n.brave.isBrave)) br = 'Brave'; else if (/Chrome\/|CriOS/.test(ua)) br = 'Chrome'; else if (/Safari\//.test(ua)) br = 'Safari';
+      return br && os ? br + ' en ' + os : (br || os || '');
+    } catch (e) { return ''; }
+  }
   function rawPostTo(url, action, payload, timeoutMs) {
     function attempt(n) {
       return rawPostOnce(url, action, payload, timeoutMs).then(function (r) {
@@ -164,7 +174,7 @@
     if (!trustedUrl(url)) return Promise.reject(trustError());
     var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var to = ctl ? setTimeout(function () { ctl.abort(); }, timeoutMs || 90000) : null;
-    var body = JSON.stringify(Object.assign({ action: action }, payload || {}));
+    var body = JSON.stringify(Object.assign({ action: action }, deviceLabel() ? { dev: deviceLabel() } : {}, payload || {}));
     return fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body, signal: ctl ? ctl.signal : undefined, redirect: 'follow', credentials: 'omit', referrerPolicy: 'no-referrer' })
       .then(function (r) { if (to) clearTimeout(to); if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { httpStatus: r.status }); return r.text(); })
       .then(function (t) { try { return JSON.parse(t); } catch (e) { throw new Error('RESPUESTA_INVALIDA'); } }) /* Google a veces devuelve una página de error en vez de datos */

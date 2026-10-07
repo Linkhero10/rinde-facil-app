@@ -31,7 +31,7 @@
     if (hasPeriod && (!project.periodoInicio || !project.periodoFin || project.periodoInicio > project.periodoFin)) throw new Error('Completa un período de rendición válido antes de exportar.');
     var selected = (project.expenses || []).filter(function (e) { return !hasPeriod || (e.fecha && e.fecha >= project.periodoInicio && e.fecha <= project.periodoFin); });
     var excluded = (project.expenses || []).length - selected.length;
-    var res = L.reconcile(project, community, U.todayISO(), RF.store.get().holidays);
+    var res = L.reconcile(project, community, U.todayISO(), RF.holidays.all());
     var ev = {}; res.evals.forEach(function (x) { ev[x.e.id] = x.r; });
     var bad = res.evals.filter(function (x) { return selected.indexOf(x.e) >= 0 && x.r.status === 'error'; }).length;
     var rows = selected.slice().sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); }).map(function (e) {
@@ -200,7 +200,7 @@
     function uploadedText(e) { var at = e.createdAt || (e.ocr && e.ocr.at); var d = at ? new Date(at) : null; var same = d && d.getFullYear() === new Date().getFullYear(); return d && !isNaN(d) ? d.toLocaleString('es-CL', same ? { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' } : { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'; }
     function emptyExpenses() { return p.expenses.filter(function (x) { return !String(x.proveedor || '').trim() && !String(x.folio || '').trim() && !(num(x.total) > 0) && !String(x.glosa || '').trim() && !String(x.item || '').trim(); }); }
     function paintList() {
-      var res = L.reconcile(p, c.community, U.todayISO(), RF.store.get().holidays);
+      var res = L.reconcile(p, c.community, U.todayISO(), RF.holidays.all());
       var evs = {}; res.evals.forEach(function (x) { evs[x.e.id] = x.r; });
       var totals = res.totals, tot = U.sum(p.expenses, function (e) { return num(e.montoRendir); });
       var counts = { ok: 0, warn: 0, error: 0 }; p.expenses.forEach(function (e) { counts[evs[e.id].status]++; });
@@ -370,7 +370,7 @@
   }
   TOOLS.revision = { title: 'Revisión: ¿cuadra todo?', icon: 'check', desc: 'Cruza gastos, anexos, presupuesto, plazos e informe técnico.', render: function () {
     var c = ctx(), p = c.project; if (!p) return page('Revisión', '', needProject());
-    var res = L.reconcile(p, c.community, U.todayISO(), RF.store.get().holidays), root = h('div');
+    var res = L.reconcile(p, c.community, U.todayISO(), RF.holidays.all()), root = h('div');
     var verdict = res.counts.error ? UI.callout('bad', 'Todavía no está listo para enviar.', ' Hay ' + res.counts.error + ' cosa(s) que corregir.') : res.counts.warn ? UI.callout('warn', 'Casi listo.', ' Revisa ' + res.counts.warn + ' aviso(s) antes de enviar.') : UI.callout('ok', 'Todo cuadra.', ' No vemos problemas con lo que has ingresado.');
     root.appendChild(UI.section('Resultado', [verdict, h('p', { class: 'hint' }, 'La revisión solo usa lo que has anotado en la app y las reglas del Manual. No reemplaza la revisión de CORFO.')]));
     res.groups.forEach(function (g) {
@@ -404,7 +404,7 @@
   /* ================= Observaciones de CORFO ================= */
   TOOLS.observaciones = { title: 'Observaciones de CORFO', icon: 'alert', desc: 'Anota lo que observó CORFO y cuenta tus 10 días hábiles.', render: function () {
     var c = ctx(), p = c.project; if (!p) return page('Observaciones de CORFO', '', needProject());
-    var hol = RF.store.get().holidays, root = h('div'), body = h('div');
+    var hol = RF.holidays.all(), root = h('div'), body = h('div');
     function paint() {
       U.clear(body);
       if (!p.observations.length) body.appendChild(UI.empty('No hay observaciones registradas.'));

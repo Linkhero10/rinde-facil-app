@@ -85,7 +85,7 @@
     informeE: { kind: 'segun', text: 'Otras actividades de las personas contratadas.' },
     consulta: { kind: 'apoyo', text: 'Para preguntarle a CORFO si un gasto se puede pagar. No es obligatoria: úsala cuando tengas una duda.' },
     solicitud: { kind: 'clave', text: 'Al final del proyecto, para pedir los aportes que faltan.' },
-    calendario: { kind: 'apoyo', text: 'Reúne en un solo lugar las fechas de tu proyecto: plazos, actividades, boletas y reuniones. Puedes pasarlas a Google Calendar.' },
+    calendario: { kind: 'apoyo', text: '' },
     documentos: { kind: 'apoyo', text: 'Tu archivo de documentos importantes: convenio, resoluciones, certificados. Para tenerlos a mano.' },
     actas: { kind: 'apoyo', text: 'Para dejar registro de las reuniones de la mesa de trabajo. Úsala cuando haya una reunión.' },
     compartir: { kind: 'apoyo', text: 'Para enviar un resumen al Organismo Colaborador, solo si tú quieres y con tu permiso.' },

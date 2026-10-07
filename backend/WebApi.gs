@@ -420,9 +420,14 @@ function rfRegisterLoginFail_(prop) {
 }
 
 /* ---- registro de accesos ---- */
-function rfAudit_(ev, ok) {
+/* El servicio de Google no entrega la IP de quien llama. Se guarda el equipo y navegador que declara la app (dato informativo: lo envía el propio navegador). */
+function rfDevice_(p) {
+  const d = p && typeof p.dev === 'string' ? p.dev.replace(/[^A-Za-z0-9 .,()/_+-]/g, '').trim().slice(0, 60) : '';
+  return d;
+}
+function rfAudit_(ev, ok, p) {
   const log = rfGetJson_(RF_AUTH.auditProp, []);
-  log.push({ t: new Date(rfNow_()).toISOString(), e: ev, ok: !!ok });
+  log.push({ t: new Date(rfNow_()).toISOString(), e: ev, ok: !!ok, d: rfDevice_(p) });
   rfSetJson_(RF_AUTH.auditProp, log.slice(-RF_AUTH.auditKeep));
 }
 
@@ -496,14 +501,14 @@ function rfSetupAccount_(p) {
     const ls = rfLockStatus_(RF_AUTH.setupLockProp);
     if (ls.locked) return { ok: false, error: 'BLOQUEADO', retryAfter: ls.retryAfter };
     const expected = rfProp_(RF_AUTH.setupCodeProp) || rfProp_('RINDE_FACIL_ACCESS_KEY');
-    if (!expected || !rfSafeEqual_(p.setupCode, expected)) { rfRegisterFail_(RF_AUTH.setupLockProp, 60 * 60 * 1000); rfAudit_('setup_fail', false); return { ok: false, error: 'CODIGO_INVALIDO' }; }
+    if (!expected || !rfSafeEqual_(p.setupCode, expected)) { rfRegisterFail_(RF_AUTH.setupLockProp, 60 * 60 * 1000); rfAudit_('setup_fail', false, p); return { ok: false, error: 'CODIGO_INVALIDO' }; }
     const user = rfNormUser_(p.user);
     if (user.length < 3 || !rfIsB64Field_(p.saltP, 16, 64) || !rfIsB64Field_(p.authKey, 40, 48) || !rfIsB64Field_(p.recSalt, 16, 64) || !rfIsB64Field_(p.authKeyR, 40, 48)) return { ok: false, error: 'DATOS_INVALIDOS' };
     const acct = { user: user, saltP: p.saltP, it: RF_AUTH.iterations, hashAuth: rfHash_(p.authKey), recSalt: p.recSalt, hashRec: rfHash_(p.authKeyR), createdAt: new Date(rfNow_()).toISOString(), devices: [] };
     const device = rfAddDevice_(acct);
     rfSetJson_(RF_AUTH.accountProp, acct);
     rfProps_().deleteProperty(RF_AUTH.setupCodeProp); rfProps_().deleteProperty('RINDE_FACIL_ACCESS_KEY'); // el código de instalación sirve una sola vez
-    rfAudit_('setup', true);
+    rfAudit_('setup', true, p);
     const s = rfNewSession_();
     return { ok: true, token: s.token, exp: s.exp, it: RF_AUTH.iterations, device: device };
   });
@@ -521,14 +526,14 @@ function rfLogin_(p) {
     const okPass = a ? rfSafeEqual_(h, a.hashAuth) : false;
     if (!(a && okUser && okPass)) {
       const attempt = rfRegisterLoginFail_(lockProp);
-      rfAudit_('login_fail', false);
+      rfAudit_('login_fail', false, p);
       return { ok: false, error: attempt.locked ? 'BLOQUEADO' : 'CREDENCIALES_INVALIDAS', attemptsRemaining: attempt.attemptsRemaining, attemptsLimit: attempt.attemptsLimit, retryAfter: attempt.retryAfter };
     }
     rfClearFails_(lockProp);
     let device = null;
     if (!known && p.wantDevice === true) { device = rfAddDevice_(a); rfSetJson_(RF_AUTH.accountProp, a); }
     const s = rfNewSession_();
-    rfAudit_('login', true);
+    rfAudit_('login', true, p);
     const out = { ok: true, token: s.token, exp: s.exp, saltP: a.saltP, it: a.it, attemptsRemaining: RF_AUTH.loginInitialFails, attemptsLimit: RF_AUTH.loginInitialFails };
     if (device) out.device = device;
     return out;
@@ -540,14 +545,14 @@ function rfResetPassword_(p) {
     const a = rfGetJson_(RF_AUTH.accountProp, null);
     const h = rfHash_(String(p.authKeyR || ''));
     const ok = a && rfSafeEqual_(rfNormUser_(p.user), a.user) && rfSafeEqual_(h, a.hashRec);
-    if (!ok) { rfAudit_('reset_fail', false); return { ok: false, error: 'CREDENCIALES_INVALIDAS' }; }
+    if (!ok) { rfAudit_('reset_fail', false, p); return { ok: false, error: 'CREDENCIALES_INVALIDAS' }; }
     if (!rfIsB64Field_(p.saltP, 16, 64) || !rfIsB64Field_(p.authKey, 40, 48) || !rfIsB64Field_(p.recSalt, 16, 64) || !rfIsB64Field_(p.authKeyR2, 40, 48)) return { ok: false, error: 'DATOS_INVALIDOS' };
     a.saltP = p.saltP; a.hashAuth = rfHash_(p.authKey); a.recSalt = p.recSalt; a.hashRec = rfHash_(p.authKeyR2); a.it = RF_AUTH.iterations;
     a.devices = []; // se revocan todos los equipos conocidos
     const device = rfAddDevice_(a);
     rfSetJson_(RF_AUTH.accountProp, a);
     rfClearFails_(RF_AUTH.lockProp);
-    rfKillSessions_(''); rfAudit_('reset', true);
+    rfKillSessions_(''); rfAudit_('reset', true, p);
     const s = rfNewSession_();
     return { ok: true, token: s.token, exp: s.exp, device: device };
   });
@@ -564,7 +569,7 @@ function rfChangePassword_(p) {
     const ls = rfLockStatus_(changeLockProp);
     if (ls.locked) return { ok: false, error: 'BLOQUEADO', retryAfter: ls.retryAfter };
     const a = rfGetJson_(RF_AUTH.accountProp, null);
-    if (!a || !rfSafeEqual_(rfHash_(String(p.authKeyOld || '')), a.hashAuth)) { rfRegisterFail_(changeLockProp, RF_AUTH.lockBaseMs); rfAudit_('change_fail', false); return { ok: false, error: 'CREDENCIALES_INVALIDAS' }; }
+    if (!a || !rfSafeEqual_(rfHash_(String(p.authKeyOld || '')), a.hashAuth)) { rfRegisterFail_(changeLockProp, RF_AUTH.lockBaseMs); rfAudit_('change_fail', false, p); return { ok: false, error: 'CREDENCIALES_INVALIDAS' }; }
     if (!rfIsB64Field_(p.saltP, 16, 64) || !rfIsB64Field_(p.authKey, 40, 48)) return { ok: false, error: 'DATOS_INVALIDOS' };
     a.saltP = p.saltP; a.hashAuth = rfHash_(p.authKey);
     if (rfIsB64Field_(p.recSalt, 16, 64) && rfIsB64Field_(p.authKeyR, 40, 48)) { a.recSalt = p.recSalt; a.hashRec = rfHash_(p.authKeyR); }
@@ -572,7 +577,7 @@ function rfChangePassword_(p) {
     rfClearFails_(changeLockProp);
     rfClearFails_(RF_AUTH.lockProp);
     rfKillSessions_(rfSessHash_(String(p.t))); // se cierran las demás sesiones
-    rfAudit_('change_password', true);
+    rfAudit_('change_password', true, p);
     return { ok: true };
   });
 }
@@ -580,7 +585,7 @@ function rfLogout_(p, all) {
   return rfWithLock_(function () {
     if (!rfSessionValid_(p.t)) return { ok: false, error: 'SESION_INVALIDA' };
     if (all) {
-      rfKillSessions_(''); rfAudit_('logout_all', true);
+      rfKillSessions_(''); rfAudit_('logout_all', true, p);
       const acc = rfGetJson_(RF_AUTH.accountProp, null); if (acc) { acc.devices = []; rfSetJson_(RF_AUTH.accountProp, acc); }
     } else { rfDeleteSessionProp_(rfProps_(), RF_AUTH.sessPrefix + rfSessHash_(String(p.t))); }
     return { ok: true };

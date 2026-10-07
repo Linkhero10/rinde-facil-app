@@ -146,7 +146,7 @@
 
   function boot() {
     RF.auth.init().then(function () {
-      RF.auth.onChange(function () { applyTheme(); render(); if (RF.auth.phase() === 'open') app.warmUp(); else { app._warmed = false; setChip('', ''); } });
+      RF.auth.onChange(function () { applyTheme(); render(); if (RF.auth.phase() === 'open') { app.warmUp(); if (RF.holidays) RF.holidays.refresh(); } else { app._warmed = false; setChip('', ''); } });
       start();
     });
   }

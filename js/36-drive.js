@@ -281,6 +281,7 @@
     lastSyncAt = Date.now();
     var out;
     syncing = pullState().then(function (p) {
+      if (RF.auth.phase() !== 'open') return { ok: false, skipped: true }; /* se cerró la sesión mientras se consultaba */
       if (!p.ok) {
         if (p.error === 'SIN_COPIA') return pushState(false).then(function (r) { if (r.ok) markSynced(); return r; });
         return p;

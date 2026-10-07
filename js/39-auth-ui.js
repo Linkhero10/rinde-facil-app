@@ -259,7 +259,8 @@
         U.clear(log);
         if (!r || !r.ok) { log.appendChild(UI.empty('No se pudo leer el registro.')); return; }
         var names = { login: 'Entró', login_fail: 'Intento fallido', setup: 'Se creó la cuenta', setup_fail: 'Código de instalación incorrecto', change_password: 'Cambió la contraseña', change_fail: 'Intento fallido al cambiar la contraseña', reset: 'Recuperó la cuenta', reset_fail: 'Recuperación fallida', logout_all: 'Cerró todas las sesiones' };
-        log.appendChild(h('table', { class: 'plain-grid' }, h('thead', null, h('tr', null, h('th', null, 'Cuándo'), h('th', null, 'Qué pasó'))), h('tbody', null, r.log.map(function (e) { return h('tr', { class: e.ok ? '' : 'row-bad' }, h('td', null, new Date(e.t).toLocaleString('es-CL')), h('td', null, names[e.e] || e.e)); }))));
+        log.appendChild(h('table', { class: 'plain-grid' }, h('thead', null, h('tr', null, h('th', null, 'Cuándo'), h('th', null, 'Qué pasó'), h('th', null, 'Desde'))), h('tbody', null, r.log.map(function (e) { return h('tr', { class: e.ok ? '' : 'row-bad' }, h('td', null, new Date(e.t).toLocaleString('es-CL')), h('td', null, names[e.e] || e.e), h('td', null, e.d || '—')); }))));
+        log.appendChild(h('p', { class: 'hint' }, '«Desde» es el equipo y navegador que declaró la app al entrar. Google no entrega la dirección IP, así que no se puede mostrar.'));
       }).catch(function (e) { U.clear(log); log.appendChild(UI.empty('No se pudo leer el registro (' + (e.message || e) + ').')); });
     }
     if (RF.cloud.configured()) root.appendChild(UI.section('Quién entró al servicio', [h('p', { class: 'hint' }, 'Los últimos accesos. Si ves algo que no reconoces, cambia la contraseña y cierra todas las sesiones.'), UI.btn('Ver el registro', { icon: 'list', cls: 'ghost', onclick: loadLog }), log]));

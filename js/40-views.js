@@ -65,7 +65,7 @@
       var applies = steps.some(function (t) { return L.applies(p, t.id); });
       status = h('span', { class: 'where-status ' + (applies ? 'yes' : 'no') }, applies ? 'Según lo que marcaste, te toca.' : 'Según lo que marcaste, hoy no te toca. Puedes verla igual.');
     }
-    return h('div', { class: 'tool-where', role: 'note' }, h('div', { class: 'where-top' }, kids), h('p', { class: 'where-text' }, role.text), status);
+    return h('div', { class: 'tool-where', role: 'note' }, h('div', { class: 'where-top' }, kids), role.text ? h('p', { class: 'where-text' }, role.text) : null, status);
   }
 
   /* lista desplegable de preferencias: el cambio se aplica al elegir, sin recargar la pantalla */
@@ -119,7 +119,7 @@
   function homeView() {
     var s = RF.store.get(), p = project(), root = h('div', { class: 'view home' });
     if (!p) return onboarding();
-    var prog = L.progress(p), res = L.reconcile(p, s.community, U.todayISO(), s.holidays);
+    var prog = L.progress(p), res = L.reconcile(p, s.community, U.todayISO(), RF.holidays.all());
     var f = fase(prog.faseActual), nx = prog.next, nt = nx && RF.tramites.byId[nx.tramiteId];
     var flagged = res.groups.reduce(function (a, g) { return a.concat(g.items.filter(function (i) { return i.level === 'error' || i.level === 'warn'; })); }, []);
     var fresh = !(p.expenses || []).length && !((p.gantt && p.gantt.stages) || []).length && !(p.budgetLines || []).length;

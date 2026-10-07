@@ -31,7 +31,7 @@
       blocks.push({ t: 'table', head: ['Cuenta', 'Aprobado ($)', 'Presupuestado ($)', 'Rendido ($)'], types: ['text', 'money', 'money', 'money'], rows: D.CUENTAS.map(function (cu) { var x = t[cu.id]; return [cu.name, x.aprobado || 0, x.presupuestado || 0, x.rendido || 0]; }) });
     }
     if (chosen.revision) {
-      var res = L.reconcile(p, c, today, s.holidays), errs = 0, warns = 0;
+      var res = L.reconcile(p, c, today, RF.holidays.all()), errs = 0, warns = 0;
       res.groups.forEach(function (g) { g.items.forEach(function (i) { if (i.level === 'error') errs++; else if (i.level === 'warn') warns++; }); });
       blocks.push({ t: 'h', text: 'Revisión de la rendición' });
       blocks.push({ t: 'p', text: errs + ' errores y ' + warns + ' advertencias abiertas en la revisión de Rinde Fácil.' });
@@ -39,7 +39,7 @@
     if (chosen.observaciones) {
       var open = (p.observations || []).filter(function (o) { return !o.respondida; });
       blocks.push({ t: 'h', text: 'Observaciones de CORFO abiertas' });
-      blocks.push(open.length ? { t: 'table', head: ['Recibida', 'Vence'], types: ['date', 'date'], rows: open.map(function (o) { return [o.recibida || '', o.recibida ? L.aclaracionDeadline(o.recibida, s.holidays) : '']; }) } : { t: 'p', text: 'No hay observaciones abiertas.' });
+      blocks.push(open.length ? { t: 'table', head: ['Recibida', 'Vence'], types: ['date', 'date'], rows: open.map(function (o) { return [o.recibida || '', o.recibida ? L.aclaracionDeadline(o.recibida, RF.holidays.all()) : '']; }) } : { t: 'p', text: 'No hay observaciones abiertas.' });
     }
     if (chosen.compromisos) {
       var pend = [], actas = (s.repo && s.repo.actas) || [];

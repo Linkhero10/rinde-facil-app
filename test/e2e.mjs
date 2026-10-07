@@ -551,7 +551,7 @@ await step('14. Observaciones: 10 días hábiles desde la comunicación', async 
   await page.getByRole('button', { name: 'Agregar observación' }).click();
   await page.locator('input[data-key="recibida"]').fill('2026-09-28');
   await page.waitForTimeout(200);
-  ok(/12 de octubre de 2026/.test(await page.textContent('.stage-card')), 'plazo = 12-oct-2026: ' + (await page.textContent('.stage-card')).slice(-160));
+  ok(/13 de octubre de 2026/.test(await page.textContent('.stage-card')), 'plazo = 13-oct-2026 (el 12 de octubre es feriado y ya viene cargado): ' + (await page.textContent('.stage-card')).slice(-160));
 });
 
 await step('15. Inicio con avance, siguiente paso y diagrama por actor', async () => {
@@ -783,19 +783,33 @@ await step('15h. Los enlaces que ejecutan código se descartan, también con tab
   eq(JSON.stringify(r.malos), '[]', 'se colaron'); eq(JSON.stringify(r.buenos), '[]', 'se descartaron enlaces buenos');
 });
 
-await step('15i. Calendario: muestra las fechas del proyecto, permite agregar una propia y descargar el archivo para Google Calendar', async () => {
+await step('15i. Calendario: mes y año con animación, evento con hora y lugar, todo junto a Google Calendar y sin feriados en las listas', async () => {
   await go('#/h/calendario');
   ok(/Lo que viene/.test(await page.textContent('.tool-page')), 'muestra lo que viene');
-  ok(await page.locator('.cal-grid').count() === 1, 'hay una grilla del mes');
+  ok(!/Reúne en un solo lugar/.test(await page.textContent('.tool-page')), 'sin el texto repetido');
+  ok(await page.locator('.cal-days .cal-cell').count() >= 28, 'hay una grilla del mes');
+  const mes = await page.textContent('.cal-month');
+  await page.getByRole('button', { name: 'Mes siguiente' }).click(); await page.waitForTimeout(500);
+  ok(await page.textContent('.cal-month') !== mes, 'el título cambia al pasar de mes');
+  ok(await page.locator('.cal-stage > .cal-view').count() === 1, 'al terminar la animación queda una sola vista');
+  await page.getByRole('button', { name: 'Año', exact: true }).click(); await page.waitForTimeout(600);
+  ok(await page.locator('.mini').count() === 12, 'la vista de año muestra los 12 meses');
+  await page.locator('.mini').nth(9).click(); await page.waitForTimeout(600);
+  ok(/Octubre/.test(await page.textContent('.cal-month')) && await page.locator('.cal-days .cal-cell').count() >= 28, 'al tocar un mes se abre ese mes');
+  await page.locator('.cal-cell:not(.empty)').nth(14).click();
   await page.getByLabel('¿Qué quieres recordar?').fill('Reunión con la directiva');
-  await page.getByLabel('Fecha', { exact: true }).fill('2026-10-15');
+  await page.getByLabel('Todo el día').uncheck();
+  await page.getByLabel('Desde').fill('19:00'); await page.getByLabel('Hasta (opcional)').fill('20:30');
+  await page.getByLabel('Lugar (opcional)').fill('Sede social');
   await page.getByRole('button', { name: 'Agregar a mi calendario' }).click();
   await page.waitForFunction(() => /Reunión con la directiva/.test(document.querySelector('.tool-page').textContent), null, { timeout: 5000 });
-  ok(await page.getByRole('link', { name: 'Agregar a Google Calendar' }).first().getAttribute('href').then(h => /^https:\/\/calendar\.google\.com\//.test(h)), 'enlace a Google Calendar');
-  await page.getByRole('button', { name: /Descargar todas mis fechas/ }).click();
+  const link = await page.locator('li.cal-ev', { hasText: 'Reunión con la directiva' }).first().getByRole('link', { name: 'Agregar a Google Calendar' }).getAttribute('href');
+  ok(/^https:\/\/calendar\.google\.com\//.test(link) && /location=Sede%20social/.test(link) && /dates=\d{8}T190000\/\d{8}T203000/.test(link), 'enlace a Google Calendar con hora y lugar: ' + link);
+  await page.getByRole('button', { name: /Pasar todo a Google Calendar/ }).click();
   await page.waitForFunction(() => (window.__rfDownloads || []).some(d => /\.ics$/.test(d.filename)), null, { timeout: 5000 });
   const icsText = await page.evaluate(() => { const d = window.__rfDownloads.filter(x => /\.ics$/.test(x.filename)).pop(); return d.blob.text(); });
-  ok(/BEGIN:VCALENDAR/.test(icsText) && /Reunión con la directiva/.test(icsText), 'el archivo .ics trae las fechas');
+  ok(/BEGIN:VCALENDAR/.test(icsText) && /Reunión con la directiva/.test(icsText) && /LOCATION:Sede social/.test(icsText) && !/Feriado/.test(icsText), 'el archivo .ics trae las fechas, con lugar y sin feriados');
+  ok(await page.getByRole('link', { name: /Abrir Google Calendar \(Importar\)/ }).count() === 1, 'indica el paso que falta en Google Calendar');
   await shot('15i-calendario');
 });
 
@@ -847,8 +861,8 @@ await step('15l. Mejoras del recorrido: volver a la lista desde el menú, feriad
   ok(await page.getByRole('button', { name: /Quitar gastos vacíos/ }).count() === 0, 'se quitaron los gastos vacíos');
   /* feriados nacionales */
   await go('#/h/proyecto');
-  await page.getByRole('button', { name: /Agregar los feriados nacionales/ }).click(); await page.waitForTimeout(300);
-  ok(await page.evaluate(() => RF.store.get().holidays.length) >= 25, 'se agregaron los feriados nacionales de 2026 y 2027');
+  ok(await page.getByRole('button', { name: /Agregar los feriados nacionales/ }).count() === 0, 'ya no hay que agregar los feriados nacionales a mano');
+  ok(await page.evaluate(() => RF.holidays.all().length) >= 25, 'los feriados nacionales de 2026 y 2027 ya vienen cargados');
   /* resumen para el Organismo: correo y WhatsApp */
   await go('#/h/compartir');
   const cbs = page.locator('main input[type=checkbox]'); for (let i = 0; i < await cbs.count(); i++) await cbs.nth(i).check();
