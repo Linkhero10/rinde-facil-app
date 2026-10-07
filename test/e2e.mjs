@@ -878,6 +878,8 @@ const merr = []; m.on('pageerror', e => merr.push(e.message));
 await m.goto(BASE);
 await m.waitForSelector('.auth-card');
 await m.getByRole('button', { name: /Ya tengo cuenta: entrar en este equipo|Ya tengo un servicio de mi comunidad/ }).click();
+await m.getByLabel('Nombre de la comunidad').fill('comunidad DE prueba'); await m.locator('input[type=password]').fill(PW2);
+if (await m.locator('details.adv summary').count()) ok(await m.locator('form.auth-form').evaluate(f => f.checkValidity()), 'con el servicio ya aprobado, el formulario se puede enviar sin tocar «otra dirección»');
 if (await m.locator('details.adv summary').count()) { await m.locator('details.adv summary').click(); await m.getByLabel('Dirección del servicio (termina en /exec)').fill(TEST_API_URL); } else await m.getByLabel('Dirección del servicio (termina en /exec)').fill(TEST_API_URL);
 await m.getByLabel('Nombre de la comunidad').fill('comunidad DE prueba');
 await m.locator('input[type=password]').fill(PW2);

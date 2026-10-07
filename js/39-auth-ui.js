@@ -169,7 +169,7 @@
     var err = errBox(), url = null, pick = null;
     if (approved.length > 1) { pick = h('select', { 'aria-label': 'Servicio de tu comunidad' }, approved.map(function (u, i) { return h('option', { value: u }, 'Servicio ' + (i + 1) + ' (…' + u.replace(/\/exec$/, '').slice(-8) + ')'); })); }
     if (!approved.length) url = textField('Dirección del servicio (termina en /exec)', { autocomplete: 'off' });
-    var other = approved.length ? textField('Dirección del servicio (termina en /exec)', { autocomplete: 'off' }) : null; /* solo para quien administra el servicio o prueba en su propio equipo */
+    var other = approved.length ? textField('Dirección del servicio (termina en /exec)', { autocomplete: 'off' }) : null; if (other) other.input.removeAttribute('required'); /* escondido y obligatorio bloqueaba el envío sin avisar */ /* solo para quien administra el servicio o prueba en su propio equipo */
     var form = h('form', { class: 'auth-form', onsubmit: function (ev) {
       ev.preventDefault(); showErr(err, '');
       var target = other && other.input.value.trim() ? other.input.value.trim() : approved.length === 1 ? approved[0] : pick ? pick.value : url.input.value.trim();
