@@ -226,7 +226,7 @@
       } catch (e) { legacy = null; }
     }
     notes.push('Los números del OCR pueden tener un dígito equivocado aunque la confianza sea alta: compara el N° de documento y los montos con la foto.');
-    return { fields: f, level: x.level, checks: x.checks, parser: legacy, note: notes.join(' ') };
+    return { fields: f, level: x.level, checks: x.checks, parser: legacy, note: notes.join(' '), document: RF.receipt.classify ? RF.receipt.classify(rawText) : null };
   }
 
   RF.blobs = blobs;

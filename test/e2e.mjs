@@ -869,6 +869,27 @@ await step('15l. Mejoras del recorrido: volver a la lista desde el menú, feriad
   await page.getByRole('button', { name: /Quitar gastos vacíos/ }).count();
 });
 
+await step('15m. Un respaldo subido como si fuera un gasto (cartola) se reconoce y se adjunta al gasto que prueba', async () => {
+  await go('#/h/gastos');
+  const ids = await page.evaluate(async () => {
+    const p = RF.store.project();
+    const tgt = RF.store.get().projects[0].expenses.find(e => e.proveedor) || p.expenses[0];
+    const src = { id: 'g-cartola-prueba', createdAt: new Date().toISOString(), cuenta: 'operacion', docType: 'boleta', folio: '', fecha: '', proveedor: '', total: '', montoRendir: '', formaPago: 'transferencia', glosa: '', actId: '', has: {}, imgId: 'img-cartola-prueba', _doc: { kind: 'cartola', key: 'pago', label: 'Cartola del banco' }, ocr: { raw: 'Cartola ' + RF.util.fmtNum(Number(String(tgt.total).replace(/\D/g, '')) || 0), at: new Date().toISOString() } };
+    await RF.blobs.put(src.imgId, new Blob(['cartola de prueba'], { type: 'image/jpeg' }));
+    p.expenses.push(src); RF.store.update(function () { }, { silent: true });
+    return { src: src.id, tgt: tgt.id };
+  });
+  await go('#/h/proyecto'); await go('#/h/gastos');
+  const fila = page.locator('.list-grid tbody tr', { hasText: 'Parece un respaldo' });
+  ok(await fila.count() === 1, 'en la lista dice «Parece un respaldo»');
+  await fila.click();
+  ok(/Esto parece un respaldo \(Cartola del banco\)/.test(await page.textContent('.doc-respaldo')), 'avisa que es una cartola y no un gasto');
+  await page.getByRole('button', { name: 'Adjuntarlo a ese gasto' }).click();
+  await page.waitForTimeout(800);
+  const res = await page.evaluate(({ src, tgt }) => { const p = RF.store.project(); const t = p.expenses.find(e => e.id === tgt); return { sigue: p.expenses.some(e => e.id === src), adjunto: !!(t && t.attach && t.attach.pago), cumple: !!(t && t.has && t.has.pago) }; }, ids);
+  ok(!res.sigue && res.adjunto && res.cumple, 'la cartola ya no es un gasto, quedó adjunta al gasto y cumple el respaldo de pago: ' + JSON.stringify(res));
+});
+
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });
 
 /* ---- celular ---- */

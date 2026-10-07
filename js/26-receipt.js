@@ -274,5 +274,17 @@
     return { fields: f, checks: checks, level: level, notes: notes };
   }
 
-  RF.receipt = { extract: extract, _amountsOf: function (t) { return amountsOf(splitLines(t)); } };
+  /* ¿Lo que se subió es un comprobante de gasto o un respaldo (cartola, cheque, F29…)? Solo se mira el encabezado: una factura con anexos pegados sigue siendo una factura. */
+  function classify(text) {
+    var lines = splitLines(text).slice(0, 30), head = norm(lines.join(' ')), top = norm(lines.slice(0, 15).join(' '));
+    if (/factura electronica|boleta de honorarios|boleta electronica|valido como boleta|nota de credito|nota de debito/.test(top)) return null;
+    if (/formulario 29|declaracion mensual y pago simultaneo/.test(head)) return { kind: 'f29', key: 'f29', label: 'Formulario 29 del SII' };
+    if (/informe mensual de boletas/.test(head)) return { kind: 'informe_sii', key: 'informe_sii', label: 'Informe mensual de boletas del SII' };
+    if (/\bcheque\b/.test(head) && /paguese a la orden/.test(head)) return { kind: 'cheque', key: 'pago', label: 'Cheque' };
+    if (/saldo anterior/.test(head) && /cargos|abonos|giros|fecha consulta/.test(head)) return { kind: 'cartola', key: 'pago', label: 'Cartola del banco' };
+    if (/comprobante de transferencia|transferencia (electronica|exitosa|realizada)|comprobante de pago/.test(head)) return { kind: 'transferencia', key: 'pago', label: 'Comprobante de transferencia' };
+    if (/\bcontrato\b|primero:? antecedentes|las partes (acuerdan|convienen)|notari[ao].*contrapart|contrapart.*notari[ao]/.test(head)) return { kind: 'contrato', key: null, label: 'Contrato' };
+    return null;
+  }
+  RF.receipt = { classify: classify, extract: extract, _amountsOf: function (t) { return amountsOf(splitLines(t)); } };
 })(typeof window !== 'undefined' ? window : globalThis);

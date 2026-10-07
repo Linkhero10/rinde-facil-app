@@ -101,6 +101,7 @@
       if (!res || !res.ok) { e._ocrNote = (/no devolvi[oó] texto|SIN_TEXTO/i.test(String((res && res.error) || '')) ? 'No se pudo leer texto en la foto. Prueba con otra más clara, de frente y con buena luz, o anota los datos mirando la foto.' : 'No se pudo leer la foto (' + String((res && res.error) || 'error desconocido').replace(/\.+$/, '') + '). Anota los datos mirando la foto.'); return; }
       var out = RF.ocr.toExpenseFields(res.raw_text, 'cloud_vision', { communityRut: c.community && c.community.rut, communityName: c.community && c.community.name }), f = out.fields;
       Object.keys(f).forEach(function (k) { e[k] = f[k]; });
+      e._doc = out.document || null; /* cartola, cheque, F29…: no es un gasto */
       if (!f.docType && f.total != null) e.docType = e.docType || 'boleta';
       e.ocr = { engine: res.engine || 'cloud_vision', at: new Date().toISOString(), raw: String(res.raw_text || '').slice(0, 6000), confidence: res.confidence == null ? null : res.confidence, ms: res.duration_ms || null, note: out.note, auto: JSON.parse(JSON.stringify(f)) };
       if (!e.fechaPago && e.fecha && /^(debito|tarjeta|prepago)$/.test(e.formaPago || '')) e.fechaPago = e.fecha; /* pago con tarjeta: se paga al comprar */
@@ -109,6 +110,50 @@
       silent();
     }
     camInput.addEventListener('change', function () { handleFiles(camInput.files); camInput.value = ''; });
+
+    /* ---- un respaldo subido como si fuera un gasto ---- */
+    function guessTarget(src) {
+      var raw = String((src.ocr && src.ocr.raw) || '').replace(/\s+/g, ' '), best = null, bestScore = 0;
+      p.expenses.forEach(function (x) {
+        if (x.id === src.id || x._doc) return;
+        var sc = 0, tot = num(x.total) > 0 ? U.fmtNum(num(x.total)) : '';
+        if (tot && raw.indexOf(tot) >= 0) sc += 5;
+        String(x.proveedor || '').toUpperCase().split(/\s+/).filter(function (w) { return w.length >= 5; }).forEach(function (w) { if (raw.toUpperCase().indexOf(w) >= 0) sc += 1; });
+        if (sc > bestScore) { bestScore = sc; best = x; }
+      });
+      return best;
+    }
+    function moveToAttachment(src, tgt, key, label) {
+      return RF.blobs.get(src.imgId).then(function (blob) {
+        if (!blob) throw new Error('La foto ya no está en este dispositivo.');
+        var k = key || ('extra-' + U.uid('x')), id = 'att-' + tgt.id + '-' + k;
+        return RF.blobs.put(id, blob).then(function () {
+          tgt.attach = tgt.attach || {}; tgt.attach[k] = { id: id, name: label, type: blob.type || '', at: new Date().toISOString(), extra: !key };
+          if (key) { tgt.has = tgt.has || {}; tgt.has[key] = true; }
+          RF.blobs.del(src.imgId);
+          p.expenses = p.expenses.filter(function (x) { return x.id !== src.id; });
+          silent();
+          if (RF.drive && RF.drive.auto() && tgt.fecha) RF.drive.saveAttachment(tgt, p, k, label, blob, false).then(function (r) { if (r && r.remote && tgt.attach && tgt.attach[k]) { tgt.attach[k].driveUrl = r.url || ''; silent(); } }).catch(function () { });
+          return tgt;
+        });
+      });
+    }
+    function respaldoBox(src) {
+      var d = src._doc, targets = p.expenses.filter(function (x) { return x.id !== src.id && !x._doc; }), guess = guessTarget(src);
+      var sel = h('select', { 'aria-label': 'Gasto al que pertenece' }, targets.map(function (x) { return h('option', { value: x.id }, (x.proveedor || 'Sin proveedor') + (x.folio ? ' N° ' + x.folio : '') + ' · ' + U.fmtCLP(num(x.total))); }));
+      if (guess) sel.value = guess.id;
+      var box = h('div', { class: 'callout warn doc-respaldo', role: 'status' },
+        h('strong', null, 'Esto parece un respaldo (' + d.label + '), no un gasto.'),
+        h('span', null, ' Los respaldos se adjuntan al gasto que prueban: ' + (d.kind === 'contrato' ? 'queda guardado con ese gasto.' : 'así el gasto da por cumplido su «' + (D.RESPALDOS[d.key] || 'respaldo').toLowerCase() + '».')));
+      if (!targets.length) { box.appendChild(h('p', { class: 'hint' }, 'Primero agrega el gasto al que pertenece y vuelve a subirlo.')); return box; }
+      box.appendChild(h('div', { class: 'row-actions' }, h('label', { class: 'field' }, h('span', { class: 'lbl' }, '¿A qué gasto pertenece?'), sel),
+        UI.btn('Adjuntarlo a ese gasto', { cls: 'primary', onclick: function () {
+          var tgt = p.expenses.filter(function (x) { return x.id === sel.value; })[0]; if (!tgt) return;
+          moveToAttachment(src, tgt, d.key, d.label).then(function () { UI.toast('Adjunto agregado a «' + (tgt.proveedor || 'gasto') + '». Ya no aparece como gasto.', 'ok'); st.editing = null; paint(); }).catch(function (er) { UI.toast(RF.cloud.humanError(er), 'bad'); });
+        } }),
+        UI.btn('Sí es un gasto, dejarlo', { cls: 'ghost', onclick: function () { src._doc = null; silent(); paint(); } })));
+      return box;
+    }
 
     /* ---- lista ---- */
     /* cuándo se subió o anotó el gasto (los anteriores a este dato usan la hora de la lectura de la foto, si la hay) */
@@ -139,7 +184,7 @@
           h('td', { 'data-label': 'Estado' }, UI.badge(STATUS_LABEL[r.status], r.status === 'ok' ? 'ok' : r.status === 'warn' ? 'warn' : 'bad')),
           h('td', { 'data-label': 'Fecha del documento' }, e.fecha ? U.fmtDateShort(e.fecha) : '—'), h('td', { 'data-label': 'Subido' }, uploadedText(e)), h('td', { 'data-label': 'Proveedor' }, e.proveedor || 'Sin proveedor'),
           h('td', { 'data-label': 'Documento' }, ((D.DOC_BY_ID[e.docType] || {}).name || '—') + (e.folio ? ' N° ' + e.folio : '')), h('td', { 'data-label': 'Cuenta' }, (D.CUENTA_BY_ID[e.cuenta] || {}).name || '—'),
-          h('td', { class: 'r', 'data-label': 'A rendir' }, U.fmtCLP(num(e.montoRendir))), h('td', { 'data-label': 'Problemas' }, r.errors ? r.errors + ' error(es)' : r.warns ? r.warns + ' aviso(s)' : '✓'));
+          h('td', { class: 'r', 'data-label': 'A rendir' }, U.fmtCLP(num(e.montoRendir))), h('td', { 'data-label': 'Problemas' }, e._doc ? 'Parece un respaldo' : r.errors ? r.errors + ' error(es)' : r.warns ? r.warns + ' aviso(s)' : '✓'));
       });
       root.appendChild(UI.section('Tus gastos', [p.expenses.length ? chips : null, p.expenses.length ? h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid list-grid' }, h('thead', null, h('tr', null, ['Estado', 'Fecha del documento', 'Subido', 'Proveedor', 'Documento', 'Cuenta', 'A rendir', 'Problemas'].map(function (x, i) { return h('th', { class: i === 6 ? 'r' : '' }, x); }))), h('tbody', null, rows))) : UI.empty('Aún no anotas gastos. Saca una foto al primer comprobante o anótalo a mano.')]));
       /* totales por cuenta */
@@ -178,7 +223,9 @@
       function paintReq(r) {
         U.clear(reqBox);
         var has = L.effectiveHas(e, p);
-        if (!r.requirements.length) { reqBox.appendChild(UI.empty('Este gasto no pide respaldos adicionales.')); return; }
+        var extras = Object.keys(e.attach || {}).filter(function (k) { return e.attach[k] && e.attach[k].extra; });
+        extras.forEach(function (k) { reqBox.appendChild(h('div', { class: 'req met' }, h('span', null, 'Otro adjunto: ' + e.attach[k].name + ' '), UI.btn('Quitar', { cls: 'ghost small', onclick: function () { RF.blobs.del(e.attach[k].id); delete e.attach[k]; silent(); paintReq(L.evaluateExpense(e, p, c.community, p.expenses)); } }))); });
+        if (!r.requirements.length) { if (!extras.length) reqBox.appendChild(UI.empty('Este gasto no pide respaldos adicionales.')); return; }
         r.requirements.forEach(function (q) {
           var auto = has[q.key] && !(e.has && e.has[q.key]);
           var cb = h('input', { type: 'checkbox', checked: q.met, disabled: auto, id: 'rq-' + q.key });
@@ -238,6 +285,7 @@
       var docOpts = D.DOC_TYPES.map(function (d) { return { id: d.id, name: d.name }; });
       var actOpts = [{ id: '', name: 'Sin actividad' }].concat(L.allActivities(p).map(function (x) { return { id: x.act.id, name: x.act.name || '(sin nombre)' }; }));
       var form = h('div', null,
+        e._doc ? respaldoBox(e) : null,
         e._ocrNote ? UI.callout('info', '', e._ocrNote) : null,
         h('h3', { class: 'grp' }, '1. El documento'),
         h('div', { class: 'form-grid' }, fld('Tipo de documento', 'docType', { type: 'select', options: docOpts, noEmpty: true, cls: 'span2' }), fld('Número (folio)', 'folio', { type: 'text' }), fld('Fecha del documento', 'fecha', { type: 'date' }), fld('Nombre del proveedor', 'proveedor', { type: 'text', cls: 'wide' }), fld('Nombre comercial o local (opcional)', 'nombreComercial', { type: 'text', cls: 'wide', hint: 'Solo para reconocerlo; el proveedor es quien tiene el RUT.' }), fld('RUT del proveedor', 'rutProveedor', { type: 'rut' })),

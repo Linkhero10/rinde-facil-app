@@ -179,3 +179,17 @@ Total $102.001`);
   const out = RF.logic.evaluateExpense(e, { expenses: [e], start: '2026-01-01', end: '2027-01-01' }, {}, [e]);
   assert.ok(!out.issues.some(i => i.id === 'aritmetica'), 'sin error de aritmética: ' + out.issues.map(i => i.id));
 });
+
+test('respaldos que se subieron como si fueran gastos: cartola, cheque, F29, informe del SII, transferencia y contrato se reconocen; una factura con anexos pegados sigue siendo una factura', () => {
+  const k = t => { const c = RF.receipt.classify(t); return c && c.kind + '/' + c.key; };
+  assert.equal(k('Scotiabank®\nCliente\nFecha Consulta\nDesde\nSaldo Anterior\nCargos/Giros\nCOMUNIDAD EJEMPLO'), 'cartola/pago');
+  assert.equal(k('Sii\nServicio de\nImpuestos\nInternos\nDECLARACIÓN MENSUAL Y PAGO\nSIMULTÁNEO DE IMPUESTOS\nFORMULARIO 29'), 'f29/f29');
+  assert.equal(k('13/8/26, 11:40\nRut: 11111111-1\nSii\nINFORME MENSUAL DE BOLETAS RECIBIDAS'), 'informe_sii/informe_sii');
+  assert.equal(k('Serie CHEQUE\n642B\n$12.458.504\nComunidad Ejemplo\nPAGUESE A\nLA ORDEN DE'), 'cheque/pago');
+  assert.equal(k('COMPROBANTE DE TRANSFERENCIA\nMonto $249.900\nEstado EXITOSA'), 'transferencia/pago');
+  assert.equal(k('CONTRATO DE PRESTACIÓN DE SERVICIOS\nPRIMERO: Antecedentes\nLas partes acuerdan'), 'contrato/null');
+  assert.equal(k('UNCA\nDE\nMACHUC\nNOTARIO\nGISELA\nPUBLICO\nQUINTA\nNOTARIA\nCALAMA\nCONTRAPARTE RUT 76.726.478-K'), 'contrato/null', 'hoja notarial del contrato');
+  assert.equal(k('R.U.T.: 76.726.478-K\nFACTURA ELECTRONICA\nN° 167\nINVERSIONES ARAYA MOYA LIMITADA\n\nFORMULARIO 29\nSaldo anterior Cargos'), null, 'una factura no se confunde con sus anexos');
+  assert.equal(k('JUANA TINTE\nBOLETA DE HONORARIOS\nELECTRONICA\nN°69'), null);
+  assert.equal(k('TRANSBANK\nVENTA\nRUT: 76.571.338-2\nVALIDO COMO BOLETA\nTOTAL $7.390'), null);
+});
