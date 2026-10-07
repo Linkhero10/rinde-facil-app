@@ -603,6 +603,7 @@ await step('15b. Buscador: «/» lo abre, «gasto» muestra la ruta Herramientas
 
 await step('15c. Qué necesitará tu proyecto: solo se muestran los trámites que te tocan; los pasos traen botones a su documento', async () => {
   await go('#/h/necesidades');
+  ok(/Necesaria/.test(await page.textContent('.tool-where')) && /Fase 2/.test(await page.textContent('.tool-where')), 'la herramienta dice si es necesaria y en qué fase de la ruta va'); await shot('15c-herramienta-en-la-ruta');
   ok(/Todavía no marcas nada/.test(await page.textContent('.tool-page')), 'al inicio muestra todo');
   const f4Before = await page.locator('.side .acc-head', { hasText: 'Gastos y respaldos' }).textContent();
   await page.getByLabel(/Viajes, pasajes o viáticos/).check();
@@ -777,6 +778,22 @@ await step('15h. Los enlaces que ejecutan código se descartan, también con tab
     return { malos: malos.filter(u => RF.util.h('a', { href: u }).hasAttribute('href')), buenos: buenos.filter(u => !RF.util.h('a', { href: u }).hasAttribute('href')) };
   });
   eq(JSON.stringify(r.malos), '[]', 'se colaron'); eq(JSON.stringify(r.buenos), '[]', 'se descartaron enlaces buenos');
+});
+
+await step('15i. Calendario: muestra las fechas del proyecto, permite agregar una propia y descargar el archivo para Google Calendar', async () => {
+  await go('#/h/calendario');
+  ok(/Lo que viene/.test(await page.textContent('.tool-page')), 'muestra lo que viene');
+  ok(await page.locator('.cal-grid').count() === 1, 'hay una grilla del mes');
+  await page.getByLabel('¿Qué quieres recordar?').fill('Reunión con la directiva');
+  await page.getByLabel('Fecha', { exact: true }).fill('2026-10-15');
+  await page.getByRole('button', { name: 'Agregar a mi calendario' }).click();
+  await page.waitForFunction(() => /Reunión con la directiva/.test(document.querySelector('.tool-page').textContent), null, { timeout: 5000 });
+  ok(await page.getByRole('link', { name: 'Agregar a Google Calendar' }).first().getAttribute('href').then(h => /^https:\/\/calendar\.google\.com\//.test(h)), 'enlace a Google Calendar');
+  await page.getByRole('button', { name: /Descargar todas mis fechas/ }).click();
+  await page.waitForFunction(() => (window.__rfDownloads || []).some(d => /\.ics$/.test(d.filename)), null, { timeout: 5000 });
+  const icsText = await page.evaluate(() => { const d = window.__rfDownloads.filter(x => /\.ics$/.test(x.filename)).pop(); return d.blob.text(); });
+  ok(/BEGIN:VCALENDAR/.test(icsText) && /Reunión con la directiva/.test(icsText), 'el archivo .ics trae las fechas');
+  await shot('15i-calendario');
 });
 
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });

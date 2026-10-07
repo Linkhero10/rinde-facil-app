@@ -1,0 +1,51 @@
+/* Calendario: junta las fechas del proyecto y las pasa a Google Calendar o a un archivo .ics. */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { loadApp } from './load.mjs';
+
+const RF = loadApp(['00-service-trust.js', '01-util.js', '02-store.js', '10-data.js', '11-tramites.js', '12-needs.js', '20-logic.js', '30-ui.js', '42-tools-calendar.js']);
+
+const state = {
+  holidays: ['2026-09-18'], repo: { docs: [], actas: [{ id: 'a1', date: '2026-10-20', place: 'Sede' }] },
+  events: [{ id: 'e1', date: '2026-10-15', title: 'Reunión con la directiva, 19:00', note: 'Llevar libro; actas' }]
+};
+const project = {
+  id: 'p1', name: 'Invernadero', start: '2026-07-01', end: '2027-06-30', desembolso1: '2026-08-01', periodoInicio: '', periodoFin: '',
+  gantt: { stages: [{ id: 's1', name: 'Preparación', acts: [{ id: 'x1', name: 'Taller de artesanía', start: '2026-09-01', end: '2026-09-30' }] }] },
+  expenses: [{ id: 'g1', proveedor: 'Ferretería Sur', fecha: '2026-09-05', montoRendir: '12000' }], observations: []
+};
+
+test('junta fechas de plazos, actividades, boletas, reuniones y las que anotó la comunidad', () => {
+  const ev = RF.calendar.collect(state, project);
+  const has = (d, t) => ev.some(e => e.date === d && e.title.includes(t));
+  assert.ok(has('2026-07-01', 'Empieza el proyecto'), 'inicio del proyecto');
+  assert.ok(ev.some(e => e.title.includes('plazo del PEA')), 'plazo del PEA: ' + JSON.stringify(ev.filter(e => /PEA/.test(e.title))));
+  assert.ok(has('2026-09-01', 'Empieza: Taller de artesanía'), 'actividad');
+  assert.ok(has('2026-09-05', 'Ferretería Sur'), 'boleta');
+  assert.ok(has('2026-10-20', 'Reunión: Sede'), 'acta');
+  assert.ok(has('2026-10-15', 'Reunión con la directiva'), 'fecha propia');
+  assert.ok(has('2026-09-18', 'Feriado'), 'feriado');
+  assert.deepEqual(ev.map(e => e.date), ev.map(e => e.date).slice().sort(), 'ordenadas por fecha');
+});
+
+test('ignora fechas inválidas', () => {
+  const ev = RF.calendar.collect({ holidays: ['no-fecha'], repo: { actas: [{ date: '2026-13-99x' }] }, events: [null, { id: 'z', date: '', title: 'x' }] }, { start: 'ayer', gantt: { stages: [] }, expenses: [], observations: [] });
+  assert.equal(ev.length, 0);
+});
+
+test('enlace de Google Calendar: día completo y texto codificado', () => {
+  const u = RF.calendar.googleUrl({ date: '2026-10-30', title: 'Vence el plazo del PEA', note: 'Pide la prórroga' });
+  assert.ok(u.startsWith('https://calendar.google.com/calendar/render?action=TEMPLATE'));
+  assert.ok(u.includes('dates=20261030/20261031'));
+  assert.ok(u.includes('text=Vence%20el%20plazo%20del%20PEA'));
+});
+
+test('archivo .ics válido: fechas de día completo, comas y punto y coma escapados, saltos CRLF', () => {
+  const ics = RF.calendar.toIcs([{ date: '2026-10-15', title: 'Reunión, directiva; 19:00', note: 'Llevar libro\nactas' }], '20261006T120000Z');
+  assert.ok(ics.startsWith('BEGIN:VCALENDAR\r\n'));
+  assert.ok(ics.includes('DTSTART;VALUE=DATE:20261015\r\n'));
+  assert.ok(ics.includes('DTEND;VALUE=DATE:20261016\r\n'));
+  assert.ok(ics.includes('SUMMARY:Reunión\\, directiva\\; 19:00\r\n'));
+  assert.ok(ics.includes('DESCRIPTION:Llevar libro\\nactas\r\n'));
+  assert.ok(ics.endsWith('END:VCALENDAR\r\n'));
+});

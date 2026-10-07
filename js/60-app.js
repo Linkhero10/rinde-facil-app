@@ -75,7 +75,12 @@
         if (!tl) view = h('div', { class: 'view' }, UI.callout('bad', 'No encontramos esa herramienta.', ''));
         else {
           var back = r.from && RF.tramites.byId[r.from] ? h('a', { class: 'btn ghost small back', href: '#/t/' + r.from }, UI.icon('left', 16), 'Volver a: ' + RF.tramites.byId[r.from].title) : null;
-          view = h('div', { class: 'view tool' }, back, tl.render());
+          var page = tl.render(), where = RF.views.toolContext(r.id);
+          if (where && page && page.children) {
+            var heading = null; for (var ci = 0; ci < page.children.length; ci++) { if (page.children[ci].tagName === 'H1') { heading = page.children[ci]; break; } }
+            if (heading && heading.nextSibling) page.insertBefore(where, heading.nextSibling); else if (heading) page.appendChild(where); else page.insertBefore(where, page.firstChild);
+          }
+          view = h('div', { class: 'view tool' }, back, page);
         }
       }
     } catch (e) {

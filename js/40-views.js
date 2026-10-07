@@ -32,6 +32,39 @@
     return h('div', { class: 'acc' + (open ? ' open' : '') }, btn, body);
   }
 
+  /* trámites de la ruta en los que se usa una herramienta (los de ayuda aparte quedan fuera) */
+  function stepsOfTool(tid) {
+    var out = [];
+    RF.tramites.list.forEach(function (t) {
+      if (!faseOf[t.id] || faseOf[t.id] === 'AY') return;
+      var direct = (t.tools || []).indexOf(tid) >= 0;
+      var viaStep = Object.keys(RF.needs.STEP_TOOLS).some(function (k) { return k.indexOf(t.id + ':') === 0 && RF.needs.STEP_TOOLS[k].indexOf(tid) >= 0; });
+      if (direct || viaStep) out.push(t);
+    });
+    return out;
+  }
+  function toolTag(tid) {
+    var role = RF.needs.TOOL_ROLE[tid], steps = stepsOfTool(tid), f = steps.length ? fase(faseOf[steps[0].id]) : null;
+    return (f ? 'Fase ' + f.n : 'A mano') + (role ? ' · ' + RF.needs.KIND_LABEL[role.kind].toLowerCase() : '');
+  }
+  /* franja al inicio de cada herramienta: si es necesaria, en qué paso de la ruta va y si te toca */
+  function toolContext(tid) {
+    var role = RF.needs.TOOL_ROLE[tid]; if (!role) return null;
+    var p = project(), steps = stepsOfTool(tid), kids = [h('span', { class: 'where-kind ' + role.kind }, RF.needs.KIND_LABEL[role.kind])];
+    if (steps.length) {
+      kids.push(h('span', { class: 'where-in' }, 'Va en tu ruta: ', steps.slice(0, 2).map(function (t, i) {
+        var f = fase(faseOf[t.id]);
+        return [i ? ' · ' : '', h('a', { href: '#/t/' + t.id }, 'Fase ' + f.n + ' · ' + t.title)];
+      })));
+    } else kids.push(h('span', { class: 'where-in' }, 'No es un paso de la ruta: la puedes usar cuando quieras.'));
+    var status = null;
+    if (role.kind === 'segun' && p && steps.length && L.needsAnswered(p)) {
+      var applies = steps.some(function (t) { return L.applies(p, t.id); });
+      status = h('span', { class: 'where-status ' + (applies ? 'yes' : 'no') }, applies ? 'Según lo que marcaste, te toca.' : 'Según lo que marcaste, hoy no te toca. Puedes verla igual.');
+    }
+    return h('div', { class: 'tool-where', role: 'note' }, h('div', { class: 'where-top' }, kids), h('p', { class: 'where-text' }, role.text), status);
+  }
+
   /* lista desplegable de preferencias: el cambio se aplica al elegir, sin recargar la pantalla */
   function prefSelect(id, options, current, onChange) {
     var sel = h('select', { id: id, class: 'pref-select' }, options.map(function (o) { return h('option', { value: o[0] }, o[1]); }));
@@ -51,6 +84,7 @@
     side.appendChild(h('div', { class: 'proj-pick' }, h('label', { class: 'lbl-sm', for: 'projsel' }, 'Proyecto'), (sel.id = 'projsel', sel)));
     side.appendChild(h('button', { type: 'button', class: 'side-search', 'aria-label': 'Buscar en toda la app', onclick: function () { if (RF.searchui) RF.searchui.open(); } }, UI.icon('search', 18), h('span', { class: 'ss-t' }, 'Buscar en toda la app'), h('kbd', null, '/')));
     side.appendChild(h('a', { href: '#/', class: 'side-link' + (route.name === 'home' ? ' current' : '') }, UI.icon('route', 18), h('span', null, 'Mi ruta')));
+    side.appendChild(h('a', { href: '#/h/calendario', class: 'side-link' + (route.name === 'tool' && route.id === 'calendario' ? ' current' : '') }, UI.icon('calendar', 18), h('span', null, 'Calendario')));
     var curFase = route.name === 'tramite' ? faseOf[route.id] : route.name === 'fase' ? route.id : null;
     D.FASES.forEach(function (f) {
       var pf = prog.porFase[f.id], hiddenKids = [], kids = [];
@@ -68,7 +102,7 @@
     side.appendChild(h('div', { class: 'side-sep' }, 'Herramientas'));
     TOOL_GROUPS.forEach(function (g) {
       var open = route.name === 'tool' && g.tools.indexOf(route.id) >= 0;
-      side.appendChild(accordion(g.id, g.name, '', g.tools.map(function (tid) { return h('a', { href: '#/h/' + tid, class: 'side-item tool' + (route.name === 'tool' && route.id === tid ? ' current' : '') }, h('span', { class: 'ck tool' }, UI.icon(RF.tools[tid].icon || 'file', 14)), h('span', { class: 'si-t' }, toolTitle(tid))); }), { open: open, cls: 'tools' }));
+      side.appendChild(accordion(g.id, g.name, '', g.tools.map(function (tid) { return h('a', { href: '#/h/' + tid, class: 'side-item tool' + (route.name === 'tool' && route.id === tid ? ' current' : '') }, h('span', { class: 'ck tool' }, UI.icon(RF.tools[tid].icon || 'file', 14)), h('span', { class: 'si-t' }, toolTitle(tid), h('span', { class: 'si-tag' }, toolTag(tid)))); }), { open: open, cls: 'tools' }));
     });
     side.appendChild(h('div', { class: 'side-foot' },
       h('a', { href: '#/h/nube', class: 'side-link' + (route.name === 'tool' && route.id === 'nube' ? ' current' : '') }, UI.icon('cloud', 18), h('span', null, 'Nube y copias')),
@@ -93,6 +127,9 @@
         h('div', { class: 'ring-wrap' }, UI.progressBar(prog.tramDone, prog.tramTotal, 'Avance total'), h('span', { class: 'ring-t' }, prog.tramDone + ' de ' + prog.tramTotal + ' trámites listos'))),
       nt ? h('p', { class: 'next-step' }, 'Siguiente paso: ', h('strong', null, nt.steps[nx.stepIdx])) : null));
     if (!L.needsAnswered(p)) root.appendChild(h('section', { class: 'card need-banner' }, h('h2', { class: 'card-title' }, 'Cuéntanos qué necesitará tu proyecto'), h('p', null, 'Marca lo que vas a usar (viáticos, insumos, inmuebles…) y te mostramos solo los trámites que te tocan. Hoy ves todos.'), h('a', { class: 'btn primary', href: '#/h/necesidades' }, 'Marcar lo que necesito')));
+    /* próximas fechas */
+    var soon = RF.calendar.collect(s, p).filter(function (e) { return e.date >= U.todayISO(); }).slice(0, 3);
+    if (soon.length) root.appendChild(UI.section('Próximas fechas', [h('ul', { class: 'cal-list' }, soon.map(function (e) { return h('li', { class: 'cal-ev' }, h('span', { class: 'cal-ev-t' }, h('strong', null, U.fmtDate(e.date) + ' · '), e.title)); })), h('a', { class: 'btn ghost small', href: '#/h/calendario' }, UI.icon('calendar', 14), 'Ver el calendario completo')]));
     /* alertas */
     var flagged = res.groups.reduce(function (a, g) { return a.concat(g.items.filter(function (i) { return i.level === 'error' || i.level === 'warn'; })); }, []);
     root.appendChild(UI.section('¿Cuadra todo?', [flagged.length ? h('ul', { class: 'check-list' }, flagged.slice(0, 4).map(function (i) { return h('li', { class: 'lv-' + i.level }, h('span', { class: 'lv-ico' }, UI.icon('alert', 18)), h('span', { class: 'lv-msg' }, i.msg)); })) : UI.callout('ok', 'Nada por corregir por ahora.', ''), h('div', { class: 'row-actions' }, h('a', { class: 'btn', href: '#/h/revision' }, 'Ver la revisión completa' + (flagged.length > 4 ? ' (' + flagged.length + ' avisos)' : '')))], 'home-check'));
@@ -191,5 +228,5 @@
   }
   function refreshSide() { var old = document.getElementById('side'); if (!old) return; var neu = sidebar(RF.app.route()); old.parentNode.replaceChild(neu, old); if (document.body.classList.contains('menu-open')) { /* mantener */ } RF.app.applyThemeLabel(); }
 
-  RF.views = { TOOL_GROUPS: TOOL_GROUPS, sidebar: sidebar, home: homeView, fase: faseView, tramite: tramiteView, ORDER: ORDER, faseOf: faseOf, refreshSide: refreshSide };
+  RF.views = { toolContext: toolContext, toolTag: toolTag, TOOL_GROUPS: TOOL_GROUPS, sidebar: sidebar, home: homeView, fase: faseView, tramite: tramiteView, ORDER: ORDER, faseOf: faseOf, refreshSide: refreshSide };
 })(typeof window !== 'undefined' ? window : globalThis);

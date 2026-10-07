@@ -85,5 +85,41 @@
     'TRM-029:1': ['solicitud'],
     'TRM-026:0': ['consulta']
   };
-  RF.needs = { STEP_TOOLS: STEP_TOOLS, NEEDS: NEEDS, BY_ID: BY_ID, APPLIES: APPLIES, derivedFromExpenses: derivedFromExpenses };
+  /* cada herramienta: ¿hay que usarla? 'clave' = necesaria en la ruta; 'segun' = solo si te toca por lo que marcaste o por tu situación; 'apoyo' = opcional, para tener a mano */
+  var TOOL_ROLE = {
+    necesidades: { kind: 'clave', text: 'Esto decide qué trámites te tocan en toda la ruta. Se hace una vez, antes de armar el PEA (unos 2 minutos), y lo puedes cambiar cuando quieras.' },
+    proyecto: { kind: 'clave', text: 'Los datos de tu comunidad y de tu proyecto se usan para llenar todos los documentos. Se completan una vez.' },
+    gantt: { kind: 'clave', text: 'Es parte del PEA y después se carga en SGP. Se arma una vez y se ajusta si cambian las fechas.' },
+    presupuesto: { kind: 'clave', text: 'Es parte del PEA y después se carga en SGP. Aquí planificas cuánto gastarás en cada cuenta.' },
+    pea: { kind: 'clave', text: 'Reúne la Carta Gantt, el presupuesto y los datos del proyecto en el documento que revisa CORFO.' },
+    reitem: { kind: 'segun', text: 'Solo si necesitas cambiar montos o actividades de un PEA que CORFO ya aprobó.' },
+    cotizaciones: { kind: 'segun', text: 'Solo para compras grandes (sobre $10.000.000 netos): piden comparar proveedores.' },
+    gastos: { kind: 'clave', text: 'Aquí anotas cada gasto con su boleta o factura. Es lo que después se rinde.' },
+    revision: { kind: 'clave', text: 'Antes de enviar la rendición, revisa que todo cuadre. Puedes usarla cuantas veces quieras.' },
+    resumen: { kind: 'clave', text: 'Compara tus gastos con lo aprobado, cuenta por cuenta, antes de enviar.' },
+    observaciones: { kind: 'segun', text: 'Solo cuando CORFO te hace observaciones a la rendición.' },
+    anexo1: { kind: 'segun', text: 'Solo si eres contribuyente de IVA y no lo usas en el proyecto.' },
+    anexo2: { kind: 'segun', text: 'Solo si tienes facturas con IVA que no corresponde al proyecto.' },
+    anexo3: { kind: 'segun', text: 'Solo si pagaste algo en efectivo.' },
+    anexo4: { kind: 'segun', text: 'Solo si hubo viajes o viáticos.' },
+    anexo5: { kind: 'segun', text: 'Solo si repartes gastos de administración entre proyectos.' },
+    informe: { kind: 'clave', text: 'Es el informe técnico de cada rendición. Reúne las fichas de actividades, personas e infraestructura.' },
+    informeA: { kind: 'segun', text: 'Ficha de actividades con la comunidad: si hiciste talleres, ferias o reuniones.' },
+    informeB: { kind: 'segun', text: 'Ficha de estudios y consultorías: solo si contrataste alguno.' },
+    informeC: { kind: 'segun', text: 'Ficha de infraestructura y activos: solo si compraste equipos, terrenos u obras.' },
+    informeD: { kind: 'segun', text: 'Ficha de personas contratadas: solo si pagaste sueldos u honorarios.' },
+    informeE: { kind: 'segun', text: 'Otras actividades de las personas contratadas.' },
+    consulta: { kind: 'apoyo', text: 'Para preguntarle a CORFO si un gasto se puede pagar. No es obligatoria: úsala cuando tengas una duda.' },
+    solicitud: { kind: 'clave', text: 'Al final del proyecto, para pedir los aportes que faltan.' },
+    calendario: { kind: 'apoyo', text: 'Reúne en un solo lugar las fechas de tu proyecto: plazos, actividades, boletas y reuniones. Puedes pasarlas a Google Calendar.' },
+    documentos: { kind: 'apoyo', text: 'Tu archivo de documentos importantes: convenio, resoluciones, certificados. Para tenerlos a mano.' },
+    actas: { kind: 'apoyo', text: 'Para dejar registro de las reuniones de la mesa de trabajo. Úsala cuando haya una reunión.' },
+    compartir: { kind: 'apoyo', text: 'Para enviar un resumen al Organismo Colaborador, solo si tú quieres y con tu permiso.' },
+    plazos: { kind: 'apoyo', text: 'Calcula cuánto tiempo te queda. Úsala cuando quieras confirmar una fecha.' },
+    verificador: { kind: 'apoyo', text: 'Comprueba si la fecha de un gasto entra en el proyecto. Úsala cuando tengas dudas.' },
+    cuentas: { kind: 'apoyo', text: 'Te ayuda a elegir en qué cuenta va un gasto. Úsala cuando tengas dudas.' },
+    nofinanciable: { kind: 'apoyo', text: 'Revisa si un gasto no se puede pagar con el aporte. Úsala antes de comprar algo dudoso.' }
+  };
+  var KIND_LABEL = { clave: 'Necesaria', segun: 'Solo si te toca', apoyo: 'Opcional' };
+  RF.needs = { TOOL_ROLE: TOOL_ROLE, KIND_LABEL: KIND_LABEL, STEP_TOOLS: STEP_TOOLS, NEEDS: NEEDS, BY_ID: BY_ID, APPLIES: APPLIES, derivedFromExpenses: derivedFromExpenses };
 })(typeof window !== 'undefined' ? window : globalThis);

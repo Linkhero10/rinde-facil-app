@@ -8,6 +8,7 @@
   var ICONS = {
     home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10',
     check: 'M5 12l5 5L20 7',
+    calendar: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
     alert: 'M12 3l10 18H2L12 3zM12 10v5M12 18v.5',
     info: 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 11v6M12 7.5v.5',
     down: 'M6 9l6 6 6-6', right: 'M9 6l6 6-6 6', left: 'M15 6l-6 6 6 6', up: 'M6 15l6-6 6 6',

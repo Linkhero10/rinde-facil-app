@@ -460,3 +460,31 @@ html[data-text="muy-grande"] body{zoom:1.3}
 .save-meta{grid-row:2;grid-column:2;font-size:14px}
 .save-folder{grid-row:1;grid-column:3;font-size:14px}
 @media (max-width:560px){.save-item{grid-template-columns:1fr}.save-kind,.save-item>a,.save-item>span,.save-meta,.save-folder{grid-column:1;grid-row:auto}}
+
+.si-tag{display:block;font:500 11.5px var(--mono);letter-spacing:.02em;color:var(--muted);margin-top:1px}
+.tool-where{margin:6px 0 18px;padding:10px 0 12px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.where-top{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
+.where-kind{font:700 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--action)}
+.where-kind.apoyo{color:var(--muted)}
+.where-in{font-size:15px;color:var(--ink-2)}
+.where-text{margin:6px 0 0;font-size:15.5px;line-height:1.5;color:var(--ink-2)}
+.where-status{display:block;margin-top:6px;font-weight:600;font-size:15px}.where-status.yes{color:var(--ok)}.where-status.no{color:var(--muted)}
+
+.cal-list{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:8px}
+.cal-ev{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:baseline}
+.cal-ev-t{grid-column:2;overflow-wrap:anywhere}
+.cal-ev-a{grid-column:2;display:flex;flex-wrap:wrap;gap:4px 14px;font-size:14px;align-items:center}
+.cal-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none}
+.cal-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin:10px 0}
+.cal-month{margin:0;font-size:22px}
+.cal-grid{width:100%;border-collapse:collapse;table-layout:fixed}
+.cal-grid th{font:600 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px 0;text-align:center}
+.cal-grid td{border:1px solid var(--line);padding:0;height:64px;vertical-align:top}
+.cal-empty{background:transparent}
+.cal-day{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;width:100%;height:100%;min-height:64px;padding:5px 6px;border:0;background:none;cursor:pointer;color:var(--ink);font:inherit}
+.cal-day:hover{background:var(--card)}
+.cal-num{font-weight:600;font-size:15px}
+.cal-dots{display:flex;gap:3px;flex-wrap:wrap}
+.cal-cell.today .cal-num{color:var(--action);text-decoration:underline}
+.cal-cell.sel{outline:2px solid var(--action);outline-offset:-2px}
+@media (max-width:560px){.cal-grid td{height:52px}.cal-day{min-height:52px;padding:3px}.cal-num{font-size:14px}}

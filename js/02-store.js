@@ -26,7 +26,7 @@
       v: 2,
       community: { name: '', rut: '', address: '', legalRep: '', repRut: '', email: '', phone: '', ivaModo: 'no_contribuyente', oc: '' },
       cloud: { apiUrl: '', lastSync: null, rev: 0, autoSave: true, rootUrl: '', saves: [] },
-      holidays: [], projects: [], activeProjectId: null, repo: { docs: [], actas: [] },
+      holidays: [], events: [], projects: [], activeProjectId: null, repo: { docs: [], actas: [] },
       ui: { theme: 'system', open: {}, idleMinutes: 15 }
     };
   }
@@ -39,6 +39,7 @@
     out.cloud = Object.assign({}, d.cloud, s.cloud || {});
     out.ui = Object.assign({}, d.ui, s.ui || {});
     out.holidays = Array.isArray(s.holidays) ? s.holidays : [];
+    out.events = Array.isArray(s.events) ? s.events.filter(function (e) { return e && typeof e === 'object'; }) : [];
     out.repo = { docs: Array.isArray(s.repo && s.repo.docs) ? s.repo.docs : [], actas: Array.isArray(s.repo && s.repo.actas) ? s.repo.actas : [] };
     out.projects = (Array.isArray(s.projects) ? s.projects : []).map(function (p) {
       var np = Object.assign(newProject(p && p.name), p);
@@ -203,7 +204,7 @@
     checkProjects(remote && remote.projects); checkProjects(get().projects);
     var added = 0, r = migrate(U.safeParse(JSON.stringify(remote))), s = migrate(U.safeParse(JSON.stringify(get())));
     var mergeLists = ['expenses', 'cotizaciones', 'observations', 'budgetLines', 'needsCustom'];
-    Object.keys(r).concat(Object.keys(s)).forEach(function (k) { if (['projects', 'repo', 'cloud', 'ui', 'activeProjectId'].indexOf(k) < 0 && !equalData(s[k], r[k])) conflict(k); });
+    Object.keys(r).concat(Object.keys(s)).forEach(function (k) { if (['projects', 'repo', 'cloud', 'ui', 'activeProjectId', 'events'].indexOf(k) < 0 && !equalData(s[k], r[k])) conflict(k); });
     (function () {
       var haveP = new Map(); s.projects.forEach(function (p) { haveP.set(p.id, p); });
       r.projects.forEach(function (rp) {
@@ -220,8 +221,9 @@
       });
       var d = unionById(s.repo.docs, r.repo.docs), a = unionById(s.repo.actas, r.repo.actas);
       s.repo.docs = d.list; s.repo.actas = a.list; added += d.added + a.added;
+      var ev = unionById(s.events, r.events); s.events = ev.list; added += ev.added;
     })();
-    update(function (current) { current.projects = s.projects; current.repo = s.repo; });
+    update(function (current) { current.projects = s.projects; current.repo = s.repo; current.events = s.events; });
     return added;
   }
   function isDone(p, tid, i) { return !!(p && p.done[tid + ':' + i]); }
