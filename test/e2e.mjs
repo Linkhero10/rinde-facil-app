@@ -792,12 +792,26 @@ await step('15i. Calendario: mes y año con animación, evento con hora y lugar,
   await page.getByRole('button', { name: 'Mes siguiente' }).click(); await page.waitForTimeout(500);
   ok(await page.textContent('.cal-month') !== mes, 'el título cambia al pasar de mes');
   ok(await page.locator('.cal-stage > .cal-view').count() === 1, 'al terminar la animación queda una sola vista');
+  /* clics rápidos: sin esperar la animación, al final debe quedar UNA sola vista y la correcta */
+  for (let i = 0; i < 7; i++) await page.getByRole('button', { name: 'Mes siguiente' }).click({ delay: 0 });
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Mes anterior' }).click({ delay: 0 });
+  await page.waitForTimeout(700);
+  ok(await page.locator('.cal-stage > .cal-view').count() === 1, 'tras clics rápidos hay una sola vista del mes');
+  const rapido = await page.evaluate(() => { const t = document.querySelector('.cal-month').textContent.trim(); const v = document.querySelector('.cal-stage > .cal-view'); return { t, aria: v.querySelector('.cal-days').getAttribute('aria-label'), pos: v.style.position }; });
+  ok(rapido.aria.toLowerCase() === ('calendario de ' + rapido.t).toLowerCase() && rapido.pos === '', 'el mes dibujado es el del título y no quedó a medio animar: ' + JSON.stringify(rapido));
   await page.getByRole('button', { name: 'Año', exact: true }).click(); await page.waitForTimeout(600);
+  const y0 = parseInt(await page.textContent('.cal-month'), 10);
+  for (let i = 0; i < 4; i++) await page.getByRole('button', { name: 'Año siguiente' }).click({ delay: 0 });
+  await page.getByRole('button', { name: 'Año anterior' }).click({ delay: 0 });
+  await page.waitForTimeout(700);
+  ok(await page.locator('.cal-stage > .cal-view').count() === 1 && await page.locator('.mini').count() === 12, 'tras clics rápidos en el año hay una sola vista');
+  ok(parseInt(await page.textContent('.cal-month'), 10) === y0 + 3, 'el año del título coincide con los clics: ' + y0);
   ok(await page.locator('.mini').count() === 12, 'la vista de año muestra los 12 meses');
   ok(await page.locator('.cal-stage > .cal-view').count() === 1, 'la vista de año no deja el mes dibujado debajo');
   await page.locator('.cal-yearbtn').click();
-  await page.getByRole('button', { name: '2027', exact: true }).click(); await page.waitForTimeout(600);
-  ok(/2027/.test(await page.textContent('.cal-month')) && await page.locator('.mini').count() === 12 && await page.locator('.cal-stage > .cal-view').count() === 1, 'se puede elegir otro año');
+  const yNow = parseInt(await page.textContent('.cal-month'), 10), yTo = yNow % 12 === 11 ? yNow - 1 : yNow + 1;
+  await page.getByRole('button', { name: String(yTo), exact: true }).click(); await page.waitForTimeout(600);
+  ok(new RegExp(String(yTo)).test(await page.textContent('.cal-month')) && await page.locator('.mini').count() === 12 && await page.locator('.cal-stage > .cal-view').count() === 1, 'se puede elegir otro año');
   await page.locator('.cal-yearbtn').click(); await page.locator('.cal-yearin').fill('2026'); await page.getByRole('button', { name: 'Ir', exact: true }).click(); await page.waitForTimeout(600);
   ok(/2026/.test(await page.textContent('.cal-month')), 'también se puede escribir el año');
   await page.locator('.mini').nth(9).click(); await page.waitForTimeout(600);

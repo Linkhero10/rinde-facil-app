@@ -112,12 +112,16 @@
 
   /* Cambia lo que muestra el escenario con una animación corta (se omite si la persona pidió menos movimiento).
    * 'slide': el mes nuevo entra desde el lado hacia el que se avanza · 'zoom-in': el mes crece desde el mini-mes que se tocó · 'zoom-out': el año aparece desde el mes. */
+  /* Deja en el escenario SOLO la vista `next`. Cada cambio lleva un número: si llega otro cambio antes de que termine la animación,
+   * la animación anterior se cancela y no puede tocar lo que ya se dibujó (así nunca quedan dos meses o dos años a la vez). */
   function swap(stage, next, kind, dir, rect) {
-    while (stage.children.length > 1) stage.removeChild(stage.firstElementChild); /* restos de un cambio anterior que no alcanzó a terminar */
-    var old = stage.firstElementChild;
-    if (!old || reduced() || !old.animate) { U.clear(stage); stage.appendChild(next); return; }
-    var box = stage.getBoundingClientRect();
-    var ease = 'cubic-bezier(.2,.8,.2,1)', dur = kind === 'slide' ? 280 : 360;
+    var tok = stage._tok = (stage._tok || 0) + 1;
+    function only(el) { Array.prototype.slice.call(stage.children).forEach(function (c) { if (c !== el && c.parentNode === stage) stage.removeChild(c); }); }
+    function plain(el) { if (el.getAnimations) el.getAnimations().forEach(function (an) { try { an.cancel(); } catch (e) { /* ya terminó */ } }); el.style.position = ''; el.style.inset = ''; el.style.pointerEvents = ''; el.style.transformOrigin = ''; }
+    var kids = stage.children, old = kids.length ? kids[kids.length - 1] : null;
+    only(old); if (old) plain(old);
+    if (!old || reduced() || !old.animate) { only(null); stage.appendChild(next); return; }
+    var box = stage.getBoundingClientRect(), ease = 'cubic-bezier(.2,.8,.2,1)', dur = kind === 'slide' ? 280 : 360;
     old.style.position = 'absolute'; old.style.inset = '0 0 auto 0'; old.style.pointerEvents = 'none';
     stage.appendChild(next);
     var inFrames, outFrames;
@@ -135,11 +139,9 @@
       outFrames = [{ transform: 'none', opacity: 1 }, { transform: 'translateX(' + (-d) + 'px)', opacity: 0 }];
     }
     stage.classList.add('moving');
-    var a = next.animate(inFrames, { duration: dur, easing: ease }), b = old.animate(outFrames, { duration: dur * .8, easing: ease, fill: 'forwards' });
-    var done = false;
-    function finish() { if (done) return; done = true; Array.prototype.slice.call(stage.children).forEach(function (c) { if (c !== next) stage.removeChild(c); }); next.style.transformOrigin = ''; stage.classList.remove('moving'); }
+    var a = next.animate(inFrames, { duration: dur, easing: ease }); old.animate(outFrames, { duration: dur * .8, easing: ease, fill: 'forwards' });
+    function finish() { if (stage._tok !== tok) return; only(next); next.style.transformOrigin = ''; stage.classList.remove('moving'); }
     a.onfinish = finish; a.oncancel = finish; setTimeout(finish, dur + 120);
-    return b;
   }
 
   var EMPTY_FORM = function (date) { return { id: '', date: date || '', title: '', allDay: true, time: '', endTime: '', place: '', note: '' }; };
@@ -153,7 +155,7 @@
     var upcoming = h('div'), allBox = h('div', { class: 'cal-all' }), chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Qué fechas mostrar' }),
       stage = h('div', { class: 'cal-stage' }), toolbar = h('div', { class: 'cal-head' }), dayBox = h('div', { class: 'cal-daybox' });
     var title = h('h2', { class: 'cal-month', 'aria-live': 'polite' }), pickBox = h('div', { class: 'cal-yearpick-wrap' });
-    var segMes, segAnio;
+    var segMes, segAnio, arrowPrev, arrowNext;
 
     function visible() { return collect(RF.store.get(), RF.store.project()).filter(function (e) { return st.kinds[e.kind]; }); }
     function holidaySet() { var m = {}; RF.holidays.all().forEach(function (d) { m[d] = true; }); return m; }
@@ -197,14 +199,13 @@
     /* ----- barra: navegación, título, Mes / Año ----- */
     function paintToolbar() {
       U.clear(toolbar);
-      var nav = h('div', { class: 'cal-nav' },
-        h('button', { type: 'button', class: 'cal-arrow', 'aria-label': st.view === 'mes' ? 'Mes anterior' : 'Año anterior', onclick: function () { step(-1); } }, '‹'),
-        h('button', { type: 'button', class: 'cal-arrow', 'aria-label': st.view === 'mes' ? 'Mes siguiente' : 'Año siguiente', onclick: function () { step(1); } }, '›'),
+      arrowPrev = h('button', { type: 'button', class: 'cal-arrow', onclick: function () { step(-1); } }, '‹'); arrowNext = h('button', { type: 'button', class: 'cal-arrow', onclick: function () { step(1); } }, '›');
+      var nav = h('div', { class: 'cal-nav' }, arrowPrev, arrowNext,
         UI.btn('Hoy', { cls: 'ghost small', onclick: goToday }));
       segMes = h('button', { type: 'button', 'aria-pressed': st.view === 'mes' ? 'true' : 'false', onclick: function () { if (st.view !== 'mes') showMonth(null); } }, 'Mes');
       segAnio = h('button', { type: 'button', 'aria-pressed': st.view === 'anio' ? 'true' : 'false', onclick: function () { if (st.view !== 'anio') showYear(); } }, 'Año');
       toolbar.appendChild(nav); toolbar.appendChild(title); toolbar.appendChild(h('div', { class: 'seg', role: 'group', 'aria-label': 'Vista' }, segMes, segAnio));
-      paintTitle();
+      setSeg(); paintTitle();
     }
     function paintTitle() {
       U.clear(title);
@@ -230,7 +231,7 @@
         h('form', { class: 'cal-yearform', onsubmit: function (ev) { ev.preventDefault(); goYear(inp.value); } }, h('label', null, 'O escribe un año ', inp), h('button', { type: 'submit', class: 'btn small' }, 'Ir'))));
       var b = title.querySelector('.cal-yearbtn'); if (b) b.setAttribute('aria-expanded', 'true');
     }
-    function setSeg() { if (!segMes) return; segMes.setAttribute('aria-pressed', st.view === 'mes' ? 'true' : 'false'); segAnio.setAttribute('aria-pressed', st.view === 'anio' ? 'true' : 'false'); }
+    function setSeg() { if (!segMes) return; var u = st.view === 'mes' ? 'Mes' : 'Año'; arrowPrev.setAttribute('aria-label', u + ' anterior'); arrowNext.setAttribute('aria-label', u + ' siguiente'); segMes.setAttribute('aria-pressed', st.view === 'mes' ? 'true' : 'false'); segAnio.setAttribute('aria-pressed', st.view === 'anio' ? 'true' : 'false'); }
     function paintChips() {
       U.clear(chips);
       KINDS.forEach(function (k) {
@@ -347,7 +348,7 @@
       dayBox.appendChild(form);
     }
 
-    function paintAll() { paintChips(); paintUpcoming(); paintToolbar(); U.clear(stage); stage.appendChild(st.view === 'mes' ? buildMonth() : buildYear()); paintDay(); }
+    function paintAll() { paintChips(); paintUpcoming(); paintToolbar(); stage._tok = (stage._tok || 0) + 1; stage.classList.remove('moving'); U.clear(stage); stage.appendChild(st.view === 'mes' ? buildMonth() : buildYear()); paintDay(); }
     paintAll();
 
     root.appendChild(UI.section('Lo que viene', [upcoming]));
