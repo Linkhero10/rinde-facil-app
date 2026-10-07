@@ -265,7 +265,7 @@
   /* ---------- sincronización automática entre equipos ----------
      Trae la copia de la nube, la une con la de este equipo (respetando lo que cambió cada lado desde la última vez) y sube el resultado.
      Se hace al abrir la sesión, al volver a la pestaña, cada pocos minutos y unos segundos después de cualquier cambio. */
-  function syncFingerprint() { var st = RF.store.get(); return RF.store.fingerprint({ community: st.community, holidays: st.holidays, events: st.events, repo: st.repo, projects: st.projects }); }
+  function syncFingerprint() { var st = RF.store.get(); return RF.store.fingerprint({ community: st.community, holidays: st.holidays, events: st.events, activity: st.activity, repo: st.repo, projects: st.projects }); }
   function isDirty() { return cfg().syncFp !== syncFingerprint(); }
   function markSynced() {
     RF.store.update(function (s) { s.cloud.base = RF.store.snapshotBase(s); s.cloud.syncFp = syncFingerprint(); s.cloud.lastSync = new Date().toISOString(); s.cloud.conflict = false; delete s.cloud.conflictText; }, { silent: true, noSync: true });
@@ -320,11 +320,20 @@
     if (root.setInterval) root.setInterval(function () { if (root.document.visibilityState === 'visible' && Date.now() - lastSyncAt > 150000) syncNow(); }, 60000);
   }
 
+  /* F29 de un mes: va a «4 Comprobantes/AAAA-MM» con el nombre «F29-AAAA-MM» */
+  function saveF29(rec, project, blob) {
+    if (!enabled()) return Promise.reject(new Error('NO_CONFIGURADO'));
+    var ext = /pdf/.test(blob.type) ? '.pdf' : /png/.test(blob.type) ? '.png' : /webp/.test(blob.type) ? '.webp' : '.jpg';
+    return RF.cloud.blobToBase64(blob).then(function (b64) {
+      return send({ project: (project && project.name) || projectName(), category: 'comprobante', fileName: 'F29-' + rec.mes + ext, mimeType: blob.type || 'application/pdf', base64: b64, issueDate: rec.mes + '-01' }, 'F29 de ' + rec.mes, false, null);
+    });
+  }
   /* ---------- «Guardar todo en Drive»: lo que está listo en la plataforma pero nunca se guardó ---------- */
   function realExpense(e) { return !!(e && e.fecha && (e.proveedor || e.total || e.folio)); }
   function pendingItems() {
     var out = [], st = RF.store.get();
     (st.projects || []).forEach(function (p) {
+      (p.f29 || []).forEach(function (r) { if (r && r.file && r.file.blobId && !r.file.driveUrl) out.push({ kind: 'f29', r: r, p: p, e: { id: r.id } }); });
       (p.expenses || []).forEach(function (e) {
         if (!realExpense(e)) return;
         if ((e.imgId && !e.driveId) || !e.driveFichaAt) out.push({ kind: 'gasto', e: e, p: p });
@@ -344,6 +353,9 @@
     var chain = Promise.resolve();
     items.forEach(function (it) {
       chain = chain.then(function () {
+        if (it.kind === 'f29') {
+          return RF.blobs.get(it.r.file.blobId).then(function (blob) { if (!blob) { fail++; return null; } return saveF29(it.r, it.p, blob).then(function (r) { if (r && r.remote) { it.r.file.driveUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); done++; } else fail++; }, function () { fail++; }); }, function () { fail++; });
+        }
         if (it.kind === 'gasto') {
           var rec = it.e.imgId && !it.e.driveId ? saveReceipt(it.e, it.p, true) : Promise.resolve({ ok: true });
           return rec.then(function () { return saveFicha(it.e, it.p, community, true); }).then(function (r) { if (r && (r.remote || r.queued)) done++; else fail++; }, function () { fail++; });
@@ -355,7 +367,8 @@
       }).then(progress);
     });
     savingAll = chain.then(function () { return syncNow({ force: true }); }).then(function () { return { ok: fail === 0, done: done, fail: fail, total: total }; }).then(function (r) {
-      savingAll = null; SAVE_LISTENERS.forEach(function (fn) { try { fn({ busy: false, result: r }); } catch (e) { /* aviso opcional */ } }); return r;
+      savingAll = null; if (RF.activity && r.total) RF.activity.log('drive', r.ok ? 'Guardó ' + r.done + (r.done === 1 ? ' archivo' : ' archivos') + ' en Drive.' : 'Intentó guardar ' + r.total + ' archivos en Drive: ' + r.done + ' listos, ' + r.fail + ' con problema.');
+      SAVE_LISTENERS.forEach(function (fn) { try { fn({ busy: false, result: r }); } catch (e) { /* aviso opcional */ } }); return r;
     }, function (e) { savingAll = null; SAVE_LISTENERS.forEach(function (fn) { try { fn({ busy: false, result: { ok: false, fail: total, done: done, total: total } }); } catch (x) { /* aviso opcional */ } }); return { ok: false, error: errorCode(e) }; });
     return savingAll;
   }
@@ -377,6 +390,7 @@
         var status = remote === parts.length ? 'saved' : queued === parts.length ? 'queued' : 'partial';
         if (!parts.length) status = 'partial';
         var documentsLabel = result.receipt.skipped ? 'La ficha del gasto y la copia' : 'La foto del comprobante, su ficha y la copia';
+        if (RF.activity && status !== 'partial') RF.activity.log('drive', (status === 'saved' ? 'Guardó en Drive' : 'Dejó pendiente de enviar a Drive') + ' el gasto «' + (e.proveedor || 'sin proveedor') + (e.folio ? ' N° ' + e.folio : '') + '».', 'gastos');
         if (status === 'saved') RF.ui.toast(documentsLabel + ' quedaron guardadas en Drive.', 'ok', { href: (result.receipt && result.receipt.folderUrl) || (result.ficha && result.ficha.folderUrl) || (result.backup && result.backup.folderUrl) });
         else if (status === 'queued') RF.ui.toast(documentsLabel + ' quedaron pendientes en este dispositivo; todavía no están en Drive.', 'warn');
         else RF.ui.toast('Guardado parcial: algunas partes están en Drive y otras siguen pendientes o requieren atención. Revisa la cola antes de darlo por terminado.', 'warn');
@@ -502,5 +516,5 @@
     });
   }
 
-  RF.drive = { saveAttachment: saveAttachment, describeSave: describeSave, friendlySaves: friendlySaves, flushOutbox: flushOutbox, enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, saveFicha: saveFicha, archiveExpense: archiveExpense, fichaText: fichaText, backupState: backupState, syncNow: syncNow, onSync: onSync, pendingItems: pendingItems, pendingCount: pendingCount, saveAll: saveAll, onSaveAll: onSaveAll, markSynced: markSynced, pushState: pushState, pullState: pullState, resolveConflict: resolveConflict, saveExternal: saveExternal, saveActa: saveActa, docMeta: docMeta, actaMeta: actaMeta, setup: setup, categoryFor: categoryFor, errText: errText };
+  RF.drive = { saveAttachment: saveAttachment, describeSave: describeSave, friendlySaves: friendlySaves, flushOutbox: flushOutbox, enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, saveFicha: saveFicha, archiveExpense: archiveExpense, fichaText: fichaText, backupState: backupState, syncNow: syncNow, onSync: onSync, saveF29: saveF29, pendingItems: pendingItems, pendingCount: pendingCount, saveAll: saveAll, onSaveAll: onSaveAll, markSynced: markSynced, pushState: pushState, pullState: pullState, resolveConflict: resolveConflict, saveExternal: saveExternal, saveActa: saveActa, docMeta: docMeta, actaMeta: actaMeta, setup: setup, categoryFor: categoryFor, errText: errText };
 })(typeof window !== 'undefined' ? window : globalThis);

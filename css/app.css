@@ -615,3 +615,6 @@ body.menu-open{overflow:hidden}
 .da-n{min-width:18px;height:18px;border-radius:99px;background:var(--action);color:var(--action-ink);font:700 11px/18px var(--mono);text-align:center;padding:0 5px}
 @media (max-width:900px){.drive-all{right:58px;top:9px}.drive-all .da-t{display:none}.drive-all.busy .da-t{display:inline}}
 @media print{.drive-all{display:none!important}}
+
+.step-auto{margin:4px 0 8px 44px;font-size:14px;color:var(--ink-2)}.step-auto.ok{color:var(--ok)}
+@media (max-width:900px){.step-auto{margin-left:0}}

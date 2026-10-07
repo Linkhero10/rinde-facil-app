@@ -16,7 +16,7 @@
       id: U.uid('p'), name: name || 'Mi proyecto', code: '', convenio: 'corfo-2026-09', tipo: 'inversion',
       start: '', end: '', desembolso1: '', periodoInicio: '', periodoFin: '',
       budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: 0 },
-      done: {}, gantt: { stages: [] }, budgetLines: [], expenses: [], forms: {}, pea: { general: {}, proyecto: {} },
+      done: {}, gantt: { stages: [] }, budgetLines: [], expenses: [], f29: [], forms: {}, pea: { general: {}, proyecto: {} },
       observations: [], cotizaciones: [], reitem: { rows: [], motivo: '' }, notes: '',
       needs: {}, needsSet: false, peaAprobado: false, peaAprobadoAt: '', needsPea: null, needsAdded: [], needsCustom: [], show: {}, createdAt: new Date().toISOString()
     };
@@ -26,7 +26,7 @@
       v: 2,
       community: { name: '', rut: '', address: '', legalRep: '', repRut: '', email: '', phone: '', ivaModo: 'no_contribuyente', oc: '' },
       cloud: { apiUrl: '', lastSync: null, rev: 0, autoSave: true, rootUrl: '', saves: [] },
-      holidays: [], events: [], projects: [], activeProjectId: null, repo: { docs: [], actas: [] },
+      holidays: [], events: [], activity: [], projects: [], activeProjectId: null, repo: { docs: [], actas: [] },
       ui: { theme: 'system', open: {}, idleMinutes: 15 }
     };
   }
@@ -39,13 +39,14 @@
     out.cloud = Object.assign({}, d.cloud, s.cloud || {});
     out.ui = Object.assign({}, d.ui, s.ui || {});
     out.holidays = Array.isArray(s.holidays) ? s.holidays : [];
+    out.activity = Array.isArray(s.activity) ? s.activity.filter(function (e) { return e && typeof e === 'object' && e.id; }) : [];
     out.events = Array.isArray(s.events) ? s.events.filter(function (e) { return e && typeof e === 'object'; }) : [];
     out.repo = { docs: Array.isArray(s.repo && s.repo.docs) ? s.repo.docs : [], actas: Array.isArray(s.repo && s.repo.actas) ? s.repo.actas : [] };
     out.projects = (Array.isArray(s.projects) ? s.projects : []).map(function (p) {
       var np = Object.assign(newProject(p && p.name), p);
       np.budgetApproved = Object.assign({ rrhh: 0, operacion: 0, inversion: 0, administracion: 0 }, p.budgetApproved || {});
       np.gantt = p.gantt && Array.isArray(p.gantt.stages) ? p.gantt : { stages: [] };
-      ['budgetLines', 'expenses', 'observations', 'cotizaciones'].forEach(function (k) { if (!Array.isArray(np[k])) np[k] = []; });
+      ['budgetLines', 'expenses', 'observations', 'cotizaciones', 'f29'].forEach(function (k) { if (!Array.isArray(np[k])) np[k] = []; });
       np.forms = p.forms && typeof p.forms === 'object' ? p.forms : {};
       np.done = p.done && typeof p.done === 'object' ? p.done : {};
       np.pea = Object.assign({ general: {}, proyecto: {} }, p.pea || {});
@@ -202,12 +203,13 @@
     return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + stable(v[k]); }).join(',') + '}';
   }
   function fp(v) { var str = stable(v), h = 2166136261; for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); }
-  var LISTS = ['expenses', 'cotizaciones', 'observations', 'budgetLines', 'needsCustom'];
+  var LISTS = ['expenses', 'cotizaciones', 'observations', 'budgetLines', 'needsCustom', 'f29'];
   /* foto de lo que hay ahora, dato por dato: se guarda tras cada sincronización y permite distinguir «lo cambié yo» de «lo cambió el otro equipo» */
   function snapshotBase(st) {
     var b = {};
     Object.keys(st.community || {}).forEach(function (k) { b['c|' + k] = fp(st.community[k]); });
     (st.events || []).forEach(function (x) { if (x && x.id) b['ev|' + x.id] = fp(x); });
+    (st.activity || []).forEach(function (x) { if (x && x.id) b['act|' + x.id] = fp(x); });
     ['docs', 'actas'].forEach(function (k) { ((st.repo || {})[k] || []).forEach(function (x) { if (x && x.id) b['r|' + k + '|' + x.id] = fp(x); }); });
     (st.projects || []).forEach(function (p) {
       b['P|' + p.id] = 1;
@@ -275,7 +277,7 @@
       /* feriados: se unen (son fechas sueltas, no hay nada que pelear) */
       s.holidays = Array.from(new Set((s.holidays || []).concat(r.holidays || []))).sort();
     })();
-    Object.keys(r).concat(Object.keys(s)).forEach(function (k) { if (['projects', 'repo', 'cloud', 'ui', 'activeProjectId', 'events', 'community', 'holidays'].indexOf(k) < 0 && !equalData(s[k], r[k])) conflict(k); });
+    Object.keys(r).concat(Object.keys(s)).forEach(function (k) { if (['projects', 'repo', 'cloud', 'ui', 'activeProjectId', 'events', 'community', 'holidays', 'activity'].indexOf(k) < 0 && !equalData(s[k], r[k])) conflict(k); });
     (function () {
       var haveP = new Map(); s.projects.forEach(function (p) { haveP.set(p.id, p); });
       r.projects.forEach(function (rp) {
@@ -310,8 +312,9 @@
       var d = unionById(s.repo.docs, r.repo.docs, base, 'r|docs|'), a = unionById(s.repo.actas, r.repo.actas, base, 'r|actas|');
       s.repo.docs = d.list; s.repo.actas = a.list; added += d.added + a.added;
       var ev = unionById(s.events, r.events, base, 'ev|'); s.events = ev.list; added += ev.added;
+      var ac = unionById(s.activity, r.activity, base, 'act|'); s.activity = ac.list.sort(function (a, b) { return a.t < b.t ? -1 : a.t > b.t ? 1 : 0; }).slice(-400); /* el historial se une sin contarlo como cambio */
     })();
-    update(function (current) { current.projects = s.projects; current.repo = s.repo; current.events = s.events; current.community = s.community; current.holidays = s.holidays; });
+    update(function (current) { current.projects = s.projects; current.repo = s.repo; current.events = s.events; current.activity = s.activity; current.community = s.community; current.holidays = s.holidays; });
     return added;
   }
   function isDone(p, tid, i) { return !!(p && p.done[tid + ':' + i]); }
@@ -326,7 +329,7 @@
     KEY: KEY, load: load, get: get, project: project, update: update, subscribe: subscribe,
     addProject: addProject, removeProject: removeProject, newProject: newProject, defaults: defaults,
     exportJSON: exportJSON, importJSON: importJSON, reset: reset, migrate: migrate,
-    isDone: isDone, setDone: setDone, persistNow: persistNow, storageOk: function () { return storageOk; }, storageError: function () { return storageError; }, onStorageStatus: onStorageStatus,
+    version: function () { return stateVersion; }, isDone: isDone, setDone: setDone, persistNow: persistNow, storageOk: function () { return storageOk; }, storageError: function () { return storageError; }, onStorageStatus: onStorageStatus,
     onChange: onChange, mergeRemote: mergeRemote, snapshotBase: snapshotBase, fingerprint: fp, useVault: useVault, attach: attach, detach: detach, flush: flush
   };
 })(typeof window !== 'undefined' ? window : globalThis);

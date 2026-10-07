@@ -30,6 +30,8 @@
       var rows = (f.anexo5.data.uso || []).concat(f.anexo5.data.hh || []);
       if (rows.some(function (r) { return String(r.doc || '').trim() === String(exp.folio).trim(); })) has.anexo5 = true;
     }
+    var mesGasto = String(exp.fecha || '').slice(0, 7);
+    if (mesGasto && ((project && project.f29) || []).some(function (r) { return r.mes === mesGasto && (r.file || (r.creditos !== '' && r.creditos != null)); })) has.f29 = true;
     ((project && project.cotizaciones) || []).forEach(function (c) {
       var linked = c.gastoId === exp.id || (!c.gastoId || c.gastoId === '__otro') && c.elegido && exp.proveedor && String(c.elegido).trim().toLowerCase() === String(exp.proveedor).trim().toLowerCase();
       if (!linked) return;
@@ -231,6 +233,64 @@
     return U.addBusinessDays(recibidaIso, R.ACLARACION_DIAS_HABILES, holidays);
   }
 
+  /* ---------- pasos que se marcan solos, a partir de lo que ya hay en la app ---------- */
+  function realExp(e) { return !!(e && (e.proveedor || e.total || e.folio)); }
+  function normRutL(r) { return String(r || '').replace(/[^0-9kK]/g, '').toUpperCase(); }
+  function hasForm(project, id) { var f = project.forms && project.forms[id]; return Array.isArray(f) ? f.length > 0 : !!(f && f.data && Object.keys(f.data).some(function (k) { var v = f.data[k]; return v !== '' && v != null && !(Array.isArray(v) && !v.length) && k !== 'fecha' && k !== 'firma'; })); }
+  function listN(project, id) { var f = project.forms && project.forms[id]; return Array.isArray(f) ? f.length : 0; }
+  function missingOf(project, community, list) { return list.filter(function (e) { return requirements(e, project, community).some(function (r) { return !r.met; }); }); }
+  function ok(why) { return { done: true, why: why }; }
+  function no(why, tool) { return { done: false, why: why, tool: tool }; }
+  function respaldos(project, community, cuentas, nombre) {
+    var list = (project.expenses || []).filter(function (e) { return realExp(e) && (!cuentas || cuentas.indexOf(e.cuenta) >= 0); });
+    if (!list.length) return no('Todavía no anotas ' + nombre + '.', 'gastos');
+    var m = missingOf(project, community, list);
+    return m.length ? no(m.length + ' de ' + list.length + ' gastos tienen respaldos pendientes.', 'gastos') : ok('los ' + list.length + (list.length === 1 ? ' gasto tiene' : ' gastos tienen') + ' todos sus respaldos.');
+  }
+  function fichasPorGasto(project, formId, cuentas, nombre) {
+    var list = (project.expenses || []).filter(function (e) { return realExp(e) && cuentas.indexOf(e.cuenta) >= 0; });
+    if (!list.length) return no('Todavía no anotas ' + nombre + '.', 'gastos');
+    var need = formId === 'informeD' ? Object.keys(list.reduce(function (acc, e) { acc[normRutL(e.rutProveedor) || ('p:' + String(e.proveedor || '').toLowerCase())] = 1; return acc; }, {})).length : list.length, have = listN(project, formId);
+    return have >= need ? ok('hay ' + have + (have === 1 ? ' ficha' : ' fichas') + ' para ' + need + (formId === 'informeD' ? (need === 1 ? ' persona.' : ' personas.') : (need === 1 ? ' gasto.' : ' gastos.'))) : no('Hay ' + have + ' de ' + need + ' fichas.', formId);
+  }
+  var AUTO = {
+    desembolso: function (p) { return p.desembolso1 ? ok('anotaste la fecha del primer pago (' + U.fmtDate(p.desembolso1) + ').') : no('Anota la fecha del primer pago en «Mi comunidad y proyectos».', 'proyecto'); },
+    pea_docs: function (p) { var g = forms(p, 'peaGeneral'); var ok1 = !!(g && g.data && g.data.resumen), ok2 = listN(p, 'peaProyecto') > 0, ok3 = allActivities(p).length > 0, ok4 = (p.budgetLines || []).length > 0; return ok1 && ok2 && ok3 && ok4 ? ok('tienes la información general, ' + listN(p, 'peaProyecto') + ' formulario(s) de proyecto, la Carta Gantt y el presupuesto.') : no('Falta: ' + [!ok1 && 'información general', !ok2 && 'formulario de proyecto', !ok3 && 'Carta Gantt', !ok4 && 'presupuesto'].filter(Boolean).join(', ') + '.', 'pea'); },
+    reitem_form: function (p) { return (p.reitem && ((p.reitem.rows || []).length || p.reitem.motivo)) ? ok('ya llenaste la solicitud de cambio.') : no('Llena la solicitud de cambio.', 'reitem'); },
+    prorroga_form: function (p) { var f = forms(p, 'prorroga'); return f && f.data && f.data.motivo ? ok('ya redactaste la solicitud de prórroga.') : no('Redacta la solicitud de prórroga.', 'prorroga'); },
+    cot_ok: function (p) { var big = (p.cotizaciones || []).filter(function (c) { return num(c.neto) > R.COTIZACION_UMBRAL; }); if (!big.length) return no('Todavía no registras compras sobre $10.000.000 con sus cotizaciones.', 'cotizaciones'); var bad = big.filter(function (c) { return !(c.servicioTecnico || c.autorizacion || cotizacionOk(c)); }); return bad.length ? no(bad.length + ' compra(s) grande(s) sin 2 cotizaciones ni autorización.', 'cotizaciones') : ok('las compras grandes tienen sus cotizaciones o su autorización.'); },
+    resp_todos: function (p, c) { return respaldos(p, c, null, 'gastos'); },
+    resp_rrhh: function (p, c) { return respaldos(p, c, ['rrhh'], 'gastos de recursos humanos'); },
+    resp_inversion: function (p, c) { return respaldos(p, c, ['inversion'], 'compras de inversión'); },
+    verificados: function (p) { var list = (p.expenses || []).filter(realExp); if (!list.length) return no('Todavía no anotas gastos.', 'gastos'); var m = list.filter(function (e) { return !e.verified; }); return m.length ? no(m.length + ' de ' + list.length + ' gastos sin marcar «Lo revisé».', 'gastos') : ok('los ' + list.length + ' gastos están revisados contra el documento.'); },
+    gastos_ok: function (p, c) { var list = (p.expenses || []).filter(realExp); if (!list.length) return no('Todavía no anotas gastos.', 'gastos'); var bad = list.filter(function (e) { return evaluateExpense(e, p, c, p.expenses).issues.some(function (i) { return i.level === 'error'; }); }); return bad.length ? no(bad.length + ' de ' + list.length + ' gastos con errores por corregir.', 'revision') : ok('los ' + list.length + ' gastos están anotados sin errores.'); },
+    obs_resp: function (p) { var o = p.observations || []; if (!o.length) return no('Todavía no registras observaciones.', 'observaciones'); var pend = o.filter(function (x) { return !x.respondida; }); return pend.length ? no(pend.length + ' observación(es) sin responder.', 'observaciones') : ok('todas las observaciones tienen su respuesta.'); },
+    informe_general: function (p) { var f = forms(p, 'informe'); return f && f.data && f.data.objetivoGeneral ? ok('ya llenaste los datos generales y los objetivos.') : no('Llena los datos generales y los objetivos.', 'informe'); },
+    fichas_alguna: function (p) { var n = ['informeA', 'informeB', 'informeC', 'informeD', 'informeE'].reduce(function (a, k) { return a + listN(p, k); }, 0); return n ? ok('hay ' + n + (n === 1 ? ' ficha' : ' fichas') + ' de actividades.') : no('Todavía no hay fichas de actividades.', 'informe'); },
+    ficha_A: function (p) { var n = listN(p, 'informeA'); return n ? ok('hay ' + n + (n === 1 ? ' ficha' : ' fichas') + ' de actividades.') : no('Todavía no hay fichas.', 'informeA'); },
+    ficha_B: function (p) { var n = listN(p, 'informeB'); return n ? ok('hay ' + n + (n === 1 ? ' ficha' : ' fichas') + ' de estudios.') : no('Todavía no hay fichas.', 'informeB'); },
+    ficha_E: function (p) { var n = listN(p, 'informeE'); return n ? ok('hay ' + n + (n === 1 ? ' ficha' : ' fichas') + ' de otras actividades.') : no('Si tuviste otras actividades, crea su ficha.', 'informeE'); },
+    ficha_C: function (p) { return fichasPorGasto(p, 'informeC', ['inversion'], 'compras de inversión'); },
+    ficha_D: function (p) { return fichasPorGasto(p, 'informeD', ['rrhh'], 'gastos de recursos humanos'); },
+    anexo1: function (p) { return hasForm(p, 'anexo1') ? ok('ya llenaste el Anexo 1.') : no('Llena el Anexo 1.', 'anexo1'); },
+    anexo2: function (p) { return hasForm(p, 'anexo2') ? ok('ya llenaste el Anexo 2.') : no('Llena el Anexo 2.', 'anexo2'); },
+    anexo3: function (p) { var n = (p.expenses || []).filter(function (e) { return realExp(e) && e.formaPago === 'efectivo'; }).length, have = listN(p, 'anexo3'); if (!n) return no('Todavía no anotas pagos en efectivo.', 'gastos'); return have >= n ? ok('hay ' + have + ' declaración(es) para ' + n + ' pago(s) en efectivo.') : no('Hay ' + have + ' de ' + n + ' declaraciones del Anexo 3.', 'anexo3'); },
+    anexo4: function (p) { var n = (p.expenses || []).filter(function (e) { return realExp(e) && (e.esViatico || e.docType === 'certificado_viatico'); }).length, have = listN(p, 'anexo4'); if (!n) return no('Todavía no anotas viáticos.', 'gastos'); return have >= n ? ok('hay ' + have + ' certificado(s) para ' + n + ' viático(s).') : no('Hay ' + have + ' de ' + n + ' certificados del Anexo 4.', 'anexo4'); },
+    anexo5: function (p) { var f = forms(p, 'anexo5'); return f && f.data && (num(f.data.totalUso) + num(f.data.totalHH)) > 0 ? ok('la memoria de cálculo ya suma ' + U.fmtCLP(num(f.data.totalUso) + num(f.data.totalHH)) + '.') : no('Llena la memoria de cálculo (Anexo 5).', 'anexo5'); }
+  };
+  var autoMemo = { ver: -1, map: {} };
+  /* el paso i del trámite tid: { done, why, tool } si se marca solo, o null si es manual. Se calcula una vez por cambio de datos. */
+  function autoStep(project, tid, i) {
+    var t = RF.tramites.byId[tid], key = t && t.auto && t.auto[i];
+    if (!key || !AUTO[key] || !project) return null;
+    var ver = RF.store && RF.store.version ? RF.store.version() : 0;
+    if (autoMemo.ver !== ver) autoMemo = { ver: ver, map: {} };
+    var mk = project.id + '|' + key;
+    if (!autoMemo.map[mk]) { try { autoMemo.map[mk] = AUTO[key](project, (RF.store && RF.store.get().community) || {}); } catch (e) { autoMemo.map[mk] = no('No se pudo revisar.', null); } }
+    return autoMemo.map[mk];
+  }
+  function stepDone(project, tid, i) { if (project && project.done && project.done[tid + ':' + i]) return true; var a = autoStep(project, tid, i); return !!(a && a.done); }
+
   /* ---------- avance por trámite / fase ---------- */
   /* pasos obligatorios de un trámite (los opcionales se pueden marcar, pero no cuentan para el avance) */
   function requiredSteps(tid) { var t = RF.tramites.byId[tid], out = []; if (!t) return out; t.steps.forEach(function (_, i) { if (!(t.opt && t.opt[i])) out.push(i); }); return out; }
@@ -251,11 +311,35 @@
     var eff = effectiveNeeds(p, community);
     return map.some(function (k) { return !!eff[k]; });
   }
+  /* Compara, mes a mes, el IVA de las facturas anotadas con el F29 que subió la comunidad. Sin F29, deja el IVA del mes listo para revisarlo. */
+  function f29Audit(project, community) {
+    var mode = (community && community.ivaModo) || 'no_contribuyente', months = {}, items = [];
+    function slot(mes) { return months[mes] || (months[mes] = { mes: mes, n: 0, iva: 0 }); }
+    ((project && project.expenses) || []).forEach(function (e) {
+      var dt = D.DOC_BY_ID[e.docType] || {}, mes = String(e.fecha || '').slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(mes) || !(dt.iva || (dt.extras || []).indexOf('f29') >= 0)) return;
+      var m = slot(mes); m.n++; m.iva += num(e.iva);
+    });
+    ((project && project.f29) || []).forEach(function (r) { if (/^\d{4}-\d{2}$/.test(r.mes || '')) slot(r.mes); });
+    Object.keys(months).sort().forEach(function (mes) {
+      var m = months[mes], rec = ((project && project.f29) || []).filter(function (r) { return r.mes === mes; })[0] || null, it = { mes: mes, n: m.n, iva: m.iva, record: rec, level: 'info', msg: '' };
+      var cred = rec && rec.creditos !== '' && rec.creditos != null ? num(rec.creditos) : null;
+      if (!m.n && !rec) return;
+      if (!rec) { it.level = 'warn'; it.msg = 'Falta el F29 de este mes: el Manual lo pide junto a las facturas. IVA que debería incluir tu F29 por estas facturas: ' + U.fmtCLP(m.iva) + '.'; }
+      else if (cred === null) { it.level = 'info'; it.msg = rec.file ? 'Anota el total de créditos que aparece en tu F29 para compararlo con el IVA de las facturas (' + U.fmtCLP(m.iva) + ').' : 'Sube el archivo del F29 y anota su total de créditos para compararlo con el IVA de las facturas (' + U.fmtCLP(m.iva) + ').'; }
+      else if (!m.n) { it.level = 'ok'; it.msg = 'F29 guardado. No hay facturas anotadas este mes para comparar.'; }
+      else if (mode === 'no_usa') { it.level = cred >= m.iva - R.TOLERANCIA_IVA && m.iva > 0 ? 'warn' : 'ok'; it.msg = it.level === 'warn' ? 'Tu F29 tiene crédito por ' + U.fmtCLP(cred) + ', suficiente para cubrir el IVA de estas facturas (' + U.fmtCLP(m.iva) + '). Dijiste que no usas el IVA: si ese crédito incluye estas facturas, no se pueden rendir con IVA; si es de otras compras, corresponde el Anexo 2.' : 'El crédito del F29 (' + U.fmtCLP(cred) + ') no alcanza para cubrir el IVA de estas facturas, coherente con que no lo usas.'; }
+      else if (cred < m.iva - R.TOLERANCIA_IVA) { it.level = 'warn'; it.msg = 'Tu F29 declara ' + U.fmtCLP(cred) + ' de crédito, pero las facturas que anotaste suman ' + U.fmtCLP(m.iva) + ' de IVA: falta alguna factura en el F29 o alguna anotada no es de este mes.'; }
+      else { it.level = 'ok'; it.msg = 'El crédito del F29 (' + U.fmtCLP(cred) + ') cubre el IVA de tus facturas (' + U.fmtCLP(m.iva) + ').'; }
+      items.push(it);
+    });
+    return { mode: mode, items: items };
+  }
   function itemProgress(project, tid) {
     var req = requiredSteps(tid), n = req.length, done = 0;
     if (project && project.na && project.na[tid]) return { done: 0, total: 0, na: true, complete: true };
     if (project && project.needsSet && !applies(project, tid)) return { done: 0, total: 0, na: true, auto: true, complete: true };
-    req.forEach(function (i) { if (project && project.done[tid + ':' + i]) done++; });
+    req.forEach(function (i) { if (stepDone(project, tid, i)) done++; });
     return { done: done, total: n, na: false, optional: !!(RF.tramites.byId[tid] && RF.tramites.byId[tid].optional), complete: n > 0 && done === n };
   }
   function progress(project) {
@@ -272,7 +356,7 @@
           complete = false;
           if (!next) {
             next = { tramiteId: tid, stepIdx: 0, fase: f.id };
-            var rq = requiredSteps(tid); for (var i = 0; i < rq.length; i++) { if (!(project && project.done[tid + ':' + rq[i]])) { next.stepIdx = rq[i]; break; } }
+            var rq = requiredSteps(tid); for (var i = 0; i < rq.length; i++) { if (!stepDone(project, tid, rq[i])) { next.stepIdx = rq[i]; break; } }
           }
         }
       });
@@ -417,6 +501,7 @@
       else if (Math.abs(s5 - e5) > R.TOLERANCIA_IVA) add(g5, 'warn', 'El Anexo 5 suma ' + U.fmtCLP(s5) + ' y los gastos repartidos suman ' + U.fmtCLP(e5) + '.', { tool: 'anexo5' });
     }
     if (community && community.ivaModo === 'no_usa' && expenses.some(function (e) { return (D.DOC_BY_ID[e.docType] || {}).iva; }) && !forms(project, 'anexo1')) add(g5, 'error', 'Indicaste que no usas el IVA y falta el Anexo 1.', { tool: 'anexo1' });
+    f29Audit(project, community).items.forEach(function (it) { if (it.level === 'warn') add(g5, 'warn', 'F29 de ' + it.mes + ': ' + it.msg, { tool: 'f29' }); });
     if (!g5.items.length) add(g5, 'ok', 'Los anexos calzan con tus gastos.');
 
     /* 6. Informe técnico vs gastos */
@@ -458,6 +543,6 @@
     totalsByCuenta: totalsByCuenta, adminByMonth: adminByMonth, expensesByActivity: expensesByActivity, budgetByActivity: budgetByActivity,
     allActivities: allActivities, ganttIssues: ganttIssues, activityDays: activityDays, activityReferences: activityReferences, removeActivity: removeActivity, removeStage: removeStage,
     peaDeadline: peaDeadline, aclaracionDeadline: aclaracionDeadline,
-    itemProgress: itemProgress, requiredSteps: requiredSteps, applies: applies, needsAnswered: needsAnswered, effectiveNeeds: effectiveNeeds, progress: progress, skippedPhases: skippedPhases, reconcile: reconcile
+    f29Audit: f29Audit, autoStep: autoStep, stepDone: stepDone, itemProgress: itemProgress, requiredSteps: requiredSteps, applies: applies, needsAnswered: needsAnswered, effectiveNeeds: effectiveNeeds, progress: progress, skippedPhases: skippedPhases, reconcile: reconcile
   };
 })(typeof window !== 'undefined' ? window : globalThis);

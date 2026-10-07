@@ -320,8 +320,22 @@
         }).catch(function (err) { U.clear(photo); photo.appendChild(UI.callout('bad', 'No se pudo leer la foto del comprobante.', 'No significa que se haya borrado. Revisa el almacenamiento del dispositivo antes de continuar. ' + (err && err.message || err))); });
         if (e.ocr && e.ocr.raw) photo.appendChild(h('details', { class: 'ocr-raw' }, h('summary', null, 'Ver el texto que leyó la nube'), h('pre', null, e.ocr.raw)));
       }
+      /* desde el gasto se crea (o se abre) su ficha técnica: C para inversión, D para recursos humanos */
+      function fichaLink(x) {
+        var kind = x.cuenta === 'inversion' ? 'informeC' : x.cuenta === 'rrhh' ? 'informeD' : '';
+        if (!kind || !(x.proveedor || x.total)) return null;
+        var existe = (p.forms && Array.isArray(p.forms[kind]) ? p.forms[kind] : []).some(function (f) { var d = f.data || {}; return kind === 'informeC' ? d.gastoId === x.id : (x.rutProveedor && d.rut && String(d.rut).replace(/[^0-9kK]/g, '').toUpperCase() === String(x.rutProveedor).replace(/[^0-9kK]/g, '').toUpperCase()); });
+        var label = kind === 'informeC' ? 'Ficha C del activo' : 'Ficha D de la persona';
+        return h('div', { class: 'row-actions fichalink' }, UI.btn((existe ? 'Abrir la ' : 'Crear la ') + label.toLowerCase(), { icon: 'form', cls: 'ghost', onclick: function () {
+          RF.forms.ficha(p, kind, function (d) { return kind === 'informeC' ? d.gastoId === x.id : !!(x.rutProveedor && d.rut && String(d.rut).replace(/[^0-9kK]/g, '').toUpperCase() === String(x.rutProveedor).replace(/[^0-9kK]/g, '').toUpperCase()); },
+            kind === 'informeC' ? { gastoId: x.id, nombre: x.glosa || x.proveedor || '', proveedor: x.proveedor || '', rendido: num(x.montoRendir || x.total) || '', desde: x.fecha || '', actId: x.actId || '' }
+              : { nombre: x.proveedor || '', rut: x.rutProveedor || '', tipo: x.docType === 'honorarios' ? 'honorarios' : 'contrato', funcion: x.glosa || '' });
+          if (RF.activity) RF.activity.log('ficha', (existe ? 'Abrió' : 'Creó') + ' la ' + label.toLowerCase() + ' desde el gasto «' + (x.proveedor || 'sin proveedor') + '».', kind);
+          location.hash = '#/h/' + kind; }}), h('span', { class: 'hint' }, existe ? 'Ya existe: se abre con sus datos.' : 'Se crea con los datos de este gasto y la completas allí.'));
+      }
       var fld = function (label, key, opts) { opts = opts || {}; opts.onChange = function (v) { if (key === 'montoRendir') e._manualRendir = true; if (opts.after) opts.after(v); refresh();
         /* al confirmar que revisó el comprobante, la foto original se archiva sola en el Drive, en la carpeta del mes */
+        if (key === 'verified' && v && RF.activity) RF.activity.log('gasto', 'Revisó contra el documento el gasto «' + (e.proveedor || 'sin proveedor') + (e.folio ? ' N° ' + e.folio : '') + '».', 'gastos');
         if (key === 'verified' && v && e.fecha && RF.drive.auto()) RF.drive.archiveExpense(e, p, c.community).then(function () { paintPhoto(); }).catch(function () { }); }; return UI.field(label, e, key, opts); };
       var docOpts = D.DOC_TYPES.map(function (d) { return { id: d.id, name: d.name }; });
       var actOpts = [{ id: '', name: 'Sin actividad' }].concat(L.allActivities(p).map(function (x) { return { id: x.act.id, name: x.act.name || '(sin nombre)' }; }));
@@ -347,6 +361,7 @@
         h('h3', { class: 'grp' }, '5. Marcas'),
         h('details', { class: 'nofin', open: Object.keys(e.noFin || {}).some(function (k) { return e.noFin[k]; }) }, h('summary', null, '¿Se puede pagar con el aporte?'), h('p', { class: 'hint' }, 'Marca solo si el gasto es de alguno de estos tipos (el Manual dice que no se financian):'), h('div', { class: 'checks' }, (e.noFin = e.noFin || {}, D.NO_FINANCIABLE.map(function (t, i) { return UI.field(t, e.noFin, 'k' + i, { type: 'check', onChange: refresh }); })))),
         h('div', { class: 'checks' }, fld('Es un viático o viaje', 'esViatico', { type: 'check' }), fld('Es un servicio técnico-profesional (no pide cotizaciones)', 'servicioTecnico', { type: 'check' }), e.cuenta === 'inversion' ? fld('Es un inmueble o derechos de agua', 'esInmueble', { type: 'check' }) : null),
+        fichaLink(e),
         h('h3', { class: 'grp' }, '6. Respaldos que hay que guardar'), reqBox,
         h('h3', { class: 'grp' }, '7. Revisión humana'),
         fld('Comparé cada dato con el documento original y está correcto', 'verified', { type: 'check', hint: e.ocr ? 'Obligatorio: los datos leídos por la nube pueden tener errores (por ejemplo, un dígito del RUT).' : '' }),

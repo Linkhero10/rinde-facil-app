@@ -5,7 +5,7 @@ import { loadApp } from './load.mjs';
 
 function app() {
   const files = fs.readdirSync(new URL('../js/', import.meta.url)).filter(f => /^(00|0[1-5]|1\d|2\d|33)-.*\.js$/.test(f)).sort();
-  return loadApp(files.concat(['31-forms.js', '34-tools-gastos.js', '36-drive.js']), { RF: { ui: {}, tools: {} } });
+  return loadApp(files.concat(['31-forms.js', '34-tools-gastos.js', '36-drive.js', '44-tools-historial.js']), { RF: { ui: {}, tools: {} } });
 }
 function state(RF) {
   const s = RF.store.defaults(), p = RF.store.newProject('Proyecto');
@@ -219,4 +219,66 @@ test('«Guardar todo en Drive»: cuenta los gastos con fecha que no tienen su fi
   p.expenses = [{ id: 'a', fecha: '2026-10-01', proveedor: 'Uno', total: 10, imgId: 'i1' }, { id: 'b', fecha: '2026-10-01', proveedor: 'Dos', total: 10, driveFichaAt: 'x', attach: { pago: { id: 'blob1' } } }, { id: 'c', fecha: '2026-10-01', proveedor: 'Tres', total: 10, driveFichaAt: 'x', driveId: 'd' }, { id: 'd' }];
   const kinds = RF.drive.pendingItems().map(i => i.kind + ':' + i.e.id);
   assert.equal(JSON.stringify(kinds), JSON.stringify(['gasto:a', 'respaldo:b']));
+});
+
+/* ---------- F29 y pasos que se marcan solos ---------- */
+test('F29: sin F29 avisa y deja el IVA del mes listo; con F29 compara el crédito con el IVA de las facturas según cómo maneje el IVA la comunidad', () => {
+  const RF = app(), p = state(RF).projects[0];
+  p.expenses = [{ id: 'f1', docType: 'factura', fecha: '2026-09-10', proveedor: 'A', iva: 190000, neto: 1000000, total: 1190000 }, { id: 'f2', docType: 'factura', fecha: '2026-09-20', proveedor: 'B', iva: 95000, neto: 500000, total: 595000 }, { id: 'b1', docType: 'boleta', fecha: '2026-09-21', total: 5000 }];
+  let a = RF.logic.f29Audit(p, { ivaModo: 'recupera' });
+  assert.equal(a.items.length, 1); assert.equal(a.items[0].mes, '2026-09'); assert.equal(a.items[0].iva, 285000); assert.equal(a.items[0].level, 'warn');
+  assert.ok(/Falta el F29/.test(a.items[0].msg) && /285\.000/.test(a.items[0].msg));
+  p.f29 = [{ id: 'm', mes: '2026-09', creditos: '', file: { blobId: 'x' } }];
+  assert.equal(RF.logic.f29Audit(p, { ivaModo: 'recupera' }).items[0].level, 'info', 'sin el total de créditos solo pide anotarlo');
+  p.f29[0].creditos = 200000;
+  assert.equal(RF.logic.f29Audit(p, { ivaModo: 'recupera' }).items[0].level, 'warn', 'declara menos crédito que el IVA de las facturas');
+  p.f29[0].creditos = 400000;
+  assert.equal(RF.logic.f29Audit(p, { ivaModo: 'recupera' }).items[0].level, 'ok');
+  assert.equal(RF.logic.f29Audit(p, { ivaModo: 'no_usa' }).items[0].level, 'warn', 'si dijo que no usa el IVA y el crédito alcanza, pide aclarar (Anexo 2)');
+  /* el F29 del mes cubre el requisito de las facturas de ese mes */
+  assert.equal(RF.logic.effectiveHas(p.expenses[0], p).f29, true);
+  assert.ok(!RF.logic.effectiveHas({ fecha: '2026-10-01' }, p).f29);
+});
+test('pasos que se marcan solos: el respaldo de cada gasto, las fichas y el desembolso salen de lo que ya hay en la app', () => {
+  const RF = app(), s = state(RF), p = s.projects[0];
+  const bump = () => RF.store.update(() => {}, { silent: true }); /* en la app todo cambio pasa por el almacén y renueva el cálculo */
+  bump(); assert.equal(RF.logic.stepDone(p, 'P-03', 0), false);
+  p.desembolso1 = '2026-07-01';
+  bump(); assert.equal(RF.logic.stepDone(p, 'P-03', 0), true, 'anotar la fecha del primer pago marca el paso');
+  bump(); assert.equal(RF.logic.autoStep(p, 'TRM-008', 0).done, false, 'sin gastos todavía no se puede dar por hecho');
+  p.expenses = [{ id: 'e1', docType: 'factura', proveedor: 'Uno', total: 1190, neto: 1000, iva: 190, montoRendir: 1190, fecha: '2026-09-01', glosa: 'x', formaPago: 'transferencia', cuenta: 'operacion', has: {}, verified: false }];
+  bump(); assert.equal(RF.logic.autoStep(p, 'TRM-008', 0).done, false, 'faltan la prueba de pago y el F29');
+  bump(); assert.equal(RF.logic.autoStep(p, 'TRM-008', 1).done, false, 'falta marcar que lo revisó');
+  p.expenses[0].has = { pago: true, f29: true }; p.expenses[0].verified = true;
+  bump(); assert.equal(RF.logic.autoStep(p, 'TRM-008', 0).done, true); assert.equal(RF.logic.autoStep(p, 'TRM-008', 1).done, true);
+  bump(); const ip = RF.logic.itemProgress(p, 'TRM-008');
+  assert.equal(ip.done, 2); assert.equal(ip.complete, true, 'el trámite queda completo sin marcar nada a mano');
+  p.expenses.push({ id: 'e2', cuenta: 'rrhh', proveedor: 'Ana', rutProveedor: '12.345.678-5', total: 500, fecha: '2026-09-02' });
+  bump(); assert.equal(RF.logic.autoStep(p, 'TRM-007', 1).done, false, 'falta la ficha D de Ana');
+  p.forms.informeD = [{ id: 'f', data: { nombre: 'Ana', rut: '12345678-5' } }];
+  bump(); assert.equal(RF.logic.autoStep(p, 'TRM-007', 1).done, true);
+  p.done['TRM-007:1'] = false; /* un paso manual sin marcar no esconde el automático */
+  bump(); assert.equal(RF.logic.stepDone(p, 'TRM-007', 1), true);
+});
+test('desde un gasto se crea o abre su ficha C (inversión) o D (persona) con sus datos', () => {
+  const RF = app(), s = state(RF), p = s.projects[0];
+  const x = { id: 'e9', cuenta: 'inversion', proveedor: 'Maquinarias Sur', glosa: 'Compresor', montoRendir: 900000, fecha: '2026-09-05' };
+  RF.forms.ficha(p, 'informeC', d => d.gastoId === 'e9', { gastoId: 'e9', nombre: x.glosa, proveedor: x.proveedor, rendido: x.montoRendir, desde: x.fecha });
+  RF.forms.ficha(p, 'informeC', d => d.gastoId === 'e9', {});
+  assert.equal(p.forms.informeC.length, 1, 'la segunda vez la abre, no la duplica');
+  assert.equal(p.forms.informeC[0].data.nombre, 'Compresor'); assert.equal(p.forms.informeC[0].data.rendido, 900000);
+});
+
+test('historial: se anota solo, se une entre equipos sin duplicar y no pasa de 400 entradas', () => {
+  const RF = app(), s = state(RF);
+  RF.activity.log('gasto', 'Revisó el gasto A', 'gastos'); RF.activity.log('drive', 'Guardó 2 archivos en Drive.');
+  assert.equal(RF.store.get().activity.length, 2);
+  const remote = structuredClone(RF.store.get()); remote.activity.push({ id: 'ac-otro', t: '2026-10-07T10:00:00.000Z', who: 'Otra persona', kind: 'gasto', text: 'Revisó el gasto B', ref: '' });
+  RF.store.mergeRemote(remote);
+  assert.equal(RF.store.get().activity.length, 3);
+  RF.store.mergeRemote(remote);
+  assert.equal(RF.store.get().activity.length, 3, 'unir dos veces no duplica');
+  for (let i = 0; i < 450; i++) RF.activity.log('gasto', 'x' + i);
+  assert.equal(RF.store.get().activity.length, 400);
+  assert.ok(s.activity.every(a => a.id && a.t && a.text));
 });

@@ -1001,6 +1001,32 @@ await step('15p. Ficha D por persona: se calcula sola de arriba hacia abajo, con
   await shot('15p-fichaD');
 });
 
+await step('15q. F29 mes a mes, pasos que se marcan solos, ficha desde el gasto e historial', async () => {
+  /* una factura con IVA en septiembre */
+  await page.evaluate(() => { const p = RF.store.project(); p.expenses.push({ id: 'g-f29', createdAt: new Date().toISOString(), cuenta: 'inversion', docType: 'factura', folio: '555', fecha: '2026-09-10', proveedor: 'Maquinarias Sur', rutProveedor: '76.123.456-7', neto: 1000000, iva: 190000, total: 1190000, montoRendir: 1190000, formaPago: 'transferencia', glosa: 'Compresor', actId: '', has: {}, verified: true }); RF.store.update(function () { }, { silent: true }); });
+  await go('#/h/f29');
+  const sep = page.locator('.f29-card', { hasText: 'Septiembre 2026' });
+  ok(await sep.count() === 1 && /Falta el F29/.test(await sep.textContent()), 'avisa que falta el F29 de septiembre y deja el IVA listo');
+  await sep.getByRole('button', { name: 'Agregar el F29 de este mes' }).click();
+  await sep.getByLabel('Total de créditos del F29 ($)').pressSequentially('100000', { delay: 10 });
+  ok(/declara/.test(await sep.locator('.callout').first().textContent()), 'con un crédito menor al IVA de las facturas avisa la diferencia');
+  await sep.getByLabel('Total de créditos del F29 ($)').fill(''); await sep.getByLabel('Total de créditos del F29 ($)').pressSequentially('300000', { delay: 10 });
+  ok(/cubre/.test(await sep.locator('.callout').first().textContent()), 'con crédito suficiente lo da por bueno');
+  /* la ficha C sale del gasto */
+  await go('#/h/gastos');
+  await page.locator('.list-grid tbody tr', { hasText: 'Maquinarias Sur' }).first().click();
+  await page.getByRole('button', { name: /Crear la ficha c del activo/i }).click();
+  await page.waitForSelector('.form-tool');
+  ok(await page.evaluate(() => RF.store.project().forms.informeC.some(f => f.data.gastoId === 'g-f29' && f.data.nombre === 'Compresor')), 'se creó la ficha C con los datos del gasto');
+  /* paso que se marca solo y su explicación */
+  await go('#/t/TRM-008');
+  ok(await page.locator('.step-auto').count() >= 1, 'el trámite explica por qué un paso se marca solo o qué le falta');
+  /* historial */
+  await go('#/h/historial');
+  ok(/Creó la ficha c/i.test(await page.textContent('.tool-page')) || /F29/.test(await page.textContent('.tool-page')) || /Sacó|Guardó|Revisó/.test(await page.textContent('.tool-page')), 'el historial muestra lo que se hizo');
+  await go('#/h/gastos');
+});
+
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });
 
 /* ---- celular ---- */

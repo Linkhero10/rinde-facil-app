@@ -106,6 +106,8 @@
     plazos: ['Plazos', 'Días hábiles', 'Feriados', 'PEA de 90 días', 'Aclarar observaciones'],
     verificador: ['¿Se puede pagar esto?', 'Verificar un gasto'],
     cuentas: ['¿En qué cuenta va?', 'Recursos humanos', 'Gastos operacionales', 'Inversión', 'Administración'],
+    historial: ['Historial de cambios', 'Quién hizo qué y cuándo'],
+    f29: ['Formulario 29, F29, IVA mensual', 'Sube el F29 de cada mes y compáralo con tus facturas'],
     nofinanciable: ['Gastos no financiables', 'Lo que no se puede pagar con el aporte'],
     necesidades: ['Qué necesitará tu proyecto', 'Sueldos', 'Honorarios', 'Insumos', 'Viáticos', 'Inmuebles', 'Pagos en efectivo', 'Mi PEA ya está aprobado', 'Agregar algo que no estaba en el PEA', 'Trámites que te tocan'],
     documentos: ['Subir un documento', 'PEA corregido por CORFO', 'Acta de No Objeción', 'Acta de asamblea', 'Resolución u oficio', 'Observaciones de CORFO', '¿Cambia el PEA?', 'Cambios al PEA: qué falta hacer', 'Trazabilidad', 'Registro de documentos'],

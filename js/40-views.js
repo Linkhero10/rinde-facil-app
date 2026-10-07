@@ -14,9 +14,9 @@
   /* ---------- menú lateral ---------- */
   var TOOL_GROUPS = [
     { id: 'G-plan', name: 'Planificar', tools: ['necesidades', 'proyecto', 'gantt', 'presupuesto', 'pea', 'reitem', 'cotizaciones'] },
-    { id: 'G-rend', name: 'Rendir', tools: ['gastos', 'revision', 'resumen', 'observaciones'] },
+    { id: 'G-rend', name: 'Rendir', tools: ['gastos', 'f29', 'revision', 'resumen', 'observaciones'] },
     { id: 'G-form', name: 'Anexos y formularios', tools: ['anexo1', 'anexo2', 'anexo3', 'anexo4', 'anexo5', 'informe', 'consulta', 'solicitud'] },
-    { id: 'G-doc', name: 'Documentos y actas', tools: ['documentos', 'actas', 'compartir'] },
+    { id: 'G-doc', name: 'Documentos y actas', tools: ['documentos', 'actas', 'historial', 'compartir'] },
     { id: 'G-ayu', name: 'Ayudas', tools: ['plazos', 'verificador', 'cuentas', 'nofinanciable'] }
   ];
   function isOpen(key, dflt) { var o = RF.store.get().ui.open; return o[key] == null ? !!dflt : !!o[key]; }
@@ -218,9 +218,11 @@
     var counter = h('span', { class: 'steps-count' });
     function updCount() { var q = L.itemProgress(p || { done: {} }, id); counter.textContent = q.na ? 'No aplica' : q.done + ' de ' + q.total + (q.total < t.steps.length ? ' (+' + (t.steps.length - q.total) + ' opcional' + (t.steps.length - q.total > 1 ? 'es' : '') + ')' : ''); }
     t.steps.forEach(function (txt, i) {
-      var cb = h('input', { type: 'checkbox', id: 'st-' + i, checked: !!(p && RF.store.isDone(p, id, i)), disabled: !p });
+      var au = p ? L.autoStep(p, id, i) : null, manual = !!(p && RF.store.isDone(p, id, i));
+      var cb = h('input', { type: 'checkbox', id: 'st-' + i, checked: manual || !!(au && au.done), disabled: !p || !!(au && au.done && !manual) });
       var li = h('li', { class: 'step' + (cb.checked ? ' done' : '') }, h('label', { for: 'st-' + i }, cb, h('span', { class: 'st-n' }, String(i + 1)), h('span', { class: 'st-t' }, txt), t.opt && t.opt[i] ? h('span', { class: 'st-opt' }, t.opt[i]) : null));
       cb.addEventListener('change', function () { RF.store.setDone(id, i, cb.checked); li.classList.toggle('done', cb.checked); updCount(); refreshSide(); });
+      if (au) li.appendChild(h('div', { class: 'step-auto ' + (au.done ? 'ok' : 'wait') }, h('span', { class: 'st-opt' }, au.done ? 'Se marcó sola' : manual ? 'Marcado a mano' : 'Se marca sola'), ' ', au.done ? 'Porque ' + au.why : au.why, au.tool && RF.tools[au.tool] && !au.done ? [' ', h('a', { href: '#/h/' + au.tool }, 'Ir a ' + RF.tools[au.tool].title)] : null));
       var sd = stepDocs(id, i, shownTools); if (sd) li.appendChild(sd);
       stepsBox.appendChild(li);
     });

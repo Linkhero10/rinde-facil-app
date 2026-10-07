@@ -260,7 +260,7 @@
   SCHEMAS.informeC = fichaSchema('informeC', 'Ficha C · Infraestructura, inmueble o activo', 'informeC', [ACT_SEL,
     { k: 'nombre', l: 'Nombre del activo o edificación', t: 'text' }, { k: 'objetivos', l: 'Objetivos de la adquisición', t: 'textarea', rows: 2 }, { k: 'caracteristicas', l: 'Características técnicas', t: 'textarea', rows: 2 }, { k: 'formaAdq', l: 'Forma de adquisición', t: 'text' },
     { k: 'presupuestado', l: 'Monto total presupuestado ($)', t: 'money' }, { k: 'rendido', l: 'Monto rendido acumulado ($)', t: 'money' }, { k: 'proveedor', l: 'Nombre del proveedor', t: 'text' }, { k: 'desde', l: 'Ejecución desde', t: 'date' }, { k: 'hasta', l: 'hasta', t: 'date' },
-    { k: 'descripcion', l: 'Qué se hizo o cómo va', t: 'textarea', rows: 4 }], function () { return { nombre: '', objetivos: '', caracteristicas: '', formaAdq: '', presupuestado: '', rendido: '', proveedor: '', desde: '', hasta: '', descripcion: '' }; });
+    { k: 'descripcion', l: 'Qué se hizo o cómo va', t: 'textarea', rows: 4 }], function () { return { gastoId: '', nombre: '', objetivos: '', caracteristicas: '', formaAdq: '', presupuestado: '', rendido: '', proveedor: '', desde: '', hasta: '', descripcion: '' }; });
   SCHEMAS.informeD = fichaSchema('informeD', 'Ficha D · Persona contratada', 'informeD', [ACT_SEL,
     { k: 'nombre', l: 'Nombre completo de la persona', t: 'text' }, { k: 'rut', l: 'Cédula de identidad', t: 'rut' }, { k: 'presupuestado', l: 'Monto presupuestado de la contratación ($)', t: 'money' }, { k: 'rendido', l: 'Monto rendido acumulado ($)', t: 'money' },
     { k: 'meses', l: 'N° de meses de contratación', t: 'number' }, { k: 'mesesEjec', l: 'Meses ejecutados a la fecha', t: 'number' }, { k: 'desde', l: 'Contratación desde', t: 'date' }, { k: 'hasta', l: 'hasta', t: 'date' },
@@ -408,6 +408,13 @@
   };
 
   /* ============ Motor de formularios (interfaz) ============ */
+  var PRESELECT = {};
+  /* crea una ficha con datos de un gasto (si ya existe una de ese gasto o de esa persona, la abre) y devuelve su id */
+  function ficha(project, id, match, patch) {
+    var list = getList(project, id), hit = list.filter(function (f) { return match(f.data || {}); })[0];
+    if (!hit) { var ctx = { project: project, community: RF.store.get().community }, sc = SCHEMAS[id], d = Object.assign(sc.defaults(ctx), patch); if (id === 'informeC' && d.actId) fillMontos(d, ctx); if (sc.derive) sc.derive(d, ctx); hit = { id: U.uid('f'), data: d }; list.push(hit); RF.store.update(function () { }, { silent: true }); }
+    PRESELECT[id] = hit.id; return { id: hit.id };
+  }
   function ctxNow() { var s = RF.store.get(); return { project: RF.store.project(), community: s.community, state: s }; }
   function getSingle(project, id) {
     var sc = SCHEMAS[id];
@@ -526,6 +533,8 @@
     var list = getList(ctx.project, id);
     var root = h('div', { class: 'form-tool' });
     var selected = list.length ? list[0].id : null;
+    if (PRESELECT[id] && list.some(function (x) { return x.id === PRESELECT[id]; })) selected = PRESELECT[id];
+    delete PRESELECT[id];
     function paint() {
       U.clear(root);
       var head = h('div', { class: 'repeat-head' });
@@ -564,5 +573,5 @@
   /* Informe técnico completo: cabecera + fichas A–E */
   function informeCompleto(ctx) { var d = getSingle(ctx.project, 'informe'); return informeDoc(d, ctx, false); }
 
-  RF.forms = { SCHEMAS: SCHEMAS, getSingle: getSingle, getList: getList, docOf: docOf, renderSingle: renderSingle, renderRepeat: renderRepeat, informeCompleto: informeCompleto, combinedDoc: combinedDoc, ctxNow: ctxNow };
+  RF.forms = { ficha: ficha, SCHEMAS: SCHEMAS, getSingle: getSingle, getList: getList, docOf: docOf, renderSingle: renderSingle, renderRepeat: renderRepeat, informeCompleto: informeCompleto, combinedDoc: combinedDoc, ctxNow: ctxNow };
 })(typeof window !== 'undefined' ? window : globalThis);
