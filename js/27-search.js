@@ -147,7 +147,7 @@
       if (!t) return;
       var fields = [{ text: t.why, label: 'Por qué' }, { text: 'Quién: ' + actorName(t.who), label: '' }, { text: 'Cuándo: ' + (t.when || ''), label: '' }];
       (t.need || []).forEach(function (n) { fields.push({ text: n, label: 'Necesitas' }); });
-      (t.notes || []).forEach(function (s) { fields.push({ text: s, label: 'Ten en cuenta' }); });
+      (t.notes || []).forEach(function (s) { fields.push({ text: typeof s === 'string' ? s : s.t, label: 'Ten en cuenta' }); });
       (t.steps || []).forEach(function (s, i) { fields.push({ text: s, label: 'Paso ' + (i + 1) }); });
       (t.src || []).forEach(function (s) { fields.push({ text: s, label: 'Fuente' }); });
       items.push({ kind: t.kind === 'paso' ? 'Paso' : 'Trámite', title: t.title, path: path, fields: fields, href: '#/t/' + t.id, boost: 8 });

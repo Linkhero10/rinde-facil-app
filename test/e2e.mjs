@@ -943,13 +943,28 @@ await step('15n. Una cartola subida junto a las boletas se adjunta sola al gasto
 await step('15o. Montos grandes en cotizaciones, ayuda de la autorización, trámites opcionales sin pasos de relleno y sin secciones obsoletas', async () => {
   await go('#/h/cotizaciones');
   await page.getByRole('button', { name: 'Agregar compra' }).click();
-  await page.getByLabel('Monto neto de la compra ($)').last().pressSequentially('12500000', { delay: 20 });
+  /* proveedores: al escribir el nombre aparece al instante en «Proveedor elegido»; al elegirlo se rellena el monto */
+  const card = page.locator('.stage-card').last();
+  await card.locator('input[aria-label="Proveedor"]').nth(0).pressSequentially('Ferretería Sur', { delay: 10 });
+  await card.locator('input[aria-label="Monto"]').nth(0).pressSequentially('12500000', { delay: 10 });
+  await card.locator('input[aria-label="Proveedor"]').nth(1).pressSequentially('Otra Ltda', { delay: 10 });
+  await card.locator('input[aria-label="Monto"]').nth(1).pressSequentially('13000000', { delay: 10 });
+  const optsElegido = await card.locator('select[aria-label="Proveedor elegido"]').evaluate(el => [...el.options].map(o => o.textContent));
+  ok(optsElegido.includes('Ferretería Sur') && optsElegido.includes('Otra Ltda'), 'los dos proveedores aparecen de inmediato como opciones: ' + JSON.stringify(optsElegido));
+  await card.locator('select[aria-label="Proveedor elegido"]').selectOption('Otra Ltda');
+  ok(/13\.000\.000/.test(await card.locator('input[aria-label="Monto neto de la compra"]').inputValue()), 'al elegir proveedor se rellena el monto neto de la compra');
+  await card.locator('input[aria-label="Monto neto de la compra"]').fill('');
+  await card.locator('input[aria-label="Monto neto de la compra"]').pressSequentially('12500000', { delay: 20 });
+  const boxChk = await card.locator('label.check:has(.tip-btn)').boundingBox(), boxBtn = await card.locator('label.check .tip-btn').boundingBox();
+  ok(boxBtn.y >= boxChk.y - 2 && boxBtn.y + boxBtn.height <= boxChk.y + boxChk.height + 2 && boxBtn.x > boxChk.x + 20, 'el signo ? queda dentro de la línea de la casilla, pegado al texto: ' + JSON.stringify({ boxChk, boxBtn }));
+
   const dbgN = await page.evaluate(() => ({ neto: RF.store.project().cotizaciones.slice(-1)[0].neto, n: RF.store.project().cotizaciones.length, vals: [...document.querySelectorAll('.stage-card input')].map(i => i.value).slice(0, 6) }));
   ok(dbgN.neto === 12500000, 'se puede escribir un monto de ocho dígitos: ' + JSON.stringify(dbgN));
-  ok(/12\.500\.000/.test(await page.getByLabel('Monto neto de la compra ($)').last().inputValue()), 'se muestra con puntos');
+  ok(/12\.500\.000/.test(await card.locator('input[aria-label="Monto neto de la compra"]').inputValue()), 'se muestra con puntos');
   await page.getByRole('button', { name: 'Cómo saber si tengo la autorización' }).last().click();
   ok(/visto bueno de CORFO/.test(await page.locator('.tip-pop:visible').first().textContent()), 'la ayuda explica qué es la autorización');
-  const opts = await page.locator('.stage-card').last().locator('select').first().evaluate(el => [...el.options].map(o => o.textContent));
+  ok(await page.evaluate(() => RF.store.project().cotizaciones.slice(-1)[0].autorizacion !== true), 'tocar el ? no marca la casilla');
+  const opts = await card.locator('select[aria-label="Gasto al que corresponde"]').evaluate(el => [...el.options].map(o => o.textContent));
   ok(opts.some(o => /Todavía no compro/.test(o)) && opts.some(o => /Otro gasto que aún no anoté/.test(o)), 'se puede comparar antes de comprar o elegir otro gasto');
   await go('#/t/TRM-028');
   ok(/\(opcional\)/.test(await page.textContent('.view-title')), 'Cambiar el PEA dice que es opcional');
@@ -963,6 +978,27 @@ await step('15o. Montos grandes en cotizaciones, ayuda de la autorización, trá
   await go('#/h/proyecto');
   ok(!/Feriados \(para contar/.test(await page.textContent('.tool-page')), 'ya no se piden feriados a mano');
   await go('#/h/gastos');
+});
+
+await step('15p. Ficha D por persona: se calcula sola de arriba hacia abajo, con gráfico de avance; y el botón pequeño «Guardar todo en Drive» está siempre arriba a la derecha', async () => {
+  await go('#/h/informeD');
+  await page.getByRole('button', { name: 'Nueva ficha' }).click();
+  await page.getByLabel('Nombre completo de la persona').fill('Ana Pérez');
+  await page.getByLabel('Funciones en el proyecto').fill('Encargada de talleres');
+  await page.getByLabel('Contratada desde').fill('2026-07-01');
+  await page.getByLabel('hasta', { exact: true }).fill('2027-06-30');
+  await page.getByLabel('Monto total presupuestado de la contratación ($)').pressSequentially('12000000', { delay: 10 });
+  const calcs = await page.locator('output.calc').allTextContents();
+  ok(calcs.some(t => t.trim() === '12') && calcs.some(t => /1\.000\.000/.test(t)), 'salen solos los 12 meses y 1.000.000 por mes: ' + JSON.stringify(calcs));
+  ok(calcs.some(t => /847.500/.test(t)), 'sale el líquido mensual a honorarios (retención 15,25 %): ' + JSON.stringify(calcs));
+  ok(await page.locator('.avchart').count() === 1, 'hay un gráfico de avance (real contra programado)');
+  const cfg = await page.evaluate(() => RF.cloud.configured());
+  if (cfg) {
+    await page.waitForSelector('#driveAll:not([hidden])', { timeout: 5000 });
+    const box = await page.locator('#driveAll').boundingBox(), vw = await page.evaluate(() => document.documentElement.clientWidth);
+    ok(box.x + box.width > vw - 120 && box.y < 60 && box.height <= 40, 'el botón de Drive es pequeño y está arriba a la derecha');
+  }
+  await shot('15p-fichaD');
 });
 
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });

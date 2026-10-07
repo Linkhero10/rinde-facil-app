@@ -131,6 +131,28 @@
     if (chip.kind === 'warn' && /Dos equipos/.test(chip.text)) setChip('', '');
     if (r && r.merged !== undefined) { if (r.merged) RF.ui.toast('Se trajeron cambios hechos en otro equipo (' + r.merged + ' nuevos).', 'ok'); render(); }
   });
+  /* botón pequeño, siempre arriba a la derecha: guarda en Drive lo que esté listo y nunca se guardó */
+  var driveTimer = null, driveState = { busy: false, text: '' };
+  function driveBtnEl() {
+    var b = document.getElementById('driveAll');
+    if (!b) { b = h('button', { type: 'button', id: 'driveAll', class: 'drive-all', hidden: true, onclick: function () { if (driveState.busy) return; RF.drive.saveAll().then(function (r) { if (r && r.total === 0) RF.ui.toast('Todo estaba guardado en Drive.', 'ok'); else if (r && r.ok) RF.ui.toast('Se guardaron ' + r.done + (r.done === 1 ? ' archivo' : ' archivos') + ' en Drive.', 'ok'); else RF.ui.toast('No se pudo guardar todo en Drive' + (r && r.fail ? ' (' + r.fail + ' con problema)' : '') + '. Se reintentará; revisa tu conexión.', 'bad'); paintDriveBtn(); }); } }); document.body.appendChild(b); }
+    return b;
+  }
+  function paintDriveBtn() {
+    var b = driveBtnEl(), show = RF.auth.phase() === 'open' && RF.cloud.configured();
+    b.hidden = !show; if (!show) return;
+    var n = driveState.busy ? 0 : RF.drive.pendingCount();
+    U.clear(b);
+    b.className = 'drive-all' + (driveState.busy ? ' busy' : n ? ' has' : ' ok');
+    b.setAttribute('aria-live', 'polite');
+    var label = driveState.busy ? driveState.text : n ? 'Guardar todo en Drive' : 'Todo en Drive';
+    b.appendChild(UI.icon('cloud', 16)); b.appendChild(h('span', { class: 'da-t' }, label)); if (n) b.appendChild(h('span', { class: 'da-n' }, String(n)));
+    b.title = driveState.busy ? 'Guardando…' : n ? 'Hay ' + n + (n === 1 ? ' cosa' : ' cosas') + ' lista' + (n === 1 ? '' : 's') + ' en la plataforma que no se guardó en Drive. Pulsa para guardarlas.' : 'Todo lo que está listo ya se guardó en Drive.';
+  }
+  function schedulePaintDrive() { clearTimeout(driveTimer); driveTimer = setTimeout(paintDriveBtn, 1200); }
+  if (RF.drive && RF.drive.onSaveAll) RF.drive.onSaveAll(function (s) { driveState.busy = !!s.busy; driveState.text = s.busy ? 'Guardando ' + Math.min(s.done + 1, s.total) + '/' + s.total + '…' : ''; paintDriveBtn(); });
+  if (RF.drive && RF.drive.onSync) RF.drive.onSync(schedulePaintDrive);
+  if (RF.store.onChange) RF.store.onChange(schedulePaintDrive);
   window.addEventListener('resize', fitSide);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', fitSide);
   function toggleMenu() { var open = document.body.classList.toggle('menu-open'); var b = document.querySelector('.menu-btn'); if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false'); fitSide(); }
@@ -146,7 +168,7 @@
 
   function boot() {
     RF.auth.init().then(function () {
-      RF.auth.onChange(function () { applyTheme(); render(); if (RF.auth.phase() === 'open') { app.warmUp(); if (RF.holidays) RF.holidays.refresh(); } else { app._warmed = false; setChip('', ''); } });
+      RF.auth.onChange(function () { applyTheme(); render(); paintDriveBtn(); if (RF.auth.phase() === 'open') { app.warmUp(); if (RF.holidays) RF.holidays.refresh(); } else { app._warmed = false; setChip('', ''); } });
       start();
     });
   }

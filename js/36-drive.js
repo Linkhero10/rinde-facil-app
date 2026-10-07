@@ -320,6 +320,48 @@
     if (root.setInterval) root.setInterval(function () { if (root.document.visibilityState === 'visible' && Date.now() - lastSyncAt > 150000) syncNow(); }, 60000);
   }
 
+  /* ---------- «Guardar todo en Drive»: lo que está listo en la plataforma pero nunca se guardó ---------- */
+  function realExpense(e) { return !!(e && e.fecha && (e.proveedor || e.total || e.folio)); }
+  function pendingItems() {
+    var out = [], st = RF.store.get();
+    (st.projects || []).forEach(function (p) {
+      (p.expenses || []).forEach(function (e) {
+        if (!realExpense(e)) return;
+        if ((e.imgId && !e.driveId) || !e.driveFichaAt) out.push({ kind: 'gasto', e: e, p: p });
+        Object.keys(e.attach || {}).forEach(function (k) { var a = e.attach[k]; if (a && a.id && !a.driveUrl && !a.driveId) out.push({ kind: 'respaldo', e: e, p: p, key: k, a: a }); });
+      });
+    });
+    return out;
+  }
+  function pendingCount() { return enabled() ? pendingItems().length + (cfg().syncFp && isDirty() ? 1 : 0) : 0; }
+  var savingAll = null;
+  function saveAll() {
+    if (!enabled()) return Promise.resolve({ ok: false, error: 'NO_CONFIGURADO' });
+    if (savingAll) return savingAll;
+    var items = pendingItems(), done = 0, fail = 0, total = items.length, community = RF.store.get().community;
+    function progress() { SAVE_LISTENERS.forEach(function (fn) { try { fn({ busy: true, done: done, total: total }); } catch (e) { /* aviso opcional */ } }); }
+    progress();
+    var chain = Promise.resolve();
+    items.forEach(function (it) {
+      chain = chain.then(function () {
+        if (it.kind === 'gasto') {
+          var rec = it.e.imgId && !it.e.driveId ? saveReceipt(it.e, it.p, true) : Promise.resolve({ ok: true });
+          return rec.then(function () { return saveFicha(it.e, it.p, community, true); }).then(function (r) { if (r && (r.remote || r.queued)) done++; else fail++; }, function () { fail++; });
+        }
+        return RF.blobs.get(it.a.id).then(function (blob) {
+          if (!blob) { fail++; return null; }
+          return saveAttachment(it.e, it.p, it.key, (RF.data.RESPALDOS && RF.data.RESPALDOS[it.key]) || it.key, blob, true).then(function (r) { if (r && r.remote) { it.a.driveUrl = r.url || ''; RF.store.update(function () { }, { silent: true }); done++; } else fail++; }, function () { fail++; });
+        }, function () { fail++; });
+      }).then(progress);
+    });
+    savingAll = chain.then(function () { return syncNow({ force: true }); }).then(function () { return { ok: fail === 0, done: done, fail: fail, total: total }; }).then(function (r) {
+      savingAll = null; SAVE_LISTENERS.forEach(function (fn) { try { fn({ busy: false, result: r }); } catch (e) { /* aviso opcional */ } }); return r;
+    }, function (e) { savingAll = null; SAVE_LISTENERS.forEach(function (fn) { try { fn({ busy: false, result: { ok: false, fail: total, done: done, total: total } }); } catch (x) { /* aviso opcional */ } }); return { ok: false, error: errorCode(e) }; });
+    return savingAll;
+  }
+  var SAVE_LISTENERS = [];
+  function onSaveAll(fn) { SAVE_LISTENERS.push(fn); }
+
   /* foto (si hay) + ficha con los datos + copia de seguridad */
   function archiveExpense(e, project, community) {
     function settle(p) { return Promise.resolve(p).then(function (r) { return r; }, function (e) { return { ok: false, remote: false, queued: false, error: errorCode(e) }; }); }
@@ -460,5 +502,5 @@
     });
   }
 
-  RF.drive = { saveAttachment: saveAttachment, describeSave: describeSave, friendlySaves: friendlySaves, flushOutbox: flushOutbox, enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, saveFicha: saveFicha, archiveExpense: archiveExpense, fichaText: fichaText, backupState: backupState, syncNow: syncNow, onSync: onSync, markSynced: markSynced, pushState: pushState, pullState: pullState, resolveConflict: resolveConflict, saveExternal: saveExternal, saveActa: saveActa, docMeta: docMeta, actaMeta: actaMeta, setup: setup, categoryFor: categoryFor, errText: errText };
+  RF.drive = { saveAttachment: saveAttachment, describeSave: describeSave, friendlySaves: friendlySaves, flushOutbox: flushOutbox, enabled: enabled, auto: auto, saveDoc: saveDoc, saveReceipt: saveReceipt, saveFicha: saveFicha, archiveExpense: archiveExpense, fichaText: fichaText, backupState: backupState, syncNow: syncNow, onSync: onSync, pendingItems: pendingItems, pendingCount: pendingCount, saveAll: saveAll, onSaveAll: onSaveAll, markSynced: markSynced, pushState: pushState, pullState: pullState, resolveConflict: resolveConflict, saveExternal: saveExternal, saveActa: saveActa, docMeta: docMeta, actaMeta: actaMeta, setup: setup, categoryFor: categoryFor, errText: errText };
 })(typeof window !== 'undefined' ? window : globalThis);

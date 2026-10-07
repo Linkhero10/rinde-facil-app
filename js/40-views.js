@@ -212,7 +212,7 @@
     /* qué necesitas */
     if (t.need && t.need.length) root.appendChild(UI.section('Qué necesitas', [h('ul', { class: 'need-list' }, t.need.map(function (n) { return h('li', null, n); }))]));
     /* a tener en cuenta (texto, no se marca) */
-    if ((t.notes && t.notes.length) || (t.related && t.related.length)) root.appendChild(h('section', { class: 'card notes-card' }, h('h2', { class: 'card-title' }, 'Ten en cuenta'), h('ul', { class: 'notes-list' }, (t.notes || []).map(function (n) { return h('li', null, n); })), (t.related || []).length ? h('p', { class: 'hint' }, 'Relacionado: ', t.related.map(function (rid, k) { var rt = RF.tramites.byId[rid]; return rt ? [k ? ' · ' : '', h('a', { href: '#/t/' + rid }, rt.title)] : null; })) : null));
+    if ((t.notes && t.notes.length) || (t.related && t.related.length)) root.appendChild(h('section', { class: 'card notes-card' }, h('h2', { class: 'card-title' }, 'Ten en cuenta'), h('ul', { class: 'notes-list' }, (t.notes || []).map(function (n) { return typeof n === 'string' ? h('li', null, n) : h('li', null, n.t, n.tag ? h('span', { class: 'st-opt' }, n.tag) : null, n.a ? h('a', { class: 'btn small ghost', href: n.a[1] }, n.a[0]) : null); })), (t.related || []).length ? h('p', { class: 'hint' }, 'Relacionado: ', t.related.map(function (rid, k) { var rt = RF.tramites.byId[rid]; return rt ? [k ? ' · ' : '', h('a', { href: '#/t/' + rid }, rt.title)] : null; })) : null));
     /* pasos */
     var stepsBox = h('ol', { class: 'steps' }), shownTools = {};
     var counter = h('span', { class: 'steps-count' });

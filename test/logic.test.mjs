@@ -46,7 +46,7 @@ test('datos: cada trámite del inventario está cubierto una sola vez', () => {
     const req = t.steps.filter((_, i) => !(t.opt && t.opt[i]));
     assert.ok(req.length >= 1, t.id + ' tiene al menos un paso obligatorio (si no, nunca se completa)');
     Object.keys(t.opt || {}).concat(Object.keys(t.stepTools || {})).forEach(i => assert.ok(i >= 0 && i < t.steps.length, t.id + ' apunta a un paso que no existe: ' + i));
-    (t.notes || []).forEach(n => assert.ok(n.length > 10, t.id + ' nota vacía'));
+    (t.notes || []).forEach(n => assert.ok((typeof n === 'string' ? n : n.t).length > 10, t.id + ' nota vacía'));
     /* un paso es una acción: no debe empezar describiendo lo que hace otra persona o el sistema */
     t.steps.forEach(x => assert.ok(!/^(CORFO (avisa|revisa)|Novandino .* transfiere|Espera que)/.test(x), t.id + ' paso que no es acción del usuario: ' + x.slice(0, 50)));
   });

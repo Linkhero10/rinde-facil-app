@@ -5,7 +5,7 @@ import { loadApp } from './load.mjs';
 
 function app() {
   const files = fs.readdirSync(new URL('../js/', import.meta.url)).filter(f => /^(00|0[1-5]|1\d|2\d|33)-.*\.js$/.test(f)).sort();
-  return loadApp(files.concat(['34-tools-gastos.js', '36-drive.js']), { RF: { ui: {}, tools: {} } });
+  return loadApp(files.concat(['31-forms.js', '34-tools-gastos.js', '36-drive.js']), { RF: { ui: {}, tools: {} } });
 }
 function state(RF) {
   const s = RF.store.defaults(), p = RF.store.newProject('Proyecto');
@@ -191,4 +191,32 @@ test('un trámite opcional no cuenta en el avance ni frena la fase', () => {
   ['TRM-027:0', 'TRM-027:1', 'TRM-027:2'].forEach(k => { p.done[k] = true; });
   assert.equal(RF.logic.progress(p).porFase.F2.complete, true, 'con el PEA hecho, la fase queda completa aunque no se use lo opcional');
   assert.equal(before.tramTotal, 1, 'solo cuenta el PEA');
+});
+
+test('Ficha D: de las fechas y el monto salen los meses, lo mensual (bruto y líquido a honorarios), el período y el avance; todo en orden de arriba hacia abajo', () => {
+  const RF = app(), p = state(RF).projects[0];
+  p.periodoInicio = '2026-07-01'; p.periodoFin = '2026-12-31';
+  const sc = RF.forms.SCHEMAS.informeD, d = sc.defaults({ project: p, community: {} });
+  Object.assign(d, { nombre: 'Ana', rut: '12.345.678-5', tipo: 'honorarios', desde: '2026-07-01', hasta: '2027-06-30', presupuestado: 12000000 });
+  p.expenses = [{ id: 'g1', cuenta: 'rrhh', rutProveedor: '12345678-5', fecha: '2026-08-10', montoRendir: 1000000 }, { id: 'g2', cuenta: 'rrhh', rutProveedor: '9.999.999-9', fecha: '2026-08-10', montoRendir: 500000 }];
+  sc.derive(d, { project: p, community: {} });
+  assert.equal(d.meses, 12);
+  assert.equal(d.mensualBruto, 1000000);
+  assert.equal(d.mensualLiquido, Math.round(1000000 * (1 - 0.1525)), 'retención de honorarios 2026: 15,25 %');
+  assert.equal(d.mesesPeriodo, 6); assert.equal(d.periodoBruto, 6000000);
+  assert.equal(d.rendidoGastos, 1000000, 'solo los gastos de su RUT en la cuenta de recursos humanos');
+  assert.equal(d.rendido, 1000000);
+  assert.equal(d.avanceRealAcum, Math.round(1000000 * 100 / 12000000));
+  d.tipo = 'contrato'; sc.derive(d, { project: p, community: {} });
+  assert.equal(d.mensualLiquido, 0, 'con contrato el líquido depende de AFP, salud e impuesto: no se inventa');
+  const order = sc.fields.map(f => f.k);
+  assert.ok(order.indexOf('presupuestado') < order.indexOf('mensualBruto') && order.indexOf('desde') < order.indexOf('meses') && order.indexOf('mensualBruto') < order.indexOf('avance'), 'primero lo que se escribe, después lo que se calcula');
+});
+test('«Guardar todo en Drive»: cuenta los gastos con fecha que no tienen su ficha ni su foto en Drive y los respaldos sin subir', () => {
+  const RF = app(), s = state(RF), p = s.projects[0];
+  s.cloud.apiUrl = 'https://script.google.com/macros/s/AKfycbTEST/exec';
+  RF.cloud.configured = () => true;
+  p.expenses = [{ id: 'a', fecha: '2026-10-01', proveedor: 'Uno', total: 10, imgId: 'i1' }, { id: 'b', fecha: '2026-10-01', proveedor: 'Dos', total: 10, driveFichaAt: 'x', attach: { pago: { id: 'blob1' } } }, { id: 'c', fecha: '2026-10-01', proveedor: 'Tres', total: 10, driveFichaAt: 'x', driveId: 'd' }, { id: 'd' }];
+  const kinds = RF.drive.pendingItems().map(i => i.kind + ':' + i.e.id);
+  assert.equal(JSON.stringify(kinds), JSON.stringify(['gasto:a', 'respaldo:b']));
 });

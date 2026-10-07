@@ -266,11 +266,75 @@
     { k: 'meses', l: 'N° de meses de contratación', t: 'number' }, { k: 'mesesEjec', l: 'Meses ejecutados a la fecha', t: 'number' }, { k: 'desde', l: 'Contratación desde', t: 'date' }, { k: 'hasta', l: 'hasta', t: 'date' },
     { k: 'funcion', l: 'Función en el proyecto', t: 'textarea', rows: 2 }, { k: 'descripcion', l: 'Avances acumulados a la fecha', t: 'textarea', rows: 3 }, { k: 'principales', l: 'Principales actividades o logros del período', t: 'textarea', rows: 3 }],
     function () { return { nombre: '', rut: '', presupuestado: '', rendido: '', meses: '', mesesEjec: '', desde: '', hasta: '', funcion: '', descripcion: '', principales: '' }; });
+  /* Ficha D (Manual, p. 36-37): todos los campos son los del formato oficial. Lo que se puede calcular se calcula solo, de arriba hacia abajo. */
+  var RETENCION = { 2025: 14.5, 2026: 15.25, 2027: 16, 2028: 17 }; /* retención de boletas de honorarios (Ley 21.133, SII); desde 2028 queda en 17 % */
+  function retencion(year) { return year >= 2028 ? 17 : (RETENCION[year] != null ? RETENCION[year] : 14.5); }
+  function monthsInc(a, b) { if (!a || !b || b < a) return 0; return (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5, 7) - +a.slice(5, 7)) + 1; }
+  function normRut(r) { return String(r || '').replace(/[^0-9kK]/g, '').toUpperCase(); }
+  function personExpenses(project, rut) { var k = normRut(rut); if (!k || !project) return []; return (project.expenses || []).filter(function (e) { return e.cuenta === 'rrhh' && normRut(e.rutProveedor) === k; }); }
+  function pct(n) { return Math.max(0, Math.min(100, Math.round(n))); }
+  function deriveD(d, ctx) {
+    if (!d.tipo) d.tipo = 'honorarios';
+    var p = ctx.project || {}, pres = num(d.presupuestado), meses = monthsInc(d.desde, d.hasta), today = U.todayISO();
+    d.meses = meses || '';
+    d.mensualBruto = meses && pres ? Math.round(pres / meses) : 0;
+    var year = +(d.desde || today).slice(0, 4), ret = retencion(year);
+    d.mensualLiquido = d.tipo === 'honorarios' && d.mensualBruto ? Math.round(d.mensualBruto * (1 - ret / 100)) : 0;
+    var pi = p.periodoInicio, pf = p.periodoFin, ov = pi && pf && d.desde && d.hasta ? monthsInc(d.desde > pi ? d.desde : pi, d.hasta < pf ? d.hasta : pf) : 0;
+    d.mesesPeriodo = ov;
+    d.periodoBruto = d.mensualBruto * ov; d.periodoLiquido = d.mensualLiquido * ov;
+    var ej = d.desde && d.desde <= today ? Math.min(meses, monthsInc(d.desde, d.hasta && d.hasta < today ? d.hasta : today)) : 0;
+    d.mesesEjec = meses ? ej : '';
+    var gastos = personExpenses(p, d.rut), tot = gastos.reduce(function (a, e) { return a + num(e.montoRendir || e.total); }, 0);
+    var enPeriodo = gastos.filter(function (e) { return pi && pf && e.fecha >= pi && e.fecha <= pf; }).reduce(function (a, e) { return a + num(e.montoRendir || e.total); }, 0);
+    d.rendidoGastos = tot; d.rendido = tot > 0 ? tot : (d.rendidoManual === '' || d.rendidoManual == null ? '' : num(d.rendidoManual));
+    d.avanceProgAcum = meses ? pct(ej * 100 / meses) : ''; d.avanceRealAcum = pres && d.rendido !== '' ? pct(num(d.rendido) * 100 / pres) : '';
+    d.avanceProg = meses && pi && pf ? pct(ov * 100 / meses) : ''; d.avanceReal = pres && pi && pf ? pct(enPeriodo * 100 / pres) : '';
+    d.criterio = 'Programado: meses ejecutados ÷ meses de contratación. Real: monto rendido ÷ monto presupuestado de la contratación.';
+  }
+  function avanceChart(d) {
+    var prog = d.avanceProgAcum === '' ? null : Number(d.avanceProgAcum), real = d.avanceRealAcum === '' ? null : Number(d.avanceRealAcum);
+    var wrap = h('div', { class: 'avchart', role: 'img', 'aria-label': 'Avance acumulado: programado ' + (prog == null ? 'sin datos' : prog + ' por ciento') + ', real ' + (real == null ? 'sin datos' : real + ' por ciento') });
+    if (prog == null && real == null) { wrap.appendChild(h('p', { class: 'hint' }, 'Cuando pongas las fechas y el monto, aquí se compara lo que debería llevar con lo que lleva de verdad.')); return wrap; }
+    wrap.appendChild(h('div', { class: 'av-track' }, h('div', { class: 'av-real', style: { width: (real || 0) + '%' } }), prog != null ? h('div', { class: 'av-prog', style: { left: prog + '%' }, title: 'Programado: ' + prog + ' %' }) : null));
+    wrap.appendChild(h('div', { class: 'av-legend' }, h('span', null, h('i', { class: 'av-sw real' }), 'Real (lo rendido): ', h('b', null, real == null ? '—' : real + ' %')), h('span', null, h('i', { class: 'av-sw prog' }), 'Programado (meses transcurridos): ', h('b', null, prog == null ? '—' : prog + ' %'))));
+    if (prog != null && real != null && Math.abs(prog - real) > 10) wrap.appendChild(h('p', { class: 'hint' }, real < prog ? 'Vas más lento de lo programado: explica la razón más abajo.' : 'Vas más rápido de lo programado: explica la razón más abajo.'));
+    return wrap;
+  }
   SCHEMAS.informeE = fichaSchema('informeE', 'Ficha E · Otra actividad', 'informeE', [ACT_SEL,
     { k: 'nombre', l: 'Descripción de la actividad y sus objetivos', t: 'textarea', rows: 2 }, { k: 'proveedor', l: 'Proveedor', t: 'text' }, { k: 'lugar', l: 'Lugar de realización del servicio', t: 'text' },
     { k: 'presupuestado', l: 'Monto total presupuestado ($)', t: 'money' }, { k: 'rendido', l: 'Monto rendido acumulado ($)', t: 'money' }, { k: 'formaContratacion', l: 'Forma de contratación', t: 'text' },
     { k: 'fechaInicio', l: 'Fecha de inicio', t: 'date' }, { k: 'fechaTermino', l: 'Fecha de término', t: 'date' }, { k: 'descripcion', l: 'Qué se hizo o cómo va', t: 'textarea', rows: 4 }],
     function () { return { nombre: '', proveedor: '', lugar: '', presupuestado: '', rendido: '', formaContratacion: '', fechaInicio: '', fechaTermino: '', descripcion: '' }; });
+
+  (function () {
+    var sc = SCHEMAS.informeD;
+    sc.fields = [
+      { k: 'nombre', l: 'Nombre completo de la persona', t: 'text' }, { k: 'rut', l: 'Cédula de identidad', t: 'rut' },
+      { k: 'funcion', l: 'Funciones en el proyecto', t: 'textarea', rows: 2, ph: 'Ej: Encargada de los talleres de tejido' },
+      { k: 'tipo', l: 'Cómo la contrataron', t: 'select', options: [{ id: 'honorarios', name: 'A honorarios (boleta)' }, { id: 'contrato', name: 'Con contrato de trabajo' }] },
+      { k: 'desde', l: 'Contratada desde', t: 'date' }, { k: 'hasta', l: 'hasta', t: 'date' },
+      { k: 'presupuestado', l: 'Monto total presupuestado de la contratación ($)', t: 'money' },
+      { k: 'meses', l: 'N° de meses de contratación', t: 'calc' },
+      { k: 'mensualBruto', l: 'Por mes (bruto)', t: 'calc', fmt: 'money' },
+      { k: 'mensualLiquido', l: 'Por mes (líquido, a honorarios)', t: 'calc', fmt: 'money', hint: 'Bruto menos la retención de honorarios del año de inicio (2026: 15,25 %; 2027: 16 %; desde 2028: 17 %). Con contrato, el líquido depende de AFP, salud e impuesto: míralo en la liquidación.' },
+      { k: 'periodoBruto', l: 'Lo que recibe en el período que rindes (bruto)', t: 'calc', fmt: 'money' },
+      { k: 'periodoLiquido', l: 'Lo que recibe en el período que rindes (líquido, a honorarios)', t: 'calc', fmt: 'money' },
+      { k: 'rendidoGastos', l: 'Rendido según los gastos que anotaste (cuenta Recursos humanos, con su RUT)', t: 'calc', fmt: 'money' },
+      { k: 'rendidoManual', l: 'Monto rendido a la fecha, si aún no anotas sus gastos ($)', t: 'money' },
+      { k: 'mesesEjec', l: 'N° de meses ejecutados a la fecha', t: 'calc' },
+      { k: 'avance', l: 'Avance acumulado', t: 'custom' },
+      { k: 'descripcion', l: 'Descripción resumida de los avances acumulados a la fecha (y conclusiones si terminó)', t: 'textarea', rows: 3 },
+      { k: 'principales', l: 'Principales actividades ejecutadas o logros del período rendido', t: 'textarea', rows: 3 },
+      { k: 'desviaciones', l: 'Si el avance real es distinto del programado: por qué', t: 'textarea', rows: 2 },
+      { k: 'riesgos', l: 'Riesgos o problemas que causaron atraso (si aplica)', t: 'textarea', rows: 2 }
+    ];
+    sc.derive = deriveD;
+    sc.onChange = function () { };
+    var baseDefaults = sc.defaults;
+    sc.defaults = function (ctx) { return Object.assign(baseDefaults(ctx), { tipo: 'honorarios', rendidoManual: '', mensualBruto: 0, mensualLiquido: 0, periodoBruto: 0, periodoLiquido: 0, rendidoGastos: 0 }); };
+    sc.custom = { avance: avanceChart };
+  })();
 
   /* ============ PEA ============ */
   SCHEMAS.peaGeneral = {
@@ -366,11 +430,16 @@
     sc.fields.forEach(function (f) {
       var el;
       if (f.t === 'table') { el = renderTable(sc, f, data, ctx, changed, refreshers); wrap.appendChild(h('div', { class: 'field wide' }, h('span', { class: 'lbl' }, f.l), el)); return; }
+      if (f.t === 'custom') {
+        var holder = h('div', { class: 'field wide' }, h('span', { class: 'lbl' }, f.l)), body = h('div');
+        var paintC = function () { U.clear(body); body.appendChild(sc.custom[f.k](data, ctx)); };
+        holder.appendChild(body); refreshers.push(paintC); paintC(); wrap.appendChild(holder); return;
+      }
       if (f.t === 'calc') {
         var out = h('output', { class: 'calc' });
-        var upd = function () { out.textContent = f.fmt === 'money' ? U.fmtCLP(data[f.k] || 0) : String(data[f.k] == null ? '' : data[f.k]); };
+        var upd = function () { out.textContent = f.fmt === 'money' ? U.fmtCLP(data[f.k] || 0) : String(data[f.k] == null || data[f.k] === '' ? '—' : data[f.k]); };
         refreshers.push(upd); upd();
-        wrap.appendChild(h('div', { class: 'field calc-field' }, h('span', { class: 'lbl' }, f.l), out)); return;
+        wrap.appendChild(h('div', { class: 'field calc-field' }, h('span', { class: 'lbl' }, f.l), out, f.hint ? h('span', { class: 'hint' }, f.hint) : null)); return;
       }
       if (f.t === 'actSelect' || f.t === 'expenseSelect') {
         var opts = f.t === 'actSelect' ? actOptions(ctx) : [{ id: '', name: 'Ninguno' }].concat((ctx.project.expenses || []).filter(f.filter || function () { return true; }).map(function (e) { return { id: e.id, name: (e.proveedor || 'Sin proveedor') + ' · ' + U.fmtCLP(e.total) + ' · ' + (e.folio || 's/n') }; }));

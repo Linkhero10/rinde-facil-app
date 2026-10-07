@@ -158,7 +158,7 @@
   function closeTip() { if (tipOpen) { tipOpen.pop.hidden = true; tipOpen.btn.setAttribute('aria-expanded', 'false'); tipOpen = null; } }
   function tip(text, label) {
     var pop = h('span', { class: 'tip-pop', role: 'note', hidden: true }, text), btn = h('button', { type: 'button', class: 'tip-btn', 'aria-label': label || 'Qué significa', 'aria-expanded': 'false' }, '?');
-    btn.addEventListener('click', function (ev) { ev.stopPropagation(); var wasOpen = tipOpen && tipOpen.btn === btn; closeTip(); if (!wasOpen) { pop.hidden = false; btn.setAttribute('aria-expanded', 'true'); tipOpen = { pop: pop, btn: btn }; } });
+    btn.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); /* si está dentro de una casilla, no la marca */ var wasOpen = tipOpen && tipOpen.btn === btn; closeTip(); if (!wasOpen) { pop.hidden = false; btn.setAttribute('aria-expanded', 'true'); tipOpen = { pop: pop, btn: btn }; } });
     return h('span', { class: 'tip' }, btn, pop);
   }
   if (typeof document !== 'undefined' && document.addEventListener) {

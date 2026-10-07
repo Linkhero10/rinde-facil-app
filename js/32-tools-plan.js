@@ -281,23 +281,58 @@
       p.cotizaciones.forEach(function (cq, i) {
         if (!Array.isArray(cq.cots)) cq.cots = [{}, {}];
         var st = h('div'); var refreshSt = function () { U.clear(st); var s = cotStatus(cq); st.appendChild(UI.callout(s.kind, '', s.msg)); };
+        /* el «?» va pegado al final del texto de la casilla */
+        var autoField = UI.field('Tengo autorización previa de CORFO', cq, 'autorizacion', { type: 'check', onChange: refreshSt });
+        autoField.querySelector('span').appendChild(UI.tip('Es el visto bueno de CORFO, por escrito, para comprar con una sola cotización o con ninguna. Si no lo tienes guardado en tu expediente, no lo tienes: pídelo antes de comprar con «Consultar una duda a CORFO».', 'Cómo saber si tengo la autorización'));
         var otro = h('div'); function paintOtro() { U.clear(otro); if (cq.gastoId === '__otro') otro.appendChild(h('p', { class: 'hint' }, 'Anota ese gasto en «Gastos y rendición» y vuelve a elegirlo aquí. ', h('a', { href: '#/h/gastos' }, 'Ir a anotar el gasto'))); else if (!cq.gastoId) otro.appendChild(h('p', { class: 'hint' }, 'Puedes dejar las cotizaciones anotadas y elegir después. Cuando anotes la boleta o factura del proveedor que elegiste, se vincula sola.')); }
+        var elegidoSel = h('select', { 'aria-label': 'Proveedor elegido' }), netoField, gastoSel;
+        /* las opciones salen de los nombres que escribes, al instante */
+        function names() { var seen = {}, out = []; (cq.cots || []).forEach(function (x) { var n = String(x.proveedor || '').trim(); if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = true; out.push(n); } }); return out; }
+        function fillElegido() {
+          var list = names(), cur = cq.elegido || '';
+          U.clear(elegidoSel);
+          elegidoSel.appendChild(h('option', { value: '' }, 'Todavía no decido'));
+          list.forEach(function (n) { elegidoSel.appendChild(h('option', { value: n }, n)); });
+          if (cur && list.map(function (n) { return n.toLowerCase(); }).indexOf(cur.toLowerCase()) < 0) { cq.elegido = ''; cur = ''; }
+          elegidoSel.value = cur;
+        }
+        function montoDe(name) { var m = 0; (cq.cots || []).forEach(function (x) { if (String(x.proveedor || '').trim().toLowerCase() === String(name || '').trim().toLowerCase() && num(x.monto) > 0) m = num(x.monto); }); return m; }
+        function matchGasto(name) { var hit = null; (p.expenses || []).forEach(function (e) { if (!hit && name && String(e.proveedor || '').trim().toLowerCase() === String(name).trim().toLowerCase()) hit = e; }); return hit; }
+        /* al elegir proveedor se rellenan el monto neto de la compra y el gasto al que corresponde */
+        function applyElegido(userPick) {
+          var name = cq.elegido || '', m = montoDe(name);
+          if (m) { cq.neto = m; if (netoField) netoField.value = U.fmtNum(m); }
+          if (userPick && name) { var g = matchGasto(name); if (g) { cq.gastoId = g.id; if (gastoSel) gastoSel.value = g.id; } }
+          RF.store.update(function () { }, { silent: true }); refreshSt(); paintOtro();
+        }
+        elegidoSel.addEventListener('change', function () { cq.elegido = elegidoSel.value; applyElegido(true); });
         var rows = h('tbody');
         cq.cots.forEach(function (x, j) {
-          rows.appendChild(h('tr', null, h('td', { 'data-label': 'Proveedor' }, UI.bind(x, 'proveedor', { type: 'text', aria: 'Proveedor', onChange: refreshSt })), h('td', { 'data-label': 'Monto neto' }, UI.bind(x, 'monto', { type: 'money', aria: 'Monto', onChange: refreshSt })), h('td', { 'data-label': 'Fecha' }, UI.bind(x, 'fecha', { type: 'date', aria: 'Fecha' })),
+          rows.appendChild(h('tr', null,
+            h('td', { 'data-label': 'Proveedor' }, UI.bind(x, 'proveedor', { type: 'text', aria: 'Proveedor', onChange: function () { fillElegido(); if (cq.elegido) applyElegido(false); refreshSt(); } })),
+            h('td', { 'data-label': 'Monto neto' }, UI.bind(x, 'monto', { type: 'money', aria: 'Monto', onChange: function () { if (cq.elegido && String(x.proveedor || '').trim().toLowerCase() === cq.elegido.toLowerCase()) applyElegido(false); refreshSt(); } })),
+            h('td', { 'data-label': 'Fecha' }, UI.bind(x, 'fecha', { type: 'date', aria: 'Fecha' })),
             h('td', { class: 'act' }, h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar cotización', onclick: function () { cq.cots.splice(j, 1); RF.store.update(function () { }, { silent: true }); paint(); } }, UI.icon('trash', 18)))));
         });
         var expOpts = [{ id: '', name: 'Todavía no compro: estoy comparando' }, { id: '__otro', name: 'Otro gasto que aún no anoté' }].concat(p.expenses.map(function (e) { return { id: e.id, name: (e.proveedor || 'Sin proveedor') + ' · ' + (e.folio || 's/n') + ' · ' + U.fmtCLP(e.total) }; }));
+        netoField = UI.bind(cq, 'neto', { type: 'money', aria: 'Monto neto de la compra', onChange: refreshSt });
+        gastoSel = UI.bind(cq, 'gastoId', { type: 'select', options: expOpts, noEmpty: true, aria: 'Gasto al que corresponde', onChange: function () { refreshSt(); paintOtro(); } });
         body.appendChild(h('div', { class: 'stage-card' },
           h('div', { class: 'stage-head' }, h('span', { class: 'stage-n' }, 'Compra ' + (i + 1)), UI.bind(cq, 'descripcion', { type: 'text', ph: 'Qué vas a comprar o contratar', aria: 'Descripción de la compra', onChange: function () { } }),
             h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar compra', onclick: function () { p.cotizaciones.splice(i, 1); RF.store.update(function () { }, { silent: true }); paint(); } }, UI.icon('trash', 18))),
-          h('div', { class: 'form-grid' }, UI.field('Monto neto de la compra ($)', cq, 'neto', { type: 'money', onChange: refreshSt }), h('div', { class: 'field' }, UI.field('Gasto al que corresponde', cq, 'gastoId', { type: 'select', options: expOpts, noEmpty: true, onChange: function () { refreshSt(); paintOtro(); } }), otro),
-            UI.field('Es servicio técnico-profesional (no pide cotizaciones)', cq, 'servicioTecnico', { type: 'check', onChange: refreshSt }), h('div', { class: 'check-tip' }, UI.field('Tengo autorización previa de CORFO', cq, 'autorizacion', { type: 'check', onChange: refreshSt }), UI.tip('Es el visto bueno de CORFO, por escrito, para comprar con una sola cotización o con ninguna. Si no lo tienes guardado en tu expediente, no lo tienes: pídelo antes de comprar con «Consultar una duda a CORFO».', 'Cómo saber si tengo la autorización'))),
+          h('h4', { class: 'cot-sub' }, 'Cotizaciones recibidas'),
           h('div', { class: 'table-scroll' }, h('table', { class: 'edit-grid' }, h('thead', null, h('tr', null, ['Proveedor', 'Monto neto', 'Fecha', ''].map(function (x) { return h('th', null, x); }))), rows)),
           UI.btn('Agregar cotización', { icon: 'plus', cls: 'ghost', onclick: function () { cq.cots.push({}); RF.store.update(function () { }, { silent: true }); paint(); } }),
-          UI.field('Proveedor elegido (si ya decidiste)', cq, 'elegido', { type: 'select', options: [{ id: '', name: 'Todavía no decido' }].concat((cq.cots || []).filter(function (x) { return String(x.proveedor || '').trim(); }).map(function (x) { return { id: String(x.proveedor).trim(), name: String(x.proveedor).trim() }; })), noEmpty: true }),
+          h('h4', { class: 'cot-sub' }, 'Tu elección'),
+          h('div', { class: 'form-grid' },
+            UI.labelWrap('Proveedor elegido', elegidoSel, 'Al elegirlo se rellenan el monto de la compra y el gasto.'),
+            UI.labelWrap('Monto neto de la compra ($)', netoField, 'Se rellena solo con la cotización elegida.'),
+            h('div', { class: 'field' }, UI.labelWrap('Gasto al que corresponde', gastoSel), otro),
+            h('div', { class: 'checks wide' },
+              UI.field('Es servicio técnico-profesional (no pide cotizaciones)', cq, 'servicioTecnico', { type: 'check', onChange: refreshSt }),
+              autoField)),
           UI.field('Por qué elegiste al proveedor', cq, 'justificacion', { type: 'textarea', rows: 2, cls: 'wide' }), st));
-        refreshSt(); paintOtro();
+        fillElegido(); refreshSt(); paintOtro();
       });
       body.appendChild(UI.btn('Agregar compra', { icon: 'plus', cls: 'primary', onclick: function () { p.cotizaciones.push({ id: U.uid('q'), descripcion: '', neto: '', cots: [{}, {}], gastoId: '' }); RF.store.update(function () { }, { silent: true }); paint(); } }));
     }
@@ -384,7 +419,7 @@
   formTool('informeA', 'form', 'Talleres, capacitaciones y visitas.', 'Una ficha por actividad. Si eliges la actividad de tu Gantt, los montos se rellenan solos.');
   formTool('informeB', 'form', 'Estudios y consultorías contratadas.', 'Una ficha por estudio.');
   formTool('informeC', 'form', 'Obras, inmuebles y compra de activos.', 'Una ficha por activo u obra. Recuerda las fotos y los permisos.');
-  formTool('informeD', 'form', 'Una ficha por persona contratada.', 'Nombre, RUT, meses, montos y función.');
+  formTool('informeD', 'form', 'Una ficha por persona contratada: los meses, lo mensual y el avance se calculan solos.', 'Una ficha por persona. Escribe de arriba hacia abajo: nombre, funciones, fechas y monto. Lo demás se calcula solo.');
   formTool('informeE', 'form', 'Actividades que no calzan en las otras fichas.', 'Descripción, proveedor, montos y fechas.');
   formTool('consulta', 'help', 'Redacta tu duda con los hechos, la norma y el impacto.', 'Mejor preguntar antes de gastar. Guarda la respuesta en tu expediente.');
   formTool('prorroga', 'file', 'Pide más tiempo para entregar el PEA (una vez, hasta 30 días).', 'Se pide antes de que venza el plazo de 90 días. Explica el motivo: tiene que ser una solicitud fundada.');
