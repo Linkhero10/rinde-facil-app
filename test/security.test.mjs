@@ -111,3 +111,19 @@ test('un respaldo con claves __proto__ o constructor no cambia el prototipo de n
   assert.equal(Object.prototype.hasOwnProperty.call(s, 'constructor'), false);
   assert.equal(s.projects[0].name, 'X', 'lo legítimo se conserva');
 });
+
+test('si Apps Script contesta a una acción con la respuesta de «ping», la app repite en vez de decir que no hay cuenta', async () => {
+  const approved = 'https://script.google.com/macros/s/APROBADO/exec';
+  let n = 0;
+  const app = loadApp(undefined, {
+    RF_SERVICE_TRUST: { approvedAppsScriptUrls: [approved] },
+    fetch: async () => { n++; const body = n < 3 ? { ok: true, service: 'rinde-facil', version: '3.0.0' } : { ok: true, exists: true, saltP: 'AAAA', it: 600000 }; return { ok: true, text: async () => JSON.stringify(body) }; }
+  });
+  const r = await app.cloud.postRawTo(approved, 'challenge', {});
+  assert.equal(r.exists, true);
+  assert.equal(n, 3, 'dos respuestas de ping descartadas y una buena');
+  /* «ping» de verdad sí se entrega tal cual */
+  n = 0;
+  const p = await app.cloud.postRawTo(approved, 'ping', {});
+  assert.equal(p.version, '3.0.0'); assert.equal(n, 1);
+});

@@ -141,7 +141,20 @@
   function trustError() { return Object.assign(new Error('La dirección del servicio no está aprobada en esta versión de Rinde Fácil. No se enviaron datos ni claves.'), { code: 'SERVICIO_NO_APROBADO' }); }
   function connectionError(u) { return u && validUrl(u) && !trustedUrl(u) ? trustError() : Object.assign(new Error('No hay un servicio aprobado configurado.'), { code: 'NO_CONFIGURADO' }); }
   function configured() { return trustedUrl(cfg().apiUrl); }
+  /* Apps Script a veces contesta a un POST con la respuesta de «ping» (la de doGet) sin haber ejecutado la acción. Esa respuesta tiene solo ok, service y version;
+     como la acción no se ejecutó, repetirla es seguro. Sin esto, la primera llamada de «Conectar este equipo» decía «el servicio no tiene cuenta» aunque la tuviera. */
+  function isStrayPing(action, r) { return action !== 'ping' && !!r && r.ok === true && r.service === 'rinde-facil' && !!r.version && Object.keys(r).length === 3; }
   function rawPostTo(url, action, payload, timeoutMs) {
+    function attempt(n) {
+      return rawPostOnce(url, action, payload, timeoutMs).then(function (r) {
+        if (!isStrayPing(action, r)) return r;
+        if (n >= 3) throw new Error('RESPUESTA_INVALIDA');
+        return new Promise(function (res) { setTimeout(res, 900 * (n + 1)); }).then(function () { return attempt(n + 1); });
+      });
+    }
+    return attempt(0);
+  }
+  function rawPostOnce(url, action, payload, timeoutMs) {
     if (!trustedUrl(url)) return Promise.reject(trustError());
     var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var to = ctl ? setTimeout(function () { ctl.abort(); }, timeoutMs || 90000) : null;
