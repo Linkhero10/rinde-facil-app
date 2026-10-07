@@ -226,7 +226,8 @@
   }
 
   /* ---------- avance por trámite / fase ---------- */
-  function itemSteps(tid) { var t = RF.tramites.byId[tid]; return t ? t.steps.length : 0; }
+  /* pasos obligatorios de un trámite (los opcionales se pueden marcar, pero no cuentan para el avance) */
+  function requiredSteps(tid) { var t = RF.tramites.byId[tid], out = []; if (!t) return out; t.steps.forEach(function (_, i) { if (!(t.opt && t.opt[i])) out.push(i); }); return out; }
   /* ---------- qué trámites le tocan a este proyecto (según «Qué necesitará tu proyecto») ---------- */
   function needsAnswered(p) { return !!(p && p.needsSet); }
   function effectiveNeeds(p, community) {
@@ -245,10 +246,10 @@
     return map.some(function (k) { return !!eff[k]; });
   }
   function itemProgress(project, tid) {
-    var n = itemSteps(tid), done = 0;
+    var req = requiredSteps(tid), n = req.length, done = 0;
     if (project && project.na && project.na[tid]) return { done: 0, total: 0, na: true, complete: true };
     if (project && project.needsSet && !applies(project, tid)) return { done: 0, total: 0, na: true, auto: true, complete: true };
-    for (var i = 0; i < n; i++) if (project && project.done[tid + ':' + i]) done++;
+    req.forEach(function (i) { if (project && project.done[tid + ':' + i]) done++; });
     return { done: done, total: n, na: false, complete: n > 0 && done === n };
   }
   function progress(project) {
@@ -264,7 +265,7 @@
           complete = false;
           if (!next) {
             next = { tramiteId: tid, stepIdx: 0, fase: f.id };
-            for (var i = 0; i < ip.total; i++) { if (!(project && project.done[tid + ':' + i])) { next.stepIdx = i; break; } }
+            var rq = requiredSteps(tid); for (var i = 0; i < rq.length; i++) { if (!(project && project.done[tid + ':' + rq[i]])) { next.stepIdx = rq[i]; break; } }
           }
         }
       });
@@ -450,6 +451,6 @@
     totalsByCuenta: totalsByCuenta, adminByMonth: adminByMonth, expensesByActivity: expensesByActivity, budgetByActivity: budgetByActivity,
     allActivities: allActivities, ganttIssues: ganttIssues, activityDays: activityDays, activityReferences: activityReferences, removeActivity: removeActivity, removeStage: removeStage,
     peaDeadline: peaDeadline, aclaracionDeadline: aclaracionDeadline,
-    itemProgress: itemProgress, applies: applies, needsAnswered: needsAnswered, effectiveNeeds: effectiveNeeds, progress: progress, skippedPhases: skippedPhases, reconcile: reconcile
+    itemProgress: itemProgress, requiredSteps: requiredSteps, applies: applies, needsAnswered: needsAnswered, effectiveNeeds: effectiveNeeds, progress: progress, skippedPhases: skippedPhases, reconcile: reconcile
   };
 })(typeof window !== 'undefined' ? window : globalThis);

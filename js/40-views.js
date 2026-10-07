@@ -188,7 +188,7 @@
     ids.forEach(function (x) {
       var tl = RF.tools[x]; if (!tl) return;
       kids.push(h('span', { class: 'sd' },
-        h('a', { class: 'btn small', href: '#/h/' + x + '?from=' + encodeURIComponent(tid) }, UI.icon(tl.icon || 'file', 14), (FORMY.test(x) ? 'Rellenar · ' : 'Abrir · ') + tl.title),
+        h('a', { class: 'btn small', href: '#/h/' + x + '?from=' + encodeURIComponent(tid) }, UI.icon(tl.icon || 'file', 14), (FORMY.test(x) ? 'Rellenar · ' : 'Abrir · ') + tl.title), (RF.needs.TOOL_ROLE[x] && RF.needs.TOOL_ROLE[x].kind === 'apoyo') ? h('span', { class: 'st-opt' }, 'Herramienta opcional') : null,
         RF.docs && RF.docs.hasPreview(x) ? UI.btn('Ver formato', { cls: 'ghost small', title: 'Mira cómo queda el documento', onclick: function () { RF.docs.preview(x); } }) : null));
     });
     return kids.length ? h('div', { class: 'step-docs' }, kids) : null;
@@ -210,13 +210,15 @@
     if (id === 'TRM-027' && p) { var pd = L.peaDeadline(p, U.todayISO()); root.appendChild(pd ? UI.callout(pd.diasRestantes < 0 ? 'bad' : pd.diasRestantes <= 15 ? 'warn' : 'info', 'Tu plazo:', ' vence el ' + U.fmtDate(pd.fin) + (pd.diasRestantes >= 0 ? ' (faltan ' + pd.diasRestantes + ' días).' : ' (ya venció; con prórroga única, hasta el ' + U.fmtDate(pd.finProrroga) + ').')) : UI.callout('info', '', 'Anota la fecha del primer pago en «Mi comunidad y proyectos» para calcular tu plazo.')); }
     /* qué necesitas */
     if (t.need && t.need.length) root.appendChild(UI.section('Qué necesitas', [h('ul', { class: 'need-list' }, t.need.map(function (n) { return h('li', null, n); }))]));
+    /* a tener en cuenta (texto, no se marca) */
+    if (t.notes && t.notes.length) root.appendChild(h('section', { class: 'card notes-card' }, h('h2', { class: 'card-title' }, 'Ten en cuenta'), h('ul', { class: 'notes-list' }, t.notes.map(function (n) { return h('li', null, n); }))));
     /* pasos */
     var stepsBox = h('ol', { class: 'steps' });
     var counter = h('span', { class: 'steps-count' });
-    function updCount() { var q = L.itemProgress(p || { done: {} }, id); counter.textContent = q.na ? 'No aplica' : q.done + ' de ' + q.total; }
+    function updCount() { var q = L.itemProgress(p || { done: {} }, id); counter.textContent = q.na ? 'No aplica' : q.done + ' de ' + q.total + (q.total < t.steps.length ? ' (+' + (t.steps.length - q.total) + ' opcional' + (t.steps.length - q.total > 1 ? 'es' : '') + ')' : ''); }
     t.steps.forEach(function (txt, i) {
       var cb = h('input', { type: 'checkbox', id: 'st-' + i, checked: !!(p && RF.store.isDone(p, id, i)), disabled: !p });
-      var li = h('li', { class: 'step' + (cb.checked ? ' done' : '') }, h('label', { for: 'st-' + i }, cb, h('span', { class: 'st-n' }, String(i + 1)), h('span', { class: 'st-t' }, txt)));
+      var li = h('li', { class: 'step' + (cb.checked ? ' done' : '') }, h('label', { for: 'st-' + i }, cb, h('span', { class: 'st-n' }, String(i + 1)), h('span', { class: 'st-t' }, txt), t.opt && t.opt[i] ? h('span', { class: 'st-opt' }, t.opt[i]) : null));
       cb.addEventListener('change', function () { RF.store.setDone(id, i, cb.checked); li.classList.toggle('done', cb.checked); updCount(); refreshSide(); });
       var sd = stepDocs(id, i); if (sd) li.appendChild(sd);
       stepsBox.appendChild(li);

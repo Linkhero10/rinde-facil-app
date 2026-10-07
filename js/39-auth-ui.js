@@ -264,7 +264,7 @@
     }
     if (RF.cloud.configured()) root.appendChild(UI.section('Quién entró al servicio', [h('p', { class: 'hint' }, 'Los últimos accesos. Si ves algo que no reconoces, cambia la contraseña y cierra todas las sesiones.'), UI.btn('Ver el registro', { icon: 'list', cls: 'ghost', onclick: loadLog }), log]));
 
-    root.appendChild(UI.section('Si pierdes o cambias de equipo', [h('p', { class: 'hint' }, 'Puedes borrar todos los datos de este equipo. Lo que esté en el Drive de la comunidad no se toca. Después puedes volver a conectarte con la contraseña.'),
+    root.appendChild(UI.section('Dejar de usar este equipo', [h('p', { class: 'hint' }, 'Este navegador guarda una copia cifrada de tus proyectos y fotos para que la app funcione rápido. Si vas a prestar, devolver o dejar de usar este equipo, bórrala. No se toca nada del Drive de la comunidad: al volver a entrar con tu contraseña, tus proyectos se descargan de nuevo. Lo que no alcanzó a enviarse al Drive se pierde.'),
       UI.btn('Borrar los datos de este equipo', { icon: 'trash', cls: 'ghost danger', onclick: function () { UI.confirmBox('Se borrarán proyectos, fotos y ajustes de ESTE equipo y tendrás que crear o conectar la cuenta otra vez. Lo del Drive no se borra. ¿Seguir?', 'Borrar todo').then(function (ok) { if (ok) A.wipeDevice().then(function () { location.hash = '#/'; location.reload(); }); }); } })]));
     return root;
   } };

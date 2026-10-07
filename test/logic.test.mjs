@@ -41,8 +41,14 @@ test('datos: cada trámite del inventario está cubierto una sola vez', () => {
   assert.equal(new Set(all).size, all.length, 'ningún trámite repetido');
   all.forEach(id => assert.ok(RF.tramites.byId[id], 'existe contenido para ' + id));
   RF.tramites.list.forEach(t => {
-    assert.ok(t.title && t.why && t.steps.length >= 2, t.id + ' tiene título, motivo y pasos');
+    assert.ok(t.title && t.why && t.steps.length >= 1, t.id + ' tiene título, motivo y pasos');
     t.steps.forEach(s => assert.ok(s.length < 260, t.id + ' paso demasiado largo: ' + s.slice(0, 50)));
+    const req = t.steps.filter((_, i) => !(t.opt && t.opt[i]));
+    assert.ok(req.length >= 1, t.id + ' tiene al menos un paso obligatorio (si no, nunca se completa)');
+    Object.keys(t.opt || {}).concat(Object.keys(t.stepTools || {})).forEach(i => assert.ok(i >= 0 && i < t.steps.length, t.id + ' apunta a un paso que no existe: ' + i));
+    (t.notes || []).forEach(n => assert.ok(n.length > 10, t.id + ' nota vacía'));
+    /* un paso es una acción: no debe empezar describiendo lo que hace otra persona o el sistema */
+    t.steps.forEach(x => assert.ok(!/^(CORFO (avisa|revisa)|Novandino .* transfiere|Espera que)/.test(x), t.id + ' paso que no es acción del usuario: ' + x.slice(0, 50)));
   });
   /* el flujo tiene los 28 pasos + 3 decisiones y las aristas apuntan a nodos del mismo bloque */
   assert.equal(Object.keys(D.FLOW).length, 31);
