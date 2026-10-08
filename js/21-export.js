@@ -212,8 +212,8 @@
 
   function docToHtmlBody(doc) {
     doc = X(doc, 'html');
-    var e = U.esc, h = '<h1>' + e(doc.title) + '</h1>';
-    if (doc.subtitle) h += '<p class="sub">' + e(doc.subtitle) + '</p>';
+    var e = U.esc, h = doc.report ? '' : '<h1>' + e(doc.title) + '</h1>';
+    if (doc.subtitle && !doc.report) h += '<p class="sub">' + e(doc.subtitle) + '</p>';
     (doc.blocks || []).forEach(function (b) {
       if (b.t === 'html') h += b.html;
       else if (b.t === 'pagebreak') h += '<div class="pb"></div>';
@@ -221,9 +221,9 @@
       else if (b.t === 'h') h += '<h2>' + e(b.text) + '</h2>';
       else if (b.t === 'p') h += '<p>' + e(b.text).replace(/\n/g, '<br>') + '</p>';
       else if (b.t === 'note') h += '<p class="note">' + e(b.text) + '</p>';
-      else if (b.t === 'kv') { h += '<table class="kv">'; (b.rows || []).forEach(function (r) { h += '<tr><th>' + e(r[0]) + '</th><td>' + e(r[1] === undefined ? '' : r[1]).replace(/\n/g, '<br>') + '</td></tr>'; }); h += '</table>'; }
+      else if (b.t === 'kv') { h += '<table class="kv">'; (b.rows || []).forEach(function (r) { h += '<tr><th>' + e(r[0]) + '</th><td>' + (doc.report && (r[1] === undefined || r[1] === '') ? '<span style="color:#9a93a6">—</span>' : e(r[1] === undefined ? '' : r[1]).replace(/\n/g, '<br>')) + '</td></tr>'; }); h += '</table>'; }
       else if (b.t === 'table') {
-        h += '<table class="grid"><thead><tr>' + (b.head || []).map(function (x, i) { return '<th' + (b.types && (b.types[i] === 'money' || b.types[i] === 'pct' || b.types[i] === 'num') ? ' class="r"' : '') + '>' + e(x) + '</th>'; }).join('') + '</tr></thead><tbody>';
+        h += '<table class="grid' + (b.pw ? ' fx' : '') + '">' + (b.pw ? '<colgroup>' + b.pw.map(function (w) { return '<col style="width:' + w + '%">'; }).join('') + '</colgroup>' : '') + '<thead><tr>' + (b.head || []).map(function (x, i) { return '<th' + (b.types && (b.types[i] === 'money' || b.types[i] === 'pct' || b.types[i] === 'num') ? ' class="r"' : '') + '>' + e(x) + '</th>'; }).join('') + '</tr></thead><tbody>';
         (b.rows || []).forEach(function (r) { h += '<tr>' + r.map(function (v, i) { var ty = b.types && b.types[i]; return '<td' + (ty === 'money' || ty === 'pct' || ty === 'num' ? ' class="r"' : '') + '>' + e(fmtCell(v, ty)) + '</td>'; }).join('') + '</tr>'; });
         if (!(b.rows || []).length) h += '<tr><td colspan="' + (b.head || []).length + '" class="empty">&nbsp;</td></tr>';
         h += '</tbody>';
@@ -242,7 +242,7 @@
     '.grid th,.grid td{border:1px solid #444;padding:3pt 5pt;font-size:10.5pt;vertical-align:top}.grid thead th{background:#e3ecea;text-align:left}.grid tfoot th{background:#f2f2f2;text-align:left}.r{text-align:right!important;white-space:nowrap}' +
     '.empty{height:22pt}.sign{display:flex;gap:28pt;margin-top:46pt}.sign>div{flex:1;text-align:center;font-size:10.5pt}.sign span{display:block;border-top:1px solid #000;margin-bottom:3pt}';
   function docToHtml(doc, opts) {
-    var css = DOC_CSS + (doc.pro && RF.exp && RF.exp.PRO_CSS ? RF.exp.PRO_CSS : '') + (opts && opts.look && RF.exp && RF.exp.LOOK_CSS ? RF.exp.LOOK_CSS[opts.look] || '' : '');
+    var css = DOC_CSS + (doc.pro && RF.exp && RF.exp.PRO_CSS ? RF.exp.PRO_CSS : '') + (doc.report && doc.footTitle ? '@page{@bottom-left{content:"' + String(doc.footTitle).replace(/[\\"\n]/g, ' ') + '";font:8pt Segoe UI,Calibri,Arial,sans-serif;color:#6b6478}@bottom-right{content:"Página " counter(page);font:8pt Segoe UI,Calibri,Arial,sans-serif;color:#6b6478}}' : '') + (opts && opts.look && RF.exp && RF.exp.LOOK_CSS ? RF.exp.LOOK_CSS[opts.look] || '' : '');
     return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + U.esc(doc.title) + '</title><style>' + css + '</style></head><body>' + docToHtmlBody(doc) + '</body></html>';
   }
   function docToWord(doc) { /* Word abre HTML con extensión .doc */
@@ -264,39 +264,81 @@
       o = o || {};
       var lines = String(text == null ? '' : text).split('\n');
       var runs = lines.map(function (l, i) { return (i ? '<w:r><w:br/></w:r>' : '') + run(l, o); }).join('');
-      return '<w:p><w:pPr><w:spacing w:before="' + (o.before == null ? 0 : o.before) + '" w:after="' + (o.after == null ? 120 : o.after) + '"/>' + (o.keep ? '<w:keepNext/>' : '') + '</w:pPr>' + runs + '</w:p>';
+      return '<w:p><w:pPr>' + (o.keep ? '<w:keepNext/>' : '') + '<w:spacing w:before="' + (o.before == null ? 0 : o.before) + '" w:after="' + (o.after == null ? 120 : o.after) + '"/>' + (o.jc ? '<w:jc w:val="' + o.jc + '"/>' : '') + '</w:pPr>' + runs + '</w:p>';
     }
     function cell(text, o) {
       o = o || {};
-      return '<w:tc><w:tcPr><w:tcW w:w="' + (o.w || 2000) + '" w:type="dxa"/>' + (o.shade ? '<w:shd w:val="clear" w:color="auto" w:fill="' + o.shade + '"/>' : '') + '</w:tcPr>' + para(text, { b: o.b, sz: 20, after: 40 }) + '</w:tc>';
+      return '<w:tc><w:tcPr><w:tcW w:w="' + (o.w || 2000) + '" w:type="dxa"/>' + (o.span ? '<w:gridSpan w:val="' + o.span + '"/>' : '') + (o.shade ? '<w:shd w:val="clear" w:color="auto" w:fill="' + o.shade + '"/>' : '') + (o.vert ? '<w:textDirection w:val="btLr"/>' : '') + '<w:vAlign w:val="center"/></w:tcPr>' + para(text, { b: o.b, color: o.color, sz: o.sz || 18, after: 40, jc: o.jc, keep: o.keep }) + '</w:tc>';
     }
-    function table(head, rows, foot, types, wide) {
-      var cols = Math.max(head ? head.length : 0, rows.length ? rows[0].length : 0, 1), total = wide ? 14000 : 9600, w = Math.floor(total / cols);
-      var x = '<w:tbl><w:tblPr><w:tblW w:w="' + total + '" w:type="dxa"/><w:tblBorders>' + ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(function (k) { return '<w:' + k + ' w:val="single" w:sz="4" w:space="0" w:color="999999"/>'; }).join('') + '</w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>' + new Array(cols + 1).join('<w:gridCol w:w="' + w + '"/>') + '</w:tblGrid>';
-      if (head && head.length) x += '<w:tr><w:trPr><w:tblHeader/></w:trPr>' + head.map(function (t) { return cell(t, { w: w, b: true, shade: 'D9E7E5' }); }).join('') + '</w:tr>';
-      rows.forEach(function (r) { x += '<w:tr>' + r.map(function (v, i) { return cell(fmtCell(v, types && types[i]), { w: w }); }).join('') + '</w:tr>'; });
-      if (foot) x += '<w:tr>' + foot.map(function (v, i) { return cell(v === 'SUM' ? fmtCell(sumCol(rows, i), types && types[i]) : (v == null ? '' : fmtCell(v, types && types[i])), { w: w, b: true }); }).join('') + '</w:tr>';
+    var NUMT = { money: 1, num: 1, number: 1, pct: 1 };
+    function jcFor(type) { return NUMT[type] ? 'right' : undefined; }
+    function gridWidths(cols, total, pw) { /* pw: porcentajes por columna; si no sirven, partes iguales */
+      var ok = Array.isArray(pw) && pw.length === cols && pw.every(function (p) { return Number(p) > 0; });
+      var sum = ok ? pw.reduce(function (a, p) { return a + Number(p); }, 0) : 0, out = [], used = 0;
+      for (var i = 0; i < cols; i++) { var w = ok ? Math.floor(total * Number(pw[i]) / sum) : Math.floor(total / cols); out.push(w); used += w; }
+      out[cols - 1] += total - used;
+      return out;
+    }
+    function tblOpen(total, mar) { /* bordes: solo líneas horizontales finas */
+      mar = mar == null ? 80 : mar;
+      return '<w:tbl><w:tblPr><w:tblW w:w="' + total + '" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="E4DFEA"/><w:left w:val="nil"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="E4DFEA"/><w:right w:val="nil"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="E4DFEA"/><w:insideV w:val="nil"/></w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="' + mar + '" w:type="dxa"/><w:right w:w="' + mar + '" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>';
+    }
+    function table(head, rows, foot, types, pw, land) {
+      var cols = Math.max(head ? head.length : 0, rows.length ? rows[0].length : 0, 1), total = land ? 14800 : 9600, sz = land ? 16 : 18;
+      var ws = gridWidths(cols, total, pw);
+      var x = tblOpen(total) + ws.map(function (w) { return '<w:gridCol w:w="' + w + '"/>'; }).join('') + '</w:tblGrid>';
+      if (head && head.length) x += '<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>' + head.map(function (t, i) { return cell(t, { w: ws[i], b: true, shade: 'F1ECF7', color: '3A1A58', sz: sz, jc: jcFor(types && types[i]) }); }).join('') + '</w:tr>';
+      rows.forEach(function (r) { x += '<w:tr><w:trPr><w:cantSplit/></w:trPr>' + r.map(function (v, i) { return cell(fmtCell(v, types && types[i]), { w: ws[i], sz: sz, jc: jcFor(types && types[i]) }); }).join('') + '</w:tr>'; });
+      if (foot) x += '<w:tr><w:trPr><w:cantSplit/></w:trPr>' + foot.map(function (v, i) { return cell(v === 'SUM' ? fmtCell(sumCol(rows, i), types && types[i]) : (v == null ? '' : fmtCell(v, types && types[i])), { w: ws[i], b: true, shade: 'F1ECF7', sz: sz, jc: jcFor(types && types[i]) }); }).join('') + '</w:tr>';
       return x + '</w:tbl>' + para('', { after: 80 });
     }
-    var wide = (doc.blocks || []).some(function (b) { return b.t === 'table' && (b.head || []).length > 7; });
-    var body = para(doc.title, { b: true, sz: 32, after: 60 });
-    if (doc.subtitle) body += para(doc.subtitle, { i: true, color: '555555', after: 200 });
+    /* Carta Gantt: horizontal; columnas de mes angostas con texto rotado; mes activo = celda morada */
+    function gantt(b) {
+      var ms = b.months || [], n = ms.length, total = 14800, mw = n ? Math.floor(7200 / n) : 0;
+      var gw = [3300, 2000, total - 5300 - mw * n], all = gw.concat(ms.map(function () { return mw; })), cols = all.length;
+      var hd = { b: true, shade: 'F1ECF7', color: '3A1A58', sz: 16 };
+      var x = (b.title ? para(b.title, { b: true, sz: 22, color: '51247A', after: 80, keep: true }) : '') + tblOpen(total, 30) + all.map(function (w) { return '<w:gridCol w:w="' + w + '"/>'; }).join('') + '</w:tblGrid>';
+      x += '<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="1000" w:hRule="atLeast"/><w:tblHeader/></w:trPr>' + cell('Actividad', Object.assign({ w: gw[0] }, hd)) + cell('Período', Object.assign({ w: gw[1] }, hd)) + cell('Resultado o hito', Object.assign({ w: gw[2] }, hd)) + ms.map(function (m) { return cell(String(m).replace('-', '\n'), Object.assign({ w: mw, sz: 14, jc: 'center' }, hd)); }).join('') + '</w:tr>';
+      var last = null;
+      (b.rows || []).forEach(function (r) {
+        if (r.stage !== last) { last = r.stage; x += '<w:tr><w:trPr><w:cantSplit/></w:trPr>' + cell(r.stage, { w: total, span: cols, b: true, shade: 'EFE9F5', color: '51247A', sz: 16, keep: true }) + '</w:tr>'; }
+        var on = r.on || [];
+        x += '<w:tr><w:trPr><w:cantSplit/></w:trPr>' + cell(r.name, { w: gw[0], sz: 16 }) + cell(fmtCell(r.start, 'date') + ' – ' + fmtCell(r.end, 'date'), { w: gw[1], sz: 16 }) + cell(r.result || '', { w: gw[2], sz: 16 }) + ms.map(function (_, i) { return cell('', { w: mw, sz: 14, shade: on[i] ? '51247A' : undefined }); }).join('') + '</w:tr>';
+      });
+      return x + '</w:tbl>' + para('', { after: 80 });
+    }
+    /* orientación por sección: el sectPr dentro de un párrafo describe la sección que termina ahí */
+    var land = false;
+    function sectPr(isLand) {
+      return '<w:sectPr>' + (doc.pro ? '<w:footerReference w:type="default" r:id="rIdFtr1"/>' : '') + (isLand ? '<w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="1000" w:right="1000" w:bottom="1000" w:left="1000"/>' : '<w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1200" w:right="1100" w:bottom="1200" w:left="1100"/>') + '</w:sectPr>';
+    }
+    function sectBreak(isLand) { return '<w:p><w:pPr><w:spacing w:before="0" w:after="0"/>' + sectPr(isLand) + '</w:pPr></w:p>'; }
+    function kpis(items) { /* cifras grandes en una fila, sin bordes */
+      var n = Math.max(1, items.length), w = Math.floor(9600 / n);
+      return '<w:tbl><w:tblPr><w:tblW w:w="9600" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="12" w:space="0" w:color="1F1B2D"/></w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>' + items.map(function () { return '<w:gridCol w:w="' + w + '"/>'; }).join('') + '</w:tblGrid><w:tr>' +
+        items.map(function (k) { return '<w:tc><w:tcPr><w:tcW w:w="' + w + '" w:type="dxa"/></w:tcPr>' + para(k.value, { b: true, sz: 36, before: 160, after: 0 }) + para(String(k.label || '').toUpperCase(), { sz: 15, color: '6B6478', after: 80 }) + '</w:tc>'; }).join('') + '</w:tr></w:tbl>' + para('', { after: 80 });
+    }
+    var body = doc.report ? '' : para(doc.title, { b: true, sz: 32, after: 60 }), headAt = -1;
+    if (doc.subtitle && !doc.report) body += para(doc.subtitle, { i: true, color: '555555', after: 200 });
     (doc.blocks || []).forEach(function (b) {
+      var isHead = b.t === 'h' || b.hd; if (isHead && headAt < 0) headAt = body.length; else if (!isHead) { var keepAt = headAt; headAt = -1; }
+      var want = b.t === 'pagebreak' ? null : (b.t === 'gantt' || (b.t === 'table' && (b.wide === true || (b.head || []).length >= 8)));
+      if (want !== null && want !== land) { if (keepAt >= 0) body = body.slice(0, keepAt) + sectBreak(land) + body.slice(keepAt); else body += sectBreak(land); land = want; }
       if (b.t === 'pagebreak') body += '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+      else if (b.t === 'gantt') body += gantt(b);
+      else if (b.t === 'kpis') body += kpis(b.items || []);
       else if (b.t === 'image') body += imgPara(b.png, 5600000, Math.round(5600000 * (b.h || 1) / (b.w || 1)));
       else if (b.t === 'big') body += para(b.text, { b: true, sz: Math.round((b.sz || 20) * 2), color: (b.color || '111111').replace('#', ''), after: b.after == null ? 120 : b.after, before: b.before || 0 });
       else if (b.t === 'h') body += para(b.text, { b: true, sz: 26, before: 200, keep: true, color: doc.pro ? '51247A' : undefined });
       else if (b.t === 'p') body += para(b.text);
       else if (b.t === 'note') body += para(b.text, { i: true, sz: 20, color: '555555' });
-      else if (b.t === 'kv') body += table(null, (b.rows || []).map(function (r) { return [r[0], r[1] === undefined ? '' : r[1]]; }), null, null, wide);
-      else if (b.t === 'table') body += table(b.head || [], b.rows || [], b.foot, b.types, wide);
+      else if (b.t === 'kv') body += table(null, (b.rows || []).map(function (r) { return [r[0], r[1] === undefined ? '' : r[1]]; }), null, null, null, false);
+      else if (b.t === 'table') body += table(b.head || [], b.rows || [], b.foot, b.types, b.pw, land);
       else if (b.t === 'sign') body += (b.images && b.images.some(Boolean) ? b.images.map(imgPara).join('') : para('', { after: 400 })) + para((b.labels || []).map(function (l) { return '______________________  ' + l; }).join('        '));
     });
     if (doc.footer) body += para(doc.footer, { i: true, sz: 18, color: '555555', before: 240 });
     var footerXml = doc.pro ? '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ' + W + '><w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="4" w:space="4" w:color="BBBBBB"/></w:pBdr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="16"/><w:color w:val="666666"/></w:rPr><w:t xml:space="preserve">' + U.esc(doc.footTitle || doc.title) + ' · página </w:t></w:r><w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:t>1</w:t></w:r><w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>' : '';
-    var sect = wide ? '<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="1000" w:right="1000" w:bottom="1000" w:left="1000"/></w:sectPr>' : '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1200" w:right="1100" w:bottom="1200" w:left="1100"/></w:sectPr>';
-    if (footerXml) sect = sect.replace('<w:pgSz', '<w:footerReference w:type="default" r:id="rIdFtr1"/><w:pgSz');
-    var documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ' + W + '><w:body>' + body + sect + '</w:body></w:document>';
+    var documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ' + W + '><w:body>' + body + sectPr(land) + '</w:body></w:document>';
     var ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>';
     var rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
     var files = [{ name: '[Content_Types].xml', data: utf8(ct.replace('<Default Extension="rels"', media.length ? '<Default Extension="png" ContentType="image/png"/><Default Extension="rels"' : '<Default Extension="rels"')) }, { name: '_rels/.rels', data: utf8(rels) }, { name: 'word/document.xml', data: utf8(documentXml) }];

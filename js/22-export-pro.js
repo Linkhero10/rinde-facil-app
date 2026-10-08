@@ -56,23 +56,53 @@
     return { head: ['Concepto', 'Cantidad'], rows: (b.items || []).map(function (x) { return [x.label, x.value]; }) };
   }
 
-  /* ---------- portada e índice ---------- */
+  /* ---------- portada, índice, subtítulos, Carta Gantt, indicadores ---------- */
+  function secNum(t) { var m = /^(\d+)\.\s*(.*)$/.exec(String(t || '')); return m ? { n: m[1], t: m[2] } : { n: '', t: String(t || '') }; }
   function coverHtml(b) {
-    return '<section class="cover"><p class="cv-k">' + esc(b.kicker || 'Expediente') + '</p><h1 class="cv-t">' + esc(b.title) + '</h1><p class="cv-s">' + esc(b.subtitle || '') + '</p><div class="cv-line"></div>' +
-      '<table class="kv">' + (b.rows || []).filter(function (r) { return r[1]; }).map(function (r) { return '<tr><th>' + esc(r[0]) + '</th><td>' + esc(r[1]) + '</td></tr>'; }).join('') + '</table>' + (b.note ? '<p class="note">' + esc(b.note) + '</p>' : '') + '</section><div class="pb"></div>';
+    var rows = (b.rows || []).filter(function (r) { return r[1]; });
+    return '<section class="cover"><div class="cv-band"></div><div class="cv-body"><p class="cv-k">' + esc(b.kicker || 'Informe') + '</p>' +
+      '<div class="cv-mid"><h1 class="cv-t">' + esc(b.title) + '</h1><p class="cv-s">' + esc(b.subtitle || '') + '</p><div class="cv-rule"></div>' +
+      '<dl class="cv-meta">' + rows.map(function (r) { return '<div><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('') + '</dl></div>' +
+      (b.kpis && b.kpis.length ? '<div class="cv-kpis">' + b.kpis.map(function (k) { return '<div><span class="kv-v">' + esc(k.value) + '</span><span class="kv-l">' + esc(k.label) + '</span></div>'; }).join('') + '</div>' : '') +
+      (b.note ? '<p class="cv-note">' + esc(b.note) + '</p>' : '') + '</div></section>';
+  }
+  function ganttHtml(b) {
+    var ms = b.months || [], cols = 6 + ms.length, last = '', out = '<table class="gantt"><colgroup><col style="width:23%"><col style="width:15%"><col style="width:17%">' + ms.map(function () { return '<col>'; }).join('') + '</colgroup>' +
+      '<thead><tr><th>Actividad</th><th>Período</th><th>Resultado o hito</th>' + ms.map(function (m) { return '<th class="gm"><span>' + esc(m) + '</span></th>'; }).join('') + '</tr></thead><tbody>';
+    cols = 3 + ms.length;
+    (b.rows || []).forEach(function (r) {
+      if (r.stage !== last) { last = r.stage; out += '<tr class="gs"><td colspan="' + cols + '">' + esc(r.stage) + '</td></tr>'; }
+      out += '<tr><td>' + esc(r.name) + '</td><td class="gp">' + esc(U.fmtDateShort ? U.fmtDateShort(r.start) : r.start) + ' – ' + esc(U.fmtDateShort ? U.fmtDateShort(r.end) : r.end) + '</td><td>' + esc(r.result || '') + '</td>' + (r.on || []).map(function (on) { return '<td class="' + (on ? 'g-on' : 'g-off') + '"></td>'; }).join('') + '</tr>';
+    });
+    return out + '</tbody></table>';
   }
   function expand(doc, fmt) {
-    if (!doc || !doc.blocks || !doc.blocks.some(function (b) { return SPECIAL[b.t]; })) return doc;
+    if (!doc || !doc.blocks || !doc.blocks.some(function (b) { return SPECIAL[b.t] || b.t === 'h3' || b.t === 'gantt' || b.wide; })) return doc;
     var heads = doc.blocks.filter(function (b) { return b.t === 'h'; }).map(function (b) { return b.text; });
     var blocks = [];
+    function takeHead() { var l = blocks[blocks.length - 1]; if (l && l.hd) { blocks.pop(); return l.html; } return ''; }
+    function kpiRows(b) { return (b.kpis || []).map(function (k) { return [k.label, k.value]; }); }
+    function ganttTable(b) { var ms = b.months || []; return { t: 'table', head: ['Etapa', 'Actividad', 'Inicio', 'Término', 'Días', 'Resultado o hito'].concat(ms), types: ['text', 'text', 'date', 'date', 'num', 'text'].concat(ms.map(function () { return 'text'; })), rows: (b.rows || []).map(function (r) { return [r.stage, r.name, r.start, r.end, r.days, r.result].concat((r.on || []).map(function (on) { return on ? '■' : ''; })); }) }; }
     doc.blocks.forEach(function (b) {
       if (b.t === 'cover') {
         if (fmt === 'html') blocks.push({ t: 'html', html: coverHtml(b) });
-        else if (fmt === 'docx') { blocks.push({ t: 'big', text: b.kicker || 'Expediente', sz: 12, color: '#51247a', before: 1800, after: 60 }, { t: 'big', text: b.title, sz: 28, color: '#111111', after: 80 }, { t: 'big', text: b.subtitle || '', sz: 13, color: '#555555', after: 300 }, { t: 'kv', rows: (b.rows || []).filter(function (r) { return r[1]; }) }, { t: 'pagebreak' }); }
-        else { blocks.push({ t: 'kv', rows: (b.rows || []).filter(function (r) { return r[1]; }) }); }
+        else if (fmt === 'docx') { blocks.push({ t: 'big', text: (b.kicker || 'Informe').toUpperCase(), sz: 11, color: '#51247a', before: 1800, after: 120 }, { t: 'big', text: b.title, sz: 28, color: '#111111', after: 80 }, { t: 'big', text: b.subtitle || '', sz: 14, color: '#555555', after: 360 }, { t: 'kv', rows: (b.rows || []).filter(function (r) { return r[1]; }) }, { t: 'big', text: '', sz: 8, after: 600 }, { t: 'kpis', items: b.kpis || [] }, { t: 'note', text: b.note || '' }, { t: 'pagebreak' }); }
+        else { blocks.push({ t: 'kv', rows: (b.rows || []).filter(function (r) { return r[1]; }).concat(kpiRows(b)) }); }
       } else if (b.t === 'toc') {
-        if (fmt === 'html') blocks.push({ t: 'html', html: '<h2>Contenido</h2><ol class="toc">' + heads.map(function (x) { return '<li>' + esc(x.replace(/^\d+\.\s*/, '')) + '</li>'; }).join('') + '</ol>' });
+        if (fmt === 'html') blocks.push({ t: 'html', html: '<section class="toc-pg"><h2 class="toc-h">Contenido</h2><ol class="toc">' + heads.map(function (x) { var s = secNum(x); return '<li><span class="tn">' + esc(s.n) + '</span><span class="tt">' + esc(s.t) + '</span></li>'; }).join('') + '</ol></section><div class="pb"></div>' });
         else if (fmt === 'docx') { blocks.push({ t: 'h', text: 'Contenido' }); heads.forEach(function (x) { blocks.push({ t: 'p', text: x }); }); blocks.push({ t: 'pagebreak' }); }
+      } else if (b.t === 'h' && fmt === 'html' && doc.report) {
+        var sn = secNum(b.text); blocks.push({ t: 'html', hd: true, html: '<h2>' + (sn.n ? '<span class="sn">' + esc(sn.n) + '</span>' : '') + esc(sn.t) + '</h2>' });
+      } else if (b.t === 'h3') {
+        if (fmt === 'html') blocks.push({ t: 'html', hd: true, html: '<h3>' + esc(b.text) + '</h3>' });
+        else if (fmt === 'docx') blocks.push({ t: 'big', hd: true, text: b.text, sz: 12, color: '#51247a', before: 160, after: 60 });
+        else blocks.push({ t: 'p', text: b.text });
+      } else if (b.t === 'gantt') {
+        if (fmt === 'html') blocks.push({ t: 'html', html: '<div class="wide">' + takeHead() + ganttHtml(b) + '</div>' });
+        else if (fmt === 'docx') blocks.push(b);
+        else blocks.push(ganttTable(b));
+      } else if (b.t === 'table' && fmt === 'html' && (b.wide || (b.head || []).length >= 8)) {
+        blocks.push({ t: 'html', html: '<div class="wide">' + takeHead() }, b, { t: 'html', html: '</div>' });
       } else if (b.t === 'chart') {
         if (fmt === 'html') blocks.push({ t: 'html', html: '<figure class="chart">' + chartSvg(b) + (b.note ? '<figcaption>' + esc(b.note) + '</figcaption>' : '') + '</figure>' });
         else if (fmt === 'docx' && b.png) { blocks.push({ t: 'image', png: b.png, w: b._w || 760, h: b._h || 300 }); if (b.note) blocks.push({ t: 'note', text: b.note }); }
@@ -113,14 +143,34 @@
     return [{ name: 'Índice', rows: index, cols: [60, 22], merges: [] }].concat(sheets);
   }
 
-  /* ---------- estilos: más cuidados para los documentos «pro» y para la vista previa ---------- */
-  var PRO_CSS = 'body{font-family:"Segoe UI",Calibri,Arial,sans-serif;font-size:10.5pt;color:#1a1a1a}h1{color:#51247a;text-align:left;font-size:20pt}h2{color:#51247a;border-bottom:2px solid #51247a;font-size:13.5pt;margin:20pt 0 6pt}' +
-    '.grid thead th{background:#51247a;color:#fff;border-color:#51247a}.grid tbody tr:nth-child(even) td{background:#f6f2fb}.grid th,.grid td{border-color:#cfc5e0;font-size:9pt}.grid tfoot th{background:#e8dff5}' +
-    '.cover{min-height:230mm;display:flex;flex-direction:column;justify-content:center;padding:0 6mm}.cv-k{color:#51247a;font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:11pt;margin:0}.cv-t{font-size:30pt;line-height:1.1;margin:8pt 0;color:#111}.cv-s{font-size:13pt;color:#555;margin:0 0 18pt}.cv-line{height:5px;width:90px;background:#51247a;margin-bottom:18pt}' +
-    '.pb{page-break-after:always;break-after:page}.chart{margin:10pt 0;page-break-inside:avoid}.chart svg{width:100%;height:auto;border:1px solid #e0d8ec;border-radius:4px}.chart figcaption{font-size:9pt;color:#555;margin-top:3pt}.toc{columns:2;font-size:11pt}.big{margin:0}';
+  /* ---------- estilos: informe formal (PDF / vista previa). Colores: tinta #1f1b2d, morado institucional #51247a, líneas #ded8e6 ---------- */
+  var PRO_CSS = '@page{size:A4;margin:20mm 17mm 22mm}@page wide{size:A4 landscape;margin:16mm 14mm 18mm}@page cover{margin:0}' +
+    'body{font-family:"Segoe UI",Calibri,"Helvetica Neue",Arial,sans-serif;font-size:9.8pt;line-height:1.5;color:#1f1b2d;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+    'h1{font-family:Georgia,"Times New Roman",serif;text-transform:none}h2{font-family:Georgia,"Times New Roman",serif;font-size:15pt;font-weight:700;color:#1f1b2d;border:0;border-top:2px solid #51247a;margin:26pt 0 9pt;padding-top:7pt;break-after:avoid;page-break-after:avoid}' +
+    'h2 .sn{display:inline-block;min-width:22pt;color:#51247a}h3{font-family:Georgia,"Times New Roman",serif;font-size:11.5pt;color:#51247a;margin:14pt 0 4pt;break-after:avoid;page-break-after:avoid}' +
+    'p{margin:4pt 0}.note,.sub{color:#6b6478}.foot{border-top:1px solid #ded8e6;color:#6b6478;font-size:8.5pt;margin-top:24pt}' +
+    '.kv{margin:4pt 0 8pt}.kv th{width:34%;font-weight:600;font-size:8.8pt;color:#6b6478;padding:4pt 8pt 4pt 0;border-bottom:1px solid #ece7f2}.kv td{padding:4pt 0;border-bottom:1px solid #ece7f2}' +
+    'table.grid{font-variant-numeric:tabular-nums;margin:6pt 0 10pt;table-layout:auto}table.grid.fx{table-layout:fixed}.grid th,.grid td{border:0;border-bottom:1px solid #e4dfea;padding:3.5pt 5pt;font-size:8.6pt;line-height:1.35;vertical-align:top;overflow-wrap:anywhere}' +
+    '.grid thead th{background:#f1ecf7;color:#3a1a58;font-weight:700;text-align:left;border-bottom:1.5px solid #51247a;vertical-align:bottom}.grid thead{display:table-header-group}.grid tr{break-inside:avoid;page-break-inside:avoid}' +
+    '.grid tbody tr:nth-child(even) td{background:transparent}.grid tfoot{display:table-row-group}.wide .grid th,.wide .grid td{font-size:8pt;padding:3pt 4pt}.grid tfoot th{background:#f1ecf7;white-space:nowrap;border-top:1.5px solid #51247a;border-bottom:0;color:#1f1b2d;text-align:left}.grid th.r,.grid td.r{text-align:right}' +
+    '.chart{margin:12pt 0;break-inside:avoid;page-break-inside:avoid}.chart svg{width:100%;height:auto;border:0}.chart figcaption{font-size:8.5pt;color:#6b6478;margin-top:2pt}' +
+    '.pb{break-after:page;page-break-after:always;height:0}.big{margin:0}.wide{page:wide}.wide h3{margin-top:0}' +
+    '.toc-h{margin-top:0}.toc{list-style:none;margin:10pt 0 0;padding:0;columns:1;font-size:11pt}.toc li{display:flex;gap:14pt;padding:7pt 0;border-bottom:1px solid #e4dfea}.toc .tn{width:22pt;color:#51247a;font-family:Georgia,serif;font-weight:700}' +
+    '.sign{margin-top:30pt}.empty{height:20pt}' +
+    /* Carta Gantt */
+    'table.gantt{table-layout:fixed;width:100%;border-collapse:collapse;margin:6pt 0;font-size:8.4pt}.gantt th,.gantt td{border:0;border-bottom:1px solid #e4dfea;padding:3pt 5pt;vertical-align:middle;line-height:1.3}' +
+    '.gantt thead th{background:#f1ecf7;color:#3a1a58;border-bottom:1.5px solid #51247a;text-align:left;vertical-align:bottom}.gantt th.gm{padding:3pt 0;text-align:center;height:56pt}.gantt th.gm span{display:inline-block;writing-mode:vertical-rl;transform:rotate(180deg);font-weight:600;font-size:7.6pt;white-space:nowrap}' +
+    '.gantt tr.gs td{background:#faf8fc;font-family:Georgia,serif;font-weight:700;color:#51247a;border-bottom:1px solid #cfc5e0;padding-top:5pt}.gantt td.gp{white-space:nowrap;color:#4a4458;padding-right:12pt}.gantt td.g-off,.gantt td.g-on{padding:0;border-left:1px solid #f0ecf5}.gantt td.g-on{background:#51247a;border-left-color:#fff}' +
+    /* portada: hoja completa, sin márgenes */
+    '.cover{page:cover;position:relative;box-sizing:border-box;width:210mm;height:296.5mm;margin:0;padding:0;display:block;break-after:page;page-break-after:always;overflow:hidden}.cv-band{position:absolute;left:0;top:0;bottom:0;width:15mm;background:#51247a}.cv-band:after{content:"";position:absolute;left:15mm;top:0;bottom:0;width:1.2mm;background:#b9a3d4}' +
+    '.cv-body{position:absolute;left:34mm;right:22mm;top:0;bottom:0;display:flex;flex-direction:column;padding:34mm 0 20mm}.cv-k{margin:0;font-size:9.5pt;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#51247a}' +
+    '.cv-mid{margin-top:46mm}.cv-t{text-align:left;font-family:Georgia,"Times New Roman",serif;font-size:30pt;line-height:1.14;font-weight:700;margin:0 0 6mm;color:#1f1b2d;text-wrap:balance}.cv-s{font-size:14pt;color:#4a4458;margin:0 0 9mm}.cv-rule{width:26mm;height:1.6mm;background:#51247a;margin-bottom:9mm}' +
+    '.cv-meta{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:4.5mm 10mm}.cv-meta div{border-top:1px solid #ded8e6;padding-top:2mm}.cv-meta dt{font-size:7.8pt;letter-spacing:.1em;text-transform:uppercase;color:#6b6478;margin:0}.cv-meta dd{margin:.8mm 0 0;font-size:10.5pt;font-weight:600}' +
+    '.cv-kpis{margin-top:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:8mm;border-top:2px solid #1f1b2d;padding-top:5mm}.cv-kpis .kv-v{display:block;font-family:Georgia,serif;font-size:17pt;font-weight:700;color:#1f1b2d;font-variant-numeric:tabular-nums}.cv-kpis .kv-l{display:block;font-size:8pt;letter-spacing:.08em;text-transform:uppercase;color:#6b6478;margin-top:1mm}' +
+    '.cv-note{margin:9mm 0 0;font-size:8.4pt;color:#6b6478}';
   var LOOK_CSS = {
-    word: 'html{background:#d9d9d9}body{background:#fff;width:794px;margin:18px auto;padding:56px 64px;box-shadow:0 2px 12px rgba(0,0,0,.35);font-family:Calibri,"Segoe UI",Arial,sans-serif}.cover{min-height:900px}.pb{height:36px;margin:30px -64px;background:#d9d9d9;border:0}',
-    pdf: 'html{background:#525659}body{background:#fff;width:794px;margin:18px auto;padding:56px 64px;box-shadow:0 2px 10px rgba(0,0,0,.5)}.cover{min-height:900px}.pb{height:40px;margin:30px -64px;background:#525659}'
+    word: 'html{background:#d9d9d9}body{background:#fff;width:794px;margin:18px auto;padding:64px 64px;box-shadow:0 2px 12px rgba(0,0,0,.35);font-family:Calibri,"Segoe UI",Arial,sans-serif}.pb{height:36px;margin:30px -64px;background:#d9d9d9;border:0}.cover{margin:-64px -64px 0;width:794px;height:1122px}.wide{zoom:.7;width:1120px;margin-left:-84px}',
+    pdf: 'html{background:#525659}body{background:#fff;width:794px;margin:18px auto;padding:64px 64px;box-shadow:0 2px 10px rgba(0,0,0,.5)}.pb{height:40px;margin:30px -64px;background:#525659}.cover{margin:-64px -64px 0;width:794px;height:1122px}.wide{zoom:.7;width:1120px;margin-left:-84px}'
   };
 
   /* ---------- vista previa de Excel: hojas con columnas A, B, C y números de fila ---------- */

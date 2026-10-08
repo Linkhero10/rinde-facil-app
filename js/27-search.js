@@ -108,7 +108,7 @@
     cuentas: ['¿En qué cuenta va?', 'Recursos humanos', 'Gastos operacionales', 'Inversión', 'Administración'],
     obras: ['Permisos, fotos y listas del informe', 'Fotos y permisos de obras, fotos de actividades, listas de asistencia, informes de estudios'],
     viaje: ['Registro del viaje', 'Quién viaja, su rol y por qué es necesario'],
-    expediente: ['Expediente completo del proyecto', 'Todo lo del proyecto en un solo archivo: anexos, gastos, informe, historial'],
+    expediente: ['Expediente completo del proyecto', 'Informe final del proyecto en un solo archivo: gastos, PEA, anexos e informe técnico'],
     historial: ['Historial de cambios', 'Quién hizo qué y cuándo'],
     f29: ['Formulario 29, F29, IVA mensual', 'Sube el F29 de cada mes y compáralo con tus facturas'],
     nofinanciable: ['Gastos no financiables', 'Lo que no se puede pagar con el aporte'],

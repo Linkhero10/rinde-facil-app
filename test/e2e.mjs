@@ -1119,24 +1119,26 @@ await step('15s. Mi ruta como panel (cuentas, meses, gastos, filtros), expedient
   if (await page.locator('.dash-bar').count()) { await page.locator('.dash-bar').first().click(); ok(await page.locator('.dash-bar.on').count() === 1 && await page.locator('.dash-bar.dim').count() >= 0, 'tocar un mes lo resalta y filtra'); await page.getByRole('button', { name: 'Quitar filtros' }).click(); }
   /* expediente completo */
   await go('#/h/expediente');
-  ok(await page.locator('.exp-parts li').count() >= 10, 'el expediente lista lo que incluye');
+  ok(await page.locator('.exp-parts li').count() >= 7, 'el expediente lista lo que incluye');
   /* vista previa en Word, PDF y Excel */
   const marco = page.frameLocator('.exp-frame');
   await page.waitForSelector('.exp-frame');
-  ok(/Expediente del proyecto/i.test(await marco.locator('body').textContent()) && await marco.locator('figure.chart svg').count() >= 3 && await marco.locator('.cover').count() === 1, 'la vista previa en Word trae portada y gráficos');
+  ok(/Informe de ejecución y rendición/i.test(await marco.locator('body').textContent()) && await marco.locator('figure.chart svg').count() >= 2 && await marco.locator('.cover').count() === 1, 'la vista previa en Word trae portada y gráficos');
   await page.getByRole('button', { name: 'PDF', exact: true }).first().click();
-  ok(await page.frameLocator('.exp-frame').locator('figure.chart svg').count() >= 3, 'la vista previa en PDF trae los gráficos');
+  ok(await page.frameLocator('.exp-frame').locator('figure.chart svg').count() >= 2, 'la vista previa en PDF trae los gráficos');
   await page.getByRole('button', { name: 'Excel', exact: true }).first().click();
   ok(await page.locator('.xl-tab').count() >= 6 && /Índice/.test(await page.locator('.xl-tabs').textContent()), 'la vista previa de Excel trae una hoja por sección y un índice');
   await page.locator('.xl-tab').nth(1).click();
   ok(await page.locator('.xl-grid tbody tr').count() >= 3, 'cada hoja se ve como tabla de Excel');
   await page.getByRole('button', { name: 'Word', exact: true }).first().click();
+  const nDl = await page.evaluate(() => (window.__rfDownloads || []).length);
   await page.getByRole('button', { name: 'Word' }).last().click();
+  await page.waitForFunction(n => (window.__rfDownloads || []).length > n, nDl, { timeout: 15000 });
   const fexp = tmp('expediente.docx'); await saveDownload(page, fexp);
   const docxText = fs.readFileSync(fexp, 'latin1');
   ok(docxText.includes('word/document.xml') && docxText.includes('word/media/firma1.png') && docxText.includes('word/footer1.xml') && fs.statSync(fexp).size > 8000, 'el Word del expediente trae gráficos como imagen y pie de página');
   const bloques = await page.evaluate(() => RF.dossier.build(RF.store.project(), RF.store.get()).blocks.filter(b => b.t === 'h').map(b => b.text));
-  ok(bloques.some(t => /Datos de la comunidad/.test(t)) && bloques.some(t => /Todos los gastos/.test(t)) && bloques.some(t => /Avance de la ruta/.test(t)), 'incluye datos, gastos escritos y ruta: ' + bloques.slice(0, 6).join(' | '));
+  ok(bloques.some(t => /Datos de la comunidad/.test(t)) && bloques.some(t => /Detalle de los gastos/.test(t)) && bloques.some(t => /Ejecución financiera/.test(t)), 'incluye datos, ejecución financiera y gastos: ' + bloques.slice(0, 6).join(' | '));
   await page.evaluate(() => { const p = RF.store.project(); p.expenses = p.expenses.filter(x => !/^g-mes-/.test(x.id)); RF.store.update(function () { }, { silent: true }); });
   /* fuegos artificiales y felicitaciones */
   const fw = await page.evaluate(() => { RF.dash.fireworks(); return !!document.querySelector('canvas.fireworks') || window.matchMedia('(prefers-reduced-motion: reduce)').matches; });
