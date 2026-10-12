@@ -56,6 +56,13 @@ def find_span(words, sentence):
     return None, "no encontrada"
 
 
+def find_all(words, sentence):
+    toks = [norm(x) for x in sentence.split() if norm(x)]
+    ns = [w["n"] for w in words]
+    n = len(toks)
+    return [(i, i + n) for i in range(0, len(ns) - n + 1) if n and ns[i:i + n] == toks]
+
+
 def dump(key, pno, src):
     doc = fitz.open(os.path.join(src, PDF[key]))
     page = doc[pno - 1]
@@ -80,6 +87,14 @@ def apply_spec(spec, src, out):
         words = page_words(page)
         used, rep = [], {"file": "%s_p%03d.jpg" % (key, pno), "sentences": [], "problems": []}
         for s in item["sentences"]:
+            if isinstance(s, dict):  # {"t": "Formulario 29", "all": true}: marca TODAS las apariciones exactas
+                spans = find_all(words, s["t"])
+                rep["sentences"].append({"text": s["t"], "match": "exacta x%d" % len(spans)})
+                if not spans:
+                    rep["problems"].append("NO ENCONTRADA: " + s["t"][:80])
+                for sp in spans:
+                    used += words[sp[0]:sp[1]]
+                continue
             span, how = find_span(words, s)
             rep["sentences"].append({"text": s[:70] + ("…" if len(s) > 70 else ""), "match": how})
             if span is None:

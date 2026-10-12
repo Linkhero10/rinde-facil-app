@@ -47,7 +47,19 @@
   "pdf": "doc-005-7690461ef7",
   "page": 5,
   "sentences": [
-   "Corresponde a los gastos directos a la ejecución de los proyectos, por ejemplo: materiales e insumos arriendo de espacios físicos, vehículos y de transporte, gastos de certificación e implementación de normas, entre otros."
+   "Corresponde a los gastos directos a la ejecución de los proyectos, por ejemplo: materiales e insumos arriendo de espacios físicos, vehículos y de transporte, gastos de certificación e implementación de normas, entre otros.",
+   "Copia de la Factura",
+   "Copia de la Boleta de Compra",
+   "Copia Boleta de Honorario",
+   "Informe mensual de Boleta de Honorarios",
+   {
+    "t": "Formulario 29",
+    "all": true
+   },
+   {
+    "t": "Comprobante de Pago",
+    "all": true
+   }
   ]
  },
  {
@@ -64,7 +76,8 @@
   "sentences": [
    "Los bienes inmuebles (no derechos sobre inmuebles) y los derechos de agua que se adquieran con recursos del Aporte deberán estar libre de todo libre de todo ocupante, gravamen, prohibición, embargo y de cualquier limitación al dominio, salvo que sean de naturaleza legal, lo que deberá ser acreditado con un certificado de hipotecas y gravámenes y de interdicciones y prohibiciones de enajenar emitido por el Conservador de Bienes Raíces respectivo.",
    "Si el inmueble adquirido no cumple con estas condiciones, el gasto asociado a su adquisición será rechazado mientras su situación no sea saneada.",
-   "El precio de la adquisición de un bien raíz o derechos de agua deberá corresponder al valor de mercado, y para efectos de verificar esta circunstancia deberá acompañar al menos 2 tasaciones comerciales, de carácter independiente, nacional o internacional, emitidas por una persona o empresa que cuenten con experiencia y sean reconocidas en el mercado para efectuar estos servicios."
+   "El precio de la adquisición de un bien raíz o derechos de agua deberá corresponder al valor de mercado, y para efectos de verificar esta circunstancia deberá acompañar al menos 2 tasaciones comerciales, de carácter independiente, nacional o internacional, emitidas por una persona o empresa que cuenten con experiencia y sean reconocidas en el mercado para efectuar estos servicios.",
+   "En caso de adquisición de propiedades y/o derechos de agua, se deberán acompañar mínimo 2 tasaciones independientes como avaluó comercial."
   ]
  },
  {
