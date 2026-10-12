@@ -5,24 +5,11 @@
 
   /* img: [archivo, leyenda]  ·  tools: ids de herramientas  ·  who: actor principal */
   var T = [
-    /* ---------- Fase 1: pasos del proceso (no son trámites del inventario) ---------- */
-    { id: 'P-01', fase: 'F1', kind: 'paso', title: 'Firmar el convenio', why: 'Es el documento que fija los aportes y cómo usarlos.', who: 'comunidad', when: 'Al inicio', need: ['Convenio entregado por CORFO'],
-      steps: ['Recibe el convenio de CORFO y léelo con la directiva.', 'Firma el convenio junto con CORFO.'],
-      img: [['flujograma_overview.jpg', 'Flujograma oficial, pasos 1 y 2']], src: ['Flujograma, pasos 1 y 2'] },
-    { id: 'P-02', fase: 'F1', kind: 'paso', title: 'Abrir la cuenta corriente', why: 'El dinero del aporte llega a una cuenta de la comunidad. Sin cuenta, el proceso no avanza.', who: 'comunidad', when: 'Antes de recibir el primer pago', need: ['Documentos de la comunidad', 'Banco'],
-      notes: ['Mejor si la cuenta es exclusiva para este aporte: así es más fácil seguir cada peso. Si no puedes, crea un centro de costos separado en tu contabilidad.'],
-      steps: ['Abre una cuenta corriente para recibir el aporte.'],
-      img: [['doc-004-79b28f1aad_p021.jpg', 'Manual, p. 21: cuenta corriente exclusiva']], src: ['Flujograma, paso 3', 'Manual CORFO, sección X (p. 21)'] },
-    { id: 'P-03', fase: 'F1', kind: 'paso', title: 'Recibir el 30 % inicial', why: 'Es el primer pago del aporte. Desde aquí corren tus plazos.', who: 'novandina', when: 'Hasta 15 días hábiles después de la resolución de CORFO', need: ['Cuenta corriente abierta'],
-      notes: ['CORFO avisa que la resolución que aprueba el convenio está totalmente tramitada.', 'Novandino (ex SQM) transfiere el 30 % en un máximo de 15 días hábiles.'],
-      steps: ['Anota la fecha en que llegó el dinero: desde ahí corren los 90 días del PEA.'], stepTools: {0:['proyecto']}, auto: { 0: 'desembolso' },
-      tools: ['proyecto'], img: [['flujograma_overview.jpg', 'Flujograma oficial, pasos 4 y 5']], src: ['Flujograma, pasos 4 y 5'] },
-
-    /* ---------- Fase 2: PEA ---------- */
+    /* ---------- Fase 0: PEA ---------- */
     { id: 'TRM-027', fase: 'F2', title: 'Armar PEA', why: 'El PEA (Programa de Ejecución de Actividades) explica qué proyectos harás, con qué plazos y presupuesto.', who: 'comunidad', when: '90 días corridos desde el primer pago (se puede prorrogar 30 días, una vez)', need: ['Primer pago recibido', 'Ideas de proyectos', 'Apoyo del Organismo Colaborador (opcional)'],
       notes: ['Tienes 90 días corridos desde el primer pago; CORFO activa ese plazo.'],
-      steps: ['Si necesitas ayuda, pídela al Organismo Colaborador antes de redactar (Componente 3).', 'Arma los 3 documentos: información general, un formulario por proyecto y el presupuesto con la Carta Gantt.', 'Envía el PEA a CORFO. Si lo observan, corrígelo y reenvíalo.'], stepTools: { 1: ['pea', 'gantt', 'presupuesto'], 2: ['pea'] }, opt: { 0: 'Opcional' }, related: ['TRM-030'], auto: { 1: 'pea_docs' },
-      tools: ['necesidades', 'pea', 'gantt', 'presupuesto'], img: [['flujograma_overview.jpg', 'Flujograma oficial, pasos 6 a 14']], src: ['Flujograma, pasos 6 a 14', '«Introducción al Acuerdo», diapositiva 2'] },
+      steps: ['Si necesitas ayuda, pídela al Organismo Colaborador antes de redactar (Componente 3).', 'Arma los 3 documentos: información general, un formulario por proyecto y el presupuesto con la Carta Gantt.', 'Envía el PEA a CORFO. Si lo observan, corrígelo y reenvíalo.'], stepTools: { 1: ['pea', 'gantt', 'presupuesto'], 2: ['pea', 'subirpea'] }, opt: { 0: 'Opcional' }, related: ['TRM-030'], auto: { 1: 'pea_docs' },
+      tools: ['necesidades', 'pea', 'gantt', 'presupuesto', 'subirpea'], img: [['flujograma_overview.jpg', 'Flujograma oficial, pasos 6 a 14']], src: ['Flujograma, pasos 6 a 14', '«Introducción al Acuerdo», diapositiva 2'] },
     { id: 'TRM-030', fase: 'F2', title: 'Pedir prórroga del PEA (opcional)', optional: true, why: 'Si no alcanzas a entregar el PEA dentro de los 90 días, puedes pedir más tiempo: una sola vez y hasta 30 días.', who: 'comunidad', when: 'Antes de que venza el plazo de 90 días', need: ['Plazo del PEA corriendo', 'El motivo por el que necesitas más tiempo'],
       notes: ['Se puede pedir una sola vez y por hasta 30 días más.', 'Tiene que ser una solicitud fundada y hacerse antes de que venza el plazo.'],
       steps: ['Redacta la solicitud: explica por qué necesitas más tiempo y cuántos días pides.', 'Junta lo que respalde tu motivo y envía la solicitud a CORFO antes de que venza el plazo.'], stepTools: { 0: ['prorroga'] }, auto: { 0: 'prorroga_form' },
@@ -33,16 +20,7 @@
       steps: ['Completa la solicitud: qué cambia (actividades, presupuesto o fechas), el motivo y qué monto o actividad se ve afectado.', 'Envía la solicitud a CORFO y espera su aprobación antes de gastar.'], stepTools: { 0: ['reitem'] }, auto: { 0: 'reitem_form' },
       tools: ['reitem'], img: [], src: ['«Introducción al Acuerdo», diapositiva 2'] },
 
-    /* ---------- Fase 3: SGP ---------- */
-    { id: 'TRM-002', fase: 'F3', title: 'Entrar a SGP y mantener tu usuario', why: 'SGP es la plataforma de CORFO donde se cargan proyectos y se rinde.', who: 'comunidad', when: 'Antes de cada rendición', need: ['RUT de la comunidad', 'Clave que entrega tu ejecutivo técnico'],
-      steps: ['Entra a SGP con tu RUT sin puntos ni guión (ej: 123456789) y tu clave.', 'Revisa que tu proyecto diga «VIGENTE». Si no, no puedes rendir.', 'Escribe a tu ejecutivo técnico de CORFO, con copia a la coordinadora de CORFO y al Organismo Colaborador, para recuperar la clave.'], opt: {2:'Solo si perdiste la clave'},
-      img: [['doc-005-7690461ef7_p015.jpg', 'Presentación de rendición, diap. 15: ingreso a SGP'], ['doc-005-7690461ef7_p016.jpg', 'Diap. 16: proyecto VIGENTE']], src: ['Presentación de rendición, diap. 2, 15 y 16'],
-      open: 'Las presentaciones traen dos direcciones de SGP: https://sgp.corfo.cl/SGP/Extranet_cei/login.aspx (presentaciones de configuración técnica y financiera y de rendición) y https://sgp.corfo.cl/SGP/extranetv2/login.aspx (presentación «Configuración de Proyecto»). Pregunta a tu ejecutivo técnico cuál usar.' },
-    { id: 'TRM-001', fase: 'F3', title: 'Cargar el proyecto en SGP', why: 'CORFO revisa aquí tus etapas, actividades y presupuesto.', who: 'comunidad', when: 'Con el PEA aprobado y antes de rendir', need: ['PEA aprobado', 'Carta Gantt', 'Presupuesto por cuenta'],
-      steps: ['Revisa que tu proyecto diga «ADJUDICADO (Configurando)». Si no, consulta a tu ejecutivo.', 'Entra a «Configuración Gantt» y completa cada actividad: etapa, inicio, término y duración.', 'Carga el presupuesto por fuente (F1 = CORFO, F2 = aporte propio) y por cuenta.'], stepTools: { 1: ['gantt'], 2: ['presupuesto'] },
-      tools: ['gantt', 'presupuesto'], img: [['2-presentacion-configuracion-de-proyecto_image41.jpg', 'Configuración Gantt en SGP']], src: ['Presentación «Configuración de Proyecto»', 'Manual, sección IV (p. 4-5)'] },
-
-    /* ---------- Fase 4: gastos ---------- */
+    /* ---------- Fase 1: gastos ---------- */
     { id: 'TRM-006', fase: 'F4', title: 'Cotizaciones y precio de mercado', why: 'Compras grandes necesitan cotizaciones para probar que pagaste un precio justo.', who: 'comunidad', when: 'Antes de comprar o contratar', need: ['Cotizaciones de proveedores distintos'],
       notes: ['No dividas una compra para evitar el umbral: CORFO puede rechazarla.', 'Las 2 cotizaciones no se piden en servicios técnico-profesionales.', { t: 'Con una sola cotización o ninguna, hay que pedir autorización a CORFO antes de comprar.', tag: 'Solo si aplica', a: ['Preparar la consulta a CORFO', '#/h/consulta'] }, { t: 'Inmuebles y derechos de agua: se piden 2 tasaciones comerciales independientes.', tag: 'Solo si aplica', a: ['Ver cómo respaldar compras de activos', '#/t/TRM-009'] }],
       steps: ['Si la compra pasa de $10.000.000 netos, reúne al menos 2 cotizaciones de proveedores distintos y no relacionados y compáralas.'], stepTools: { 0: ['cotizaciones'] }, auto: { 0: 'cot_ok' },

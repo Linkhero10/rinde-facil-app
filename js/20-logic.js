@@ -254,7 +254,6 @@
     return have >= need ? ok('hay ' + have + (have === 1 ? ' ficha' : ' fichas') + ' para ' + need + (formId === 'informeD' ? (need === 1 ? ' persona.' : ' personas.') : (need === 1 ? ' gasto.' : ' gastos.'))) : no('Hay ' + have + ' de ' + need + ' fichas.', formId);
   }
   var AUTO = {
-    desembolso: function (p) { return p.desembolso1 ? ok('anotaste la fecha del primer pago (' + U.fmtDate(p.desembolso1) + ').') : no('Anota la fecha del primer pago en «Mi comunidad y proyectos».', 'proyecto'); },
     pea_docs: function (p) { var g = forms(p, 'peaGeneral'); var ok1 = !!(g && g.data && g.data.resumen), ok2 = listN(p, 'peaProyecto') > 0, ok3 = allActivities(p).length > 0, ok4 = (p.budgetLines || []).length > 0; return ok1 && ok2 && ok3 && ok4 ? ok('tienes la información general, ' + listN(p, 'peaProyecto') + ' formulario(s) de proyecto, la Carta Gantt y el presupuesto.') : no('Falta: ' + [!ok1 && 'información general', !ok2 && 'formulario de proyecto', !ok3 && 'Carta Gantt', !ok4 && 'presupuesto'].filter(Boolean).join(', ') + '.', 'pea'); },
     reitem_form: function (p) { return (p.reitem && ((p.reitem.rows || []).length || p.reitem.motivo)) ? ok('ya llenaste la solicitud de cambio.') : no('Llena la solicitud de cambio.', 'reitem'); },
     prorroga_form: function (p) { var f = forms(p, 'prorroga'); return f && f.data && f.data.motivo ? ok('ya redactaste la solicitud de prórroga.') : no('Redacta la solicitud de prórroga.', 'prorroga'); },
@@ -375,7 +374,6 @@
       /* si esta fase ya empezó pero la anterior (o anteriores no opcionales) no tiene nada marcado */
       for (var j = 0; j < i; j++) {
         var pf = prog.porFase[order[j]];
-        if (order[j] === 'F1') continue; /* fase 1 son pasos del proceso, no trámites */
         if (!pf.started && !pf.complete) { out.push({ fase: fid, falta: order[j] }); break; }
       }
     });
@@ -409,7 +407,7 @@
       var gp = grp('plan', 'Lo que planeaste'), dv = RF.needs.derivedFromExpenses(project), sel = project.needs || {};
       Object.keys(dv).forEach(function (k) {
         if (sel[k]) return;
-        add(gp, 'warn', 'Anotaste gastos de «' + RF.needs.BY_ID[k].name + '» que no marcaste en «Qué necesitará tu proyecto».' + (project.peaAprobado ? ' Tu PEA ya está aprobado: si no estaba en el PEA, conviene pedir el cambio antes de rendirlo.' : ''), { tool: 'necesidades' });
+        add(gp, 'warn', 'Anotaste gastos de «' + RF.needs.BY_ID[k].name + '» que no marcaste en «Qué necesitará tu proyecto».', { tool: 'necesidades' });
       });
       (project.needsAdded || []).forEach(function (a) {
         var nd = RF.needs.BY_ID[a.id]; add(gp, 'warn', 'Agregaste «' + (nd ? nd.name : a.id) + '» después de aprobado el PEA (' + U.fmtDate(String(a.at).slice(0, 10)) + '). Pide la modificación del PEA y guarda la respuesta de CORFO en «Documentos».', { tool: 'reitem' });

@@ -37,7 +37,7 @@ test('«gasto» encuentra la herramienta y dice dónde está: Herramientas → R
   assert.ok(r.some(x => x.item.kind === 'Fase' && /Gastos y respaldos/.test(x.item.title)), 'también la fase');
 });
 test('busca dentro de los pasos de los trámites y muestra el fragmento con su número de paso', () => {
-  const r = S('llego dinero', 40).filter(x => x.item.kind === 'Trámite' || x.item.kind === 'Paso');
+  const r = S('formulario por proyecto', 40).filter(x => x.item.kind === 'Trámite' || x.item.kind === 'Paso');
   assert.ok(r.length > 0);
   assert.ok(r.some(x => /^Paso \d/.test(x.snippetLabel) && x.snippetSegs.some(s => s.m)), 'fragmento con la palabra marcada');
   assert.ok(r.every(x => x.item.href.startsWith('#/t/')));
@@ -72,5 +72,5 @@ test('también busca en lo que la persona anotó y lleva a esa pantalla', () => 
 test('frases de todos los días llevan a la herramienta correcta', () => {
   const top = q => S(q, 5).map(r => r.item.href + ' ' + r.item.title);
   assert.ok(top('no se como subir una foto').some(t => /h\/gastos/.test(t)), 'subir una foto → Gastos');
-  assert.ok(top('donde abro la cuenta bancaria').some(t => /P-02/.test(t)), 'cuenta bancaria → Abrir la cuenta corriente');
+  assert.ok(top('presupuesto por cuenta').some(t => /h\/presupuesto/.test(t)), 'presupuesto por cuenta → herramienta de presupuesto');
 });

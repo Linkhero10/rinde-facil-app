@@ -116,13 +116,13 @@ test('con base: lo que cambió solo un equipo se respeta, lo borrado se propaga 
   const RF = app(), s = state(RF), p = s.projects[0];
   p.name = 'Original'; p.gantt = { stages: [{ id: 's1', acts: [] }] };
   p.expenses = [{ id: 'e1', total: 10 }, { id: 'e2', total: 20 }, { id: 'e3', total: 30 }];
-  p.done = { 'P-01:0': true, 'P-01:1': true };
+  p.done = { 'TRM-027:0': true, 'TRM-027:1': true };
   const base = RF.store.snapshotBase(RF.store.get());
   /* la nube (otro equipo): cambió el gantt, editó e1, borró e2 y agregó e4; desmarcó un paso */
   const remote = structuredClone(RF.store.get()), rp = remote.projects[0];
   rp.gantt = { stages: [{ id: 's1', acts: [{ id: 'a1' }] }] };
   rp.expenses = [{ id: 'e1', total: 11 }, { id: 'e3', total: 30 }, { id: 'e4', total: 40 }];
-  delete rp.done['P-01:1']; rp.done['P-01:2'] = true;
+  delete rp.done['TRM-027:1']; rp.done['TRM-027:2'] = true;
   /* este equipo: cambió el nombre, editó e3 */
   p.name = 'Nuevo nombre'; p.expenses[2].total = 33;
   RF.store.mergeRemote(remote, base);
@@ -130,7 +130,7 @@ test('con base: lo que cambió solo un equipo se respeta, lo borrado se propaga 
   assert.equal(out.name, 'Nuevo nombre', 'lo que solo cambió aquí se conserva');
   assert.equal(out.gantt.stages[0].acts.length, 1, 'lo que solo cambió allá se trae');
   assert.equal(JSON.stringify(out.expenses.map(e => e.id + ':' + e.total)), JSON.stringify(['e1:11', 'e3:33', 'e4:40']), 'e1 editado allá, e2 borrado allá, e3 editado aquí, e4 nuevo');
-  assert.equal(JSON.stringify(Object.keys(out.done).sort()), JSON.stringify(['P-01:0', 'P-01:2']), 'el paso desmarcado allá queda desmarcado y el marcado allá se trae');
+  assert.equal(JSON.stringify(Object.keys(out.done).sort()), JSON.stringify(['TRM-027:0', 'TRM-027:2']), 'el paso desmarcado allá queda desmarcado y el marcado allá se trae');
 });
 test('con base: si los dos equipos cambian lo mismo de forma distinta, se detiene sin tocar nada', () => {
   const RF = app(), s = state(RF), p = s.projects[0];
@@ -239,13 +239,10 @@ test('F29: sin F29 avisa y deja el IVA del mes listo; con F29 compara el crédit
   assert.equal(RF.logic.effectiveHas(p.expenses[0], p).f29, true);
   assert.ok(!RF.logic.effectiveHas({ fecha: '2026-10-01' }, p).f29);
 });
-test('pasos que se marcan solos: el respaldo de cada gasto, las fichas y el desembolso salen de lo que ya hay en la app', () => {
+test('pasos que se marcan solos: el respaldo de cada gasto salen de lo que ya hay en la app', () => {
   const RF = app(), s = state(RF), p = s.projects[0];
   const bump = () => RF.store.update(() => {}, { silent: true }); /* en la app todo cambio pasa por el almacén y renueva el cálculo */
-  bump(); assert.equal(RF.logic.stepDone(p, 'P-03', 0), false);
-  p.desembolso1 = '2026-07-01';
-  bump(); assert.equal(RF.logic.stepDone(p, 'P-03', 0), true, 'anotar la fecha del primer pago marca el paso');
-  bump(); assert.equal(RF.logic.autoStep(p, 'TRM-008', 0).done, false, 'sin gastos todavía no se puede dar por hecho');
+  bump();assert.equal(RF.logic.autoStep(p, 'TRM-008', 0).done, false, 'sin gastos todavía no se puede dar por hecho');
   p.expenses = [{ id: 'e1', docType: 'factura', proveedor: 'Uno', total: 1190, neto: 1000, iva: 190, montoRendir: 1190, fecha: '2026-09-01', glosa: 'x', formaPago: 'transferencia', cuenta: 'operacion', has: {}, verified: false }];
   bump(); assert.equal(RF.logic.autoStep(p, 'TRM-008', 0).done, false, 'faltan la prueba de pago y el F29');
   bump(); assert.equal(RF.logic.autoStep(p, 'TRM-008', 1).done, false, 'falta marcar que lo revisó');

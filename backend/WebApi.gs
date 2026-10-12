@@ -138,6 +138,18 @@ function rfCountOcr_() {
   } finally { lock.releaseLock(); }
 }
 
+/* suma al contador diario las páginas que el adaptador leyó además de la primera (rfCountOcr_ ya contó una) */
+function rfAddOcrPages_(extra) {
+  if (!(extra > 0)) return;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return;
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const key = 'RINDE_FACIL_OCR_COUNT_' + rfToday_();
+    props.setProperty(key, String(Number(props.getProperty(key) || 0) + Math.floor(extra)));
+  } finally { lock.releaseLock(); }
+}
+
 /* ---------- OCR ---------- */
 function rfOcr_(p) {
   if (!rfOcrReady_()) return { ok: false, error: 'OCR_NO_CONFIGURADO', message: 'Falta RINDE_FACIL_GCP_PROJECT_ID o CloudOcrAdapter.gs.' };
@@ -148,11 +160,13 @@ function rfOcr_(p) {
   if (!cnt.ok) return cnt;
   const bytes = Utilities.base64Decode(p.base64);
   const blob = Utilities.newBlob(bytes, String(p.mimeType).toLowerCase(), String(p.fileName || 'comprobante').slice(0, 120));
-  const r = callCloudVision_(blob, { file_name: String(p.fileName || '').slice(0, 120) });
+  const r = callCloudVision_(blob, { file_name: String(p.fileName || '').slice(0, 120), max_pages: Number(p.maxPages) || undefined });
   const ok = r && r.status === 'SUCCESS' && !!r.raw_text;
+  if (r && r.page_count > 1) rfAddOcrPages_(r.page_count - 1);
   return {
     ok: ok, engine: 'cloud_vision', raw_text: ok ? r.raw_text : '', confidence: r && r.confidence != null ? r.confidence : null,
-    duration_ms: r && r.duration_ms || null, page_count: r && r.page_count || null, coverage: r && r.document_coverage || null,
+    duration_ms: r && r.duration_ms || null, page_count: r && r.page_count || null,
+    pages: ok && r.pages_layout ? r.pages_layout : [],
     used_today: cnt.used, limit: cnt.limit,
     error: ok ? null : (r && r.error) || 'OCR_SIN_TEXTO'
   };

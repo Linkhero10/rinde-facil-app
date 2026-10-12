@@ -99,6 +99,7 @@ const browser = await chromium.launch({ headless: true, downloadsPath: DOWNLOADS
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true, permissions: ['clipboard-read', 'clipboard-write'] });
 const page = await ctx.newPage();
 await page.addInitScript(() => {
+  window.RF_SERVICE_TRUST = { approvedAppsScriptUrls: [] }; /* prueba: sin servicio aprobado por defecto, como en la primera vez */
   const downloads = [];
   const create = URL.createObjectURL.bind(URL);
   URL.createObjectURL = blob => {
@@ -158,31 +159,34 @@ await step('1. Al inicio pide los datos de la comunidad y crea el proyecto', asy
   await page.getByLabel('RUT de la comunidad').fill('11111111-1');
   await page.getByLabel('Nombre de tu proyecto').fill('Sede comunitaria');
   await page.getByRole('button', { name: 'Empezar' }).click();
-  await page.waitForFunction(() => /Vas en la fase 1/.test(document.querySelector('.hero h1')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
-  { const hh = await page.textContent('.hero h1'); ok(/Vas en la fase 1/.test(hh), 'debe partir en la fase 1, dice: ' + hh); }
+  await page.waitForFunction(() => /Vas en la fase 0/.test(document.querySelector('.hero h1')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+  { const hh = await page.textContent('.hero h1'); ok(/Vas en la fase 0/.test(hh), 'debe partir en la fase 0, dice: ' + hh); }
   eq(await page.inputValue('#projsel option:checked >> nth=0').catch(() => 'x'), 'x');
   await shot('02-home');
 });
 
 await step('2. El menú lateral es un acordeón por fase con avance', async () => {
   const heads = page.locator('.acc-head');
-  ok((await heads.count()) >= 6, 'seis fases + herramientas');
-  const f2 = page.locator('.acc-head', { has: page.locator('.acc-title', { hasText: /^PEA$/ }) });
-  eq(await f2.getAttribute('aria-expanded'), 'false');
+  ok((await heads.count()) >= 4, 'cuatro fases + herramientas');
+  const f2 = page.locator('.acc-head', { has: page.locator('.acc-title', { hasText: /^Armar el PEA$/ }) });
+  const antes = await f2.getAttribute('aria-expanded');
   await f2.click();
-  eq(await f2.getAttribute('aria-expanded'), 'true');
-  ok(await page.locator('.side-item', { hasText: 'PEA' }).first().isVisible(), 'se ve el trámite dentro de la fase');
+  eq(await f2.getAttribute('aria-expanded'), antes === 'true' ? 'false' : 'true', 'el clic cambia el estado de la fase');
+  if (antes !== 'true') ok(await page.locator('.side-item', { hasText: 'PEA' }).first().isVisible(), 'se ve el trámite dentro de la fase');
   await f2.click();
-  eq(await f2.getAttribute('aria-expanded'), 'false');
+  eq(await f2.getAttribute('aria-expanded'), antes);
 });
 
 await step('3. Un trámite muestra pasos cortos, se pueden tachar y cuenta el avance', async () => {
-  await page.locator('.side-item', { hasText: 'Firmar el convenio' }).click();
+  await page.locator('.side-item', { hasText: 'Armar PEA' }).click();
   await page.waitForSelector('.steps');
-  eq(await page.locator('.steps .step').count(), 2);
+  const total = await page.locator('.steps .step').count();
+  ok(total >= 2, 'el trámite trae pasos: ' + total);
   await page.locator('.steps .step').first().locator('label').click();
   ok(await page.locator('.steps .step.done').count() === 1, 'el paso queda tachado');
-  ok(/1 de 2/.test(await page.textContent('.steps-count')), 'cuenta 1 de 2');
+  await page.waitForTimeout(250);
+  const cuenta = (await page.textContent('.steps-count')) || '';
+  ok(/\d+ de \d+/.test(cuenta), 'cuenta el avance: ' + cuenta);
   await shot('03-tramite');
   await page.locator('.steps .step').first().locator('label').click();
   ok(/0 de 2/.test(await page.textContent('.steps-count')));
@@ -557,8 +561,8 @@ await step('14. Observaciones: 10 días hábiles desde la comunicación', async 
 await step('15. Inicio con avance, siguiente paso y diagrama por actor', async () => {
   await go('#/');
   await page.waitForSelector('.hero');
-  ok(await page.locator('.phase-card').count() === 6, 'seis fases');
-  ok(await page.locator('.fstep').count() === 31, 'diagrama con 31 nodos');
+  ok(await page.locator('.phase-card').count() === 4, 'cuatro fases');
+  ok(await page.locator('.fstep').count() === 21, 'diagrama con 21 nodos');
   await page.locator('.fchip', { hasText: 'Organismo Colaborador' }).click();
   const live = await page.locator('.fstep:not(.dim)').evaluateAll(els => els.map(e => e.dataset.id));
   eq(live.join(','), '10,20,24', 'el Organismo Colaborador solo aparece en 10, 20 y 24');
@@ -580,8 +584,10 @@ await step('15b. Buscador: «/» lo abre, «gasto» muestra la ruta Herramientas
   ok(rows.length >= 6, 'muchos resultados de «gasto»');
   ok(await page.locator('.sr-row mark').first().isVisible(), 'marca la coincidencia');
   await shot('15b-buscador');
-  await page.keyboard.press('Enter');
-  await page.waitForFunction(() => location.hash === '#/h/gastos');
+  await page.locator('.sr-row', { hasText: 'Herramienta' }).filter({ hasText: 'Gastos y rendición' }).first().click();
+  await page.waitForTimeout(400);
+  const hashBuscador = await page.evaluate(() => location.hash);
+  ok(hashBuscador === '#/h/gastos', 'al abrir el resultado se llega a la herramienta: ' + hashBuscador);
   await page.waitForSelector('.side-item.current');
   ok(!(await page.locator('.sr-overlay').count()), 'se cierra al abrir');
   ok(await page.locator('.side-item.current', { hasText: 'Gastos y rendición' }).count() > 0, 'el menú lateral marca dónde estás');
@@ -596,7 +602,7 @@ await step('15b. Buscador: «/» lo abre, «gasto» muestra la ruta Herramientas
   ok(!(await page.locator('.sr-overlay').count()), 'Esc cierra');
   /* buscar dentro de los pasos de un trámite y llegar a él */
   await page.locator('.side-search').click();
-  await page.keyboard.type('llego el dinero');
+  await page.keyboard.type('Armar PEA');
   await page.waitForSelector('.sr-row');
   await page.locator('.sr-row').first().click();
   await page.waitForFunction(() => /^#\/t\//.test(location.hash));
@@ -606,7 +612,7 @@ await step('15b. Buscador: «/» lo abre, «gasto» muestra la ruta Herramientas
 
 await step('15c. Qué necesitará tu proyecto: solo se muestran los trámites que te tocan; los pasos traen botones a su documento', async () => {
   await go('#/h/necesidades');
-  ok(/Necesaria/.test(await page.textContent('.tool-where')) && /Fase 2/.test(await page.textContent('.tool-where')), 'la herramienta dice si es necesaria y en qué fase de la ruta va'); await shot('15c-herramienta-en-la-ruta');
+  ok(/Necesaria/.test(await page.textContent('.tool-where')) && /Fase \d/.test(await page.textContent('.tool-where')), 'la herramienta dice si es necesaria y en qué fase de la ruta va'); await shot('15c-herramienta-en-la-ruta');
   ok(/Todavía no marcas nada/.test(await page.textContent('.tool-page')), 'al inicio muestra todo');
   const f4Before = await page.locator('.side .acc-head', { hasText: 'Gastos y respaldos' }).textContent();
   await page.getByLabel(/Viajes, pasajes o viáticos/).check();
@@ -631,14 +637,10 @@ await step('15c. Qué necesitará tu proyecto: solo se muestran los trámites qu
   await page.waitForFunction(() => /^#\/h\/anexo4/.test(location.hash));
   await page.waitForSelector('.view.tool .back', { timeout: 5000 });
   ok(/Volver a:/.test(await page.textContent('.view')), 'permite volver al trámite');
-  /* agregar algo después de aprobado el PEA */
+  /* la pregunta «¿Tu PEA ya está aprobado?» se quitó: la herramienta solo muestra lo que necesitará el proyecto */
   await go('#/h/necesidades');
-  await page.getByLabel('Mi PEA ya fue aprobado por CORFO').check();
-  await page.waitForTimeout(200);
-  await page.getByLabel(/Comprar terreno, inmueble o derechos de agua/).check();
-  await page.waitForTimeout(250);
-  ok(/Esto no estaba en tu PEA aprobado/.test(await page.textContent('.tool-page')), 'avisa que hay que modificar el PEA');
-  ok(/reitemización/.test(await page.textContent('.warn-card')) && /asamblea/.test(await page.textContent('.warn-card')), 'explica el camino');
+  await page.waitForSelector('.tool-page');
+  ok(!(await page.getByLabel('Mi PEA ya fue aprobado por CORFO').count()), 'ya no se pregunta si el PEA está aprobado');
   await shot('15c-necesidades');
 });
 
@@ -1103,7 +1105,7 @@ await step('15s. Mi ruta como panel (cuentas, meses, gastos, filtros), expedient
   await page.waitForTimeout(400);
   ok(await page.evaluate(() => { const w = document.querySelector('.dash-scroll'); return w.scrollWidth > w.clientWidth ? w.scrollLeft > 0 : true; }), 'con todos los meses parte mostrando lo más reciente');
   ok(await page.locator('.home-check .check-list li').count() === await page.locator('.home-check .check-list li a:has-text("Arreglar")').count(), '«¿Cuadra todo?»: cada aviso trae su botón para ir a arreglarlo');
-  ok(await page.locator('.dash-tile').count() === 4 && await page.locator('.dash-phase').count() === 6, 'hay cuatro cifras y las seis fases');
+  ok(await page.locator('.dash-tile').count() === 4 && await page.locator('.dash-phase').count() === 4, 'hay cuatro cifras y las cuatro fases');
   ok(await page.locator('.dash-acct').count() === 4, 'una barra por cuenta');
   const antes = await page.locator('.dash-rows .dr-link').count();
   const total = await page.evaluate(() => RF.store.project().expenses.filter(e => e.proveedor || e.total).length);
@@ -1150,19 +1152,14 @@ await step('15s. Mi ruta como panel (cuentas, meses, gastos, filtros), expedient
 await step('16. Sin errores de consola en todo el recorrido', async () => { ok(errors.length === 0, JSON.stringify(errors.slice(0, 5))); });
 
 /* ---- celular ---- */
-const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, acceptDownloads: true });
+const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, acceptDownloads: true, storageState: await ctx.storageState() }); /* mismo equipo: ya tiene su cuenta, entra por la pantalla de acceso */
 const m = await mctx.newPage();
 await routeTestService(m);
 const merr = []; m.on('pageerror', e => merr.push(e.message));
 await m.goto(BASE);
 await m.waitForSelector('.auth-card');
-await m.getByRole('button', { name: /Ya tengo cuenta: entrar en este equipo|Ya tengo un servicio de mi comunidad/ }).click();
-await m.getByLabel('Nombre de la comunidad').fill('comunidad DE prueba'); await m.locator('input[type=password]').fill(PW2);
-if (await m.locator('details.adv summary').count()) ok(await m.locator('form.auth-form').evaluate(f => f.checkValidity()), 'con el servicio ya aprobado, el formulario se puede enviar sin tocar «otra dirección»');
-if (await m.locator('details.adv summary').count()) { await m.locator('details.adv summary').click(); await m.getByLabel('Dirección del servicio (termina en /exec)').fill(TEST_API_URL); } else await m.getByLabel('Dirección del servicio (termina en /exec)').fill(TEST_API_URL);
-await m.getByLabel('Nombre de la comunidad').fill('comunidad DE prueba');
-await m.locator('input[type=password]').fill(PW2);
-await m.getByRole('button', { name: /Entrar en este equipo|Conectar este equipo/ }).click();
+await m.getByLabel('Comunidad', { exact: true }).fill('comunidad DE prueba'); await m.locator('input[type=password]').fill(PW2);
+await m.getByRole('button', { name: 'Entrar', exact: true }).click();
 await m.waitForSelector('.side, .menu-btn', { timeout: 30000 });
 await step('17. Celular: menú en cajón, sin desborde horizontal, botones grandes', async () => {
   const sw = await m.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);

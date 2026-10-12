@@ -8,7 +8,7 @@ const seed = {
   v: 2, community: { name: 'Comunidad de Prueba', rut: '76.123.456-0', address: 'Calle 1', legalRep: 'Persona Ejemplo', repRut: '12.345.678-5', email: 'a@b.cl', phone: '123', ivaModo: 'recupera', oc: 'SMI-Chile' },
   cloud: { apiUrl: '', key: '', lastSync: null }, holidays: ['2026-10-12'], activeProjectId: 'p1', ui: { theme: 'system', open: {} },
   projects: [{ id: 'p1', name: 'Sede comunitaria', code: '22CDR-000001', tipo: 'inversion', start: '2026-01-01', end: '2027-12-31', desembolso1: '2026-06-01', periodoInicio: '2026-07-01', periodoFin: '2026-12-31',
-    budgetApproved: { rrhh: 1000000, operacion: 20000000, inversion: 0, administracion: 5000000 }, done: { 'TRM-001:0': true }, na: { 'TRM-009': true },
+    budgetApproved: { rrhh: 1000000, operacion: 20000000, inversion: 0, administracion: 5000000 }, done: { 'TRM-027:0': true }, na: { 'TRM-009': true },
     gantt: { stages: [{ id: 's1', name: 'Preparación', acts: [{ id: 'a1', name: 'Taller', start: '2026-07-01', end: '2026-09-30', result: 'Taller hecho' }] }] },
     budgetLines: [{ id: 'b1', cuenta: 'operacion', item: 'Materiales', glosa: 'Materiales del taller', fuente: 'corfo', monto: 15000000, actId: 'a1' }],
     expenses: [{ id: 'g1', cuenta: 'operacion', item: 'Materiales', docType: 'factura', folio: '1042', fecha: '2026-08-14', fechaPago: '2026-08-15', rutProveedor: '76.123.456-0', proveedor: 'Empresa Fantasía SpA', neto: 1250000, iva: 237500, total: 1487500, montoRendir: 1250000, pctUso: '', formaPago: 'transferencia', glosa: 'Materiales del taller', actId: 'a1', has: { pago: true }, esViatico: false, servicioTecnico: false, esInmueble: false, verified: false, ocr: null, imgId: null }],

@@ -13,7 +13,7 @@
 
   /* ---------- menú lateral ---------- */
   var TOOL_GROUPS = [
-    { id: 'G-plan', name: 'Planificar', tools: ['necesidades', 'proyecto', 'gantt', 'presupuesto', 'pea', 'reitem', 'cotizaciones'] },
+    { id: 'G-plan', name: 'Planificar', tools: ['necesidades', 'proyecto', 'gantt', 'presupuesto', 'pea', 'subirpea', 'reitem', 'cotizaciones'] },
     { id: 'G-rend', name: 'Rendir', tools: ['gastos', 'f29', 'revision', 'resumen', 'observaciones'] },
     { id: 'G-form', name: 'Anexos y formularios', tools: ['anexo1', 'anexo2', 'anexo3', 'anexo4', 'anexo5', 'informe', 'consulta', 'solicitud'] },
     { id: 'G-doc', name: 'Documentos y actas', tools: ['expediente', 'documentos', 'obras', 'actas', 'historial', 'compartir'] },

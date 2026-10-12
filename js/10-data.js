@@ -11,12 +11,10 @@
   ];
 
   var FASES = [
-    { id: 'F1', n: 1, name: 'Convenio y primer dinero', short: 'Convenio', blurb: 'Firmar, abrir la cuenta y recibir el 30 %.', items: ['P-01', 'P-02', 'P-03'] },
-    { id: 'F2', n: 2, name: 'PEA', short: 'PEA', blurb: 'Armar el plan de tus proyectos y enviarlo a CORFO.', items: ['TRM-027', 'TRM-030', 'TRM-028'] },
-    { id: 'F3', n: 3, name: 'Configurar en SGP', short: 'SGP', blurb: 'Cargar etapas, actividades y presupuesto.', items: ['TRM-002', 'TRM-001'] },
-    { id: 'F4', n: 4, name: 'Gastos y respaldos', short: 'Gastos', blurb: 'Gastar bien y guardar cada respaldo.', items: ['TRM-006', 'TRM-007', 'TRM-008', 'TRM-009', 'TRM-011', 'TRM-021', 'TRM-022', 'TRM-023', 'TRM-024', 'TRM-025'] },
-    { id: 'F5', n: 5, name: 'Rendir y responder', short: 'Rendir', blurb: 'Enviar la rendición, el informe técnico y responder a CORFO.', items: ['TRM-013', 'TRM-014', 'TRM-016', 'TRM-015'] },
-    { id: 'F6', n: 6, name: 'Cierre', short: 'Cierre', blurb: 'Pedir los aportes que faltan.', items: ['TRM-029', 'TRM-032'] }
+    { id: 'F2', n: 0, name: 'Armar el PEA', short: 'PEA', blurb: 'Armar el plan de tus proyectos y enviarlo a CORFO.', items: ['TRM-027', 'TRM-030', 'TRM-028'] },
+    { id: 'F4', n: 1, name: 'Gastos y respaldos', short: 'Gastos', blurb: 'Gastar bien y guardar cada respaldo.', items: ['TRM-006', 'TRM-007', 'TRM-008', 'TRM-009', 'TRM-011', 'TRM-021', 'TRM-022', 'TRM-023', 'TRM-024', 'TRM-025'] },
+    { id: 'F5', n: 2, name: 'Rendir y responder', short: 'Rendir', blurb: 'Enviar la rendición, el informe técnico y responder a CORFO.', items: ['TRM-013', 'TRM-014', 'TRM-016', 'TRM-015'] },
+    { id: 'F6', n: 3, name: 'Cierre', short: 'Cierre', blurb: 'Pedir los aportes que faltan.', items: ['TRM-029', 'TRM-032'] }
   ];
   var AYUDA = ['TRM-026'];
 
@@ -115,12 +113,7 @@
   /* ---------- flujo oficial (28 pasos), con las correcciones del Manual p.10 ---------- */
   /* [actor, título corto, detalle fiel al flujograma, plazo, retorno, salida, trámite relacionado] */
   var FLOW = {
-    '1': ['corfo', 'Entrega el convenio', 'CORFO entrega el convenio a las comunidades. Ahí se detallan los aportes y cómo se pueden usar.', null, null, null, 'P-01'],
-    '2': ['comunidad', 'Firma el convenio', 'La comunidad y CORFO firman el convenio.', null, null, null, 'P-01'],
-    '3': ['comunidad', 'Abre cuenta corriente', 'La comunidad abre una cuenta corriente para recibir el Aporte Inicial Atribuible (AIA). Solo puede financiar proyectos de inversión y fomento de las comunidades de la cuenca del Salar de Atacama.', null, null, null, 'P-02'],
-    '4': ['novandina', 'Transfiere el 30 % del AIA', 'La empresa (SQM, hoy Novandino) transfiere el 30 % del AIA a la cuenta de la comunidad, dentro de 15 días hábiles desde que CORFO comunica la total tramitación de la resolución que aprueba el convenio.', '15 días hábiles', null, null, 'P-03'],
-    '5': ['comunidad', 'Recibe la transferencia', 'La comunidad recibe el 30 % del AIA.', null, null, null, 'P-03'],
-    '6': ['comunidad', 'Define sus proyectos', 'La comunidad define los proyectos que describirá en el PEA. Lo llena la comunidad, con apoyo del Organismo Colaborador si lo necesita, y lo presenta a CORFO para su aprobación.', null, null, null, 'TRM-027'],
+    '6':['comunidad', 'Define sus proyectos', 'La comunidad define los proyectos que describirá en el PEA. Lo llena la comunidad, con apoyo del Organismo Colaborador si lo necesita, y lo presenta a CORFO para su aprobación.', null, null, null, 'TRM-027'],
     '7': ['comunidad', 'Pide a CORFO armar el PEA', 'La comunidad envía un correo a CORFO para poder confeccionar el PEA.', null, null, null, 'TRM-027'],
     '8': ['corfo', 'Activa el plazo del PEA', 'CORFO activa el plazo para armar el PEA: 90 días corridos desde el primer desembolso. Se puede prorrogar una sola vez, hasta 30 días, con solicitud fundada antes de que venza.', '90 días + 30', null, null, 'TRM-027'],
     '9': ['comunidad', 'Acepta el Componente 3', 'En el gráfico dice «Acepta componente 3». «Introducción al Acuerdo» define el Componente 3 como el apoyo del Organismo Colaborador para formular el PEA.', null, null, null, 'TRM-027'],
@@ -128,14 +121,9 @@
     '11': ['comunidad', 'Elabora el PEA', 'La comunidad elabora el PEA y lo envía a CORFO para su aprobación.', null, null, null, 'TRM-027'],
     '12': ['corfo', 'Recibe el PEA', 'CORFO recibe el PEA.', null, null, null, 'TRM-027'],
     '13': ['corfo', 'Revisa el PEA', 'CORFO revisa el PEA. El flujograma no fija plazo para esta revisión.', 'sin plazo escrito', null, null, 'TRM-027'],
-    'D1': ['corfo', '¿Aprueba el PEA?', 'Si CORFO lo observa, la comunidad lo corrige (paso 14) y vuelve a la revisión; si lo aprueba, sigue la configuración en SGP (paso 15).', null, null, 'Sí: paso 15. No: paso 14.', 'TRM-027'],
+    'D1': ['corfo', '¿Aprueba el PEA?', 'Si CORFO lo observa, la comunidad lo corrige (paso 14) y vuelve a la revisión; si lo aprueba, el PEA queda aprobado.', null, null, 'Sí: el PEA queda aprobado. No: paso 14.', 'TRM-027'],
     '14': ['comunidad', 'Corrige según observaciones', 'Si el PEA es observado, la comunidad hace las modificaciones que indica CORFO.', null, 'Vuelve a la revisión (paso 13)', null, 'TRM-027'],
-    '15': ['comunidad', 'Configura sus proyectos en SGP', 'Con el PEA aprobado, la comunidad configura sus proyectos en SGP.', null, null, null, 'TRM-001'],
-    '16': ['corfo', 'Revisa la configuración', 'CORFO revisa la configuración de los proyectos cargados por la comunidad.', null, null, null, 'TRM-001'],
-    'D2': ['corfo', '¿Hay observaciones?', 'Con observaciones, la comunidad corrige (paso 17) y CORFO revisa de nuevo; sin observaciones, CORFO aprueba (paso 18).', null, null, 'Sí: paso 17. No: paso 18.', 'TRM-001'],
-    '17': ['comunidad', 'Corrige la configuración', 'La comunidad corrige las observaciones de la configuración.', null, 'Vuelve a la revisión (paso 16)', null, 'TRM-001'],
-    '18': ['corfo', 'Aprueba la configuración', 'CORFO aprueba la configuración.', null, null, null, 'TRM-001'],
-    '19': ['comunidad', 'Comienza a configurar los gastos', 'La comunidad comienza a configurar los gastos.', null, null, null, 'TRM-001'],
+    '19': ['comunidad', 'Comienza a configurar los gastos', 'La comunidad comienza a configurar los gastos.', null, null, null, null],
     '20': ['smi', 'Apoya la rendición', 'La comunidad puede pedir apoyo al Organismo Colaborador en las rendiciones. «Introducción al Acuerdo» agrega que puede revisar la documentación antes del envío y, si la comunidad quiere, subir los documentos a la plataforma.', null, null, null, 'TRM-013'],
     '21': ['comunidad', 'Rinde el total del AIA en SGP', 'La comunidad termina de rendir el total del AIA en SGP. Según el Acuerdo, la rendición se hace cada 6 meses.', 'cada 6 meses', null, null, 'TRM-013'],
     '22': ['corfo', 'Recibe y revisa las rendiciones', 'CORFO recibe las rendiciones y comienza la revisión. El flujograma no fija plazo para esta revisión.', 'sin plazo escrito', null, null, 'TRM-015'],
@@ -148,10 +136,8 @@
     '28': ['novandina', 'Transfiere los aportes', 'La empresa (SQM, hoy Novandino) transfiere los aportes. El flujograma no da plazo para esta transferencia.', 'sin plazo escrito', null, null, 'TRM-029']
   };
   var FLOW_BLOCKS = [
-    { fase: 'F1', title: 'Convenio y primer dinero', ids: ['1', '2', '3', '4', '5'], edges: [['1', '2'], ['2', '3'], ['3', '4'], ['4', '5']] },
-    { fase: 'F2', title: 'Preparar el PEA', ids: ['6', '7', '8', '9', '10', '11'], edges: [['6', '7'], ['7', '8'], ['8', '9'], ['9', '10', 'si pide apoyo'], ['9', '11'], ['10', '11']] },
+    { fase: 'F2', title: 'Armar el PEA', ids: ['6', '7', '8', '9', '10', '11'], edges: [['6', '7'], ['7', '8'], ['8', '9'], ['9', '10', 'si pide apoyo'], ['9', '11'], ['10', '11']] },
     { fase: 'F2', title: 'CORFO revisa el PEA', ids: ['12', '13', 'D1', '14'], edges: [['12', '13'], ['13', 'D1'], ['D1', '14', 'no']] },
-    { fase: 'F3', title: 'Configurar en SGP', ids: ['15', '16', 'D2', '17', '18'], edges: [['15', '16'], ['16', 'D2'], ['D2', '17', 'sí'], ['D2', '18', 'no']] },
     { fase: 'F4', title: 'Gastos y rendición', ids: ['19', '20', '21', '22', 'D3'], edges: [['19', '20', 'si pide apoyo'], ['19', '21'], ['20', '21'], ['21', '22'], ['22', 'D3']] },
     { fase: 'F5', title: 'Aclarar lo observado', ids: ['23', '24', '25'], edges: [['23', '24', 'si pide apoyo'], ['23', '25'], ['24', '25']] },
     { fase: 'F6', title: 'Cierre', ids: ['26', '27', '28'], edges: [['26', '27'], ['27', '28']] }

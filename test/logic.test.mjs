@@ -34,9 +34,9 @@ test('util: dinero, RUT y fechas', () => {
 test('datos: cada trámite del inventario está cubierto una sola vez', () => {
   /* Contrato versionado para que el paquete público no dependa del disco privado de SMI. */
   const ids = JSON.parse(fs.readFileSync(new URL('./fixtures/tramite-ids.json', import.meta.url), 'utf8')).sort();
-  assert.equal(ids.length, 22);
+  assert.equal(ids.length, 20);
   const inFases = [].concat(...D.FASES.map(f => f.items), D.AYUDA).filter(x => x.startsWith('TRM-')).sort();
-  assert.deepEqual(Array.from(inFases), ids, 'las fases + ayuda deben cubrir exactamente los 22 trámites');
+  assert.deepEqual(Array.from(inFases), ids, 'las fases + ayuda deben cubrir exactamente los 20 trámites');
   const all = [].concat(...D.FASES.map(f => f.items), D.AYUDA);
   assert.equal(new Set(all).size, all.length, 'ningún trámite repetido');
   all.forEach(id => assert.ok(RF.tramites.byId[id], 'existe contenido para ' + id));
@@ -51,7 +51,7 @@ test('datos: cada trámite del inventario está cubierto una sola vez', () => {
     t.steps.forEach(x => assert.ok(!/^(CORFO (avisa|revisa)|Novandino .* transfiere|Espera que)/.test(x), t.id + ' paso que no es acción del usuario: ' + x.slice(0, 50)));
   });
   /* el flujo tiene los 28 pasos + 3 decisiones y las aristas apuntan a nodos del mismo bloque */
-  assert.equal(Object.keys(D.FLOW).length, 31);
+  assert.equal(Object.keys(D.FLOW).length, 21);
   D.FLOW_BLOCKS.forEach(b => b.edges.forEach(e => { assert.ok(b.ids.includes(e[0]) && b.ids.includes(e[1])); }));
   /* no debe existir ningún retorno inventado (Manual p.10: aclaración por única vez) */
   assert.equal(D.FLOW['25'][4], null);
@@ -179,16 +179,9 @@ test('plazos: PEA 90 días + 30 y aclaración de 10 días hábiles', () => {
 test('avance: siguiente paso, "no aplica" y fases saltadas', () => {
   const p = JSON.parse(JSON.stringify(project));
   let pr = L.progress(p);
-  assert.equal(pr.next.tramiteId, 'P-01');
-  assert.equal(pr.faseActual, 'F1');
-  p.done['P-01:0'] = true; p.done['P-01:1'] = true;
-  pr = L.progress(p);
-  assert.equal(pr.next.tramiteId, 'P-02');
-  p.na = { 'P-02': true, 'P-03': true };
-  pr = L.progress(p);
   assert.equal(pr.next.tramiteId, 'TRM-027');
   assert.equal(pr.faseActual, 'F2');
-  /* marcar algo en la fase 4 sin haber tocado 2 ni 3 */
+  /* marcar algo en la fase de gastos sin haber tocado el PEA (fase 0) */
   p.done['TRM-008:0'] = true;
   const sk = L.skippedPhases(p);
   assert.ok(sk.some(s => s.fase === 'F4' && s.falta === 'F2'));

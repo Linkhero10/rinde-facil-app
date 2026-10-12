@@ -116,22 +116,26 @@
     } }, name.node, p1.node, hints.node, p2.node, err, h('button', { type: 'submit', class: 'btn primary big' }, legacy ? 'Proteger mis datos' : 'Crear cuenta'));
     return shell(legacy ? 'Protege los datos de tu comunidad' : 'Crea la cuenta de tu comunidad',
       legacy ? 'Tus datos de antes se van a guardar cifrados con una contraseña. Elige una que puedas recordar; sin ella nadie podrá abrirlos, ni siquiera nosotros.' : 'La contraseña protege lo que guardas en este equipo: gastos, fotos y documentos. Nadie más puede abrirlo sin ella.',
-      [form, h('p', { class: 'hint' }, 'Los datos se guardan cifrados en este equipo y, si conectas el servicio de tu comunidad, en el Drive de tu comunidad.'), h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('connect'); } }, approvedList().length ? 'Ya tengo cuenta: entrar en este equipo con mi nombre y contraseña' : 'Ya tengo un servicio de mi comunidad y este equipo es nuevo')]);
+      [form, h('p', { class: 'hint' }, 'Los datos se guardan cifrados en este equipo y, si conectas el servicio de tu comunidad, en el Drive de tu comunidad.')]);
   }
 
   /* ---------- entrar ---------- */
-  function lockScreen(reason) {
+  /* dirección del servicio aprobada para esta publicación */
+  function approvedList() { return RF.cloud && RF.cloud.approvedUrls ? RF.cloud.approvedUrls() : []; }
+  /* device = true: equipo nuevo; entra con el nombre de usuario y la contraseña que están en el servicio y trae los datos a este equipo */
+  function lockScreen(reason, device) {
     var m = V.meta() || {};
-    var name = textField('Comunidad', { value: m.display || '' });
+    var name = textField('Comunidad', { value: device ? '' : (m.display || '') });
     var pw = passField('Contraseña');
     var err = errBox();
     var form = h('form', { class: 'auth-form', onsubmit: function (ev) {
       ev.preventDefault(); showErr(err, '');
-      work(A.unlock(name.input.value, pw.input.value), 'Abriendo…').catch(function (e) { showErr(err, e.message, e); pw.input.value = ''; pw.input.focus(); });
+      var job = device ? A.connectDevice(approvedList()[0], name.input.value, pw.input.value) : A.unlock(name.input.value, pw.input.value);
+      work(job, device ? 'Conectando…' : 'Abriendo…').catch(function (e) { showErr(err, device && RF.cloud && RF.cloud.humanError ? RF.cloud.humanError(e) : e.message, e); pw.input.value = ''; pw.input.focus(); });
     } }, name.node, pw.node, err, h('button', { type: 'submit', class: 'btn primary big' }, 'Entrar'));
     setTimeout(function () { (name.input.value ? pw.input : name.input).focus(); }, 30);
     return shell('Entra a Rinde Fácil', reason === 'inactividad' ? 'La sesión se cerró porque estuvo un rato sin usarse. Tus datos siguen guardados.' : 'Escribe el nombre de tu comunidad y tu contraseña.',
-      [form, h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('recover'); } }, 'Olvidé mi contraseña')]);
+      [form, device ? null : h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('recover'); } }, 'Olvidé mi contraseña')]);
   }
 
   /* ---------- recuperar ---------- */
@@ -161,25 +165,6 @@
     return shell('Recuperar el acceso', 'Con el código de recuperación puedes elegir una contraseña nueva sin perder tus datos.', [form, h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('lock'); } }, 'Volver')]);
   }
 
-  /* ---------- equipo nuevo ---------- */
-  function approvedList() { return RF.cloud && RF.cloud.approvedUrls ? RF.cloud.approvedUrls() : []; }
-  function connectScreen() {
-    var approved = approvedList();
-    var name = textField('Nombre de la comunidad'), pw = passField('Contraseña');
-    var err = errBox(), url = null, pick = null;
-    if (approved.length > 1) { pick = h('select', { 'aria-label': 'Servicio de tu comunidad' }, approved.map(function (u, i) { return h('option', { value: u }, 'Servicio ' + (i + 1) + ' (…' + u.replace(/\/exec$/, '').slice(-8) + ')'); })); }
-    if (!approved.length) url = textField('Dirección del servicio (termina en /exec)', { autocomplete: 'off' });
-    var other = approved.length ? textField('Dirección del servicio (termina en /exec)', { autocomplete: 'off' }) : null; if (other) other.input.removeAttribute('required'); /* escondido y obligatorio bloqueaba el envío sin avisar */ /* solo para quien administra el servicio o prueba en su propio equipo */
-    var form = h('form', { class: 'auth-form', onsubmit: function (ev) {
-      ev.preventDefault(); showErr(err, '');
-      var target = other && other.input.value.trim() ? other.input.value.trim() : approved.length === 1 ? approved[0] : pick ? pick.value : url.input.value.trim();
-      work(A.connectDevice(target, name.input.value, pw.input.value), 'Conectando…').then(function () { }).catch(function (e) { showErr(err, (RF.cloud && RF.cloud.humanError ? RF.cloud.humanError(e) : e.message), e); });
-    } }, pick ? h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Servicio de tu comunidad'), pick) : null, url ? url.node : null, name.node, pw.node, other ? h('details', { class: 'adv' }, h('summary', null, 'Usar otra dirección de servicio'), h('p', { class: 'hint' }, 'Solo si te la entregó quien administra el servicio de tu comunidad. Debe estar aprobada en esta versión de la app.'), other.node) : null, err, h('button', { type: 'submit', class: 'btn primary big' }, 'Entrar en este equipo'));
-    var back = h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('none'); } }, 'Volver');
-    if (approved.length) return shell('Entrar en este equipo', 'Escribe el nombre y la contraseña de tu comunidad. Este equipo se conecta al servicio de tu comunidad y trae tus datos; no hace falta pegar ninguna dirección.', [form, back]);
-    return shell('Conectar este equipo', 'Esta publicación no trae una dirección de servicio aprobada. No pegues una URL recibida por mensaje: hasta verificar y aprobar el servicio de tu comunidad, Rinde Fácil no enviará contraseñas ni documentos.', [UI.callout('info', 'Servicio aún no configurado', 'La app sigue funcionando en este equipo. La conexión con OCR y Drive se habilitará cuando exista una publicación aprobada para el servicio de tu comunidad.'), form, back]);
-  }
-
   function insecureScreen() {
     return shell('Abre Rinde Fácil desde una dirección segura', 'Este navegador no permite proteger los datos con contraseña cuando la página no es https. Abre la dirección oficial de Rinde Fácil (empieza con https://).', null);
   }
@@ -192,10 +177,10 @@
       var recovery = arg && typeof arg === 'object' ? arg : { code: arg, warning: '' };
       return recoveryScreen(recovery.code, function () { view = null; arg = null; A.touch(); RF.app.render(); }, recovery.warning);
     }
-    if (view === 'connect') return connectScreen();
     if (view === 'recover' && phase === 'locked') return recoverScreen();
     if (view === 'lock' && phase === 'locked') return lockScreen(A.reason());
     if (phase === 'locked') return lockScreen(A.reason());
+    if (phase === 'none' && approvedList().length) return lockScreen('', true); /* equipo nuevo: entra con su usuario y contraseña */
     return createScreen(phase === 'legacy' ? V.legacyState() : null, function (r) { view = 'recovery'; arg = r.recoveryCode; RF.app.render(); });
   }
   A.goto = function (v, a) { view = v; arg = a || null; RF.app.render(); };

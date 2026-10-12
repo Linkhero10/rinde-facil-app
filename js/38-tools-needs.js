@@ -57,20 +57,6 @@
       var dv = RF.needs.derivedFromExpenses(p);
       body.appendChild(h('p', { class: 'lead' }, 'Marca lo que dice tu PEA que vas a necesitar en este proyecto. Con eso, la app te muestra solo los trámites que te tocan y esconde el resto. Lo puedes cambiar cuando quieras.'));
 
-      /* estado del PEA */
-      var apr = h('input', { type: 'checkbox', id: 'peaapr', checked: !!p.peaAprobado, disabled: !p.needsSet && !p.peaAprobado });
-      apr.addEventListener('change', function () {
-        p.peaAprobado = apr.checked;
-        if (apr.checked) { p.needsPea = JSON.parse(JSON.stringify(p.needs || {})); p.needsAdded = []; if (!p.peaAprobadoAt) p.peaAprobadoAt = U.todayISO(); }
-        else { p.needsPea = null; p.needsAdded = []; }
-        silent(); paint();
-      });
-      body.appendChild(UI.section('¿Tu PEA ya está aprobado?', [
-        h('label', { class: 'check', for: 'peaapr' }, apr, h('span', null, 'Mi PEA ya fue aprobado por CORFO')),
-        p.needsSet ? null : h('p', { class: 'hint' }, 'Primero marca abajo lo que dice tu PEA. Después podrás indicar que ya fue aprobado; desde ahí, todo lo que agregues se anotará como un cambio.'),
-        p.peaAprobado ? UI.field('Fecha de aprobación', p, 'peaAprobadoAt', { type: 'date', onChange: silent }) : null,
-        p.peaAprobado ? h('p', { class: 'hint' }, 'Lo que marcaste hasta ahora quedó como «lo que dice tu PEA». Si agregas algo nuevo, te avisamos qué hacer.') : null]));
-
       /* lista de necesidades por grupo */
       var groups = {}, order = [];
       RF.needs.NEEDS.forEach(function (n) { if (!groups[n.group]) { groups[n.group] = []; order.push(n.group); } groups[n.group].push(n); });

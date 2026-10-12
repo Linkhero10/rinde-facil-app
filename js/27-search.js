@@ -112,7 +112,7 @@
     historial: ['Historial de cambios', 'Quién hizo qué y cuándo'],
     f29: ['Formulario 29, F29, IVA mensual', 'Sube el F29 de cada mes y compáralo con tus facturas'],
     nofinanciable: ['Gastos no financiables', 'Lo que no se puede pagar con el aporte'],
-    necesidades: ['Qué necesitará tu proyecto', 'Sueldos', 'Honorarios', 'Insumos', 'Viáticos', 'Inmuebles', 'Pagos en efectivo', 'Mi PEA ya está aprobado', 'Agregar algo que no estaba en el PEA', 'Trámites que te tocan'],
+    necesidades: ['Qué necesitará tu proyecto', 'Sueldos', 'Honorarios', 'Insumos', 'Viáticos', 'Inmuebles', 'Pagos en efectivo', 'Agregar algo que no estaba en el PEA', 'Trámites que te tocan'],
     documentos: ['Subir un documento', 'PEA corregido por CORFO', 'Acta de No Objeción', 'Acta de asamblea', 'Resolución u oficio', 'Observaciones de CORFO', '¿Cambia el PEA?', 'Cambios al PEA: qué falta hacer', 'Trazabilidad', 'Registro de documentos'],
     actas: ['Mesa de Trabajo', 'Acta firmada', 'Asistentes de CORFO, la comunidad y el Organismo Colaborador', 'Acuerdos y compromisos', 'Compromisos pendientes', 'Estado del acta', 'Revisada por CORFO'],
     seguridad: ['Contraseña', 'Cambiar la contraseña', 'Código de recuperación', 'Bloquear', 'Cerrar sesión', 'Quién entró al servicio', 'Registro de accesos', 'Cifrado', 'Inactividad', 'Borrar los datos de este equipo'],

@@ -10,7 +10,7 @@ const fresh = () => { const p = RF.store.newProject('P'); return p; };
 test('sin responder, le tocan todos los trámites; al marcar solo viáticos, se esconden los que no aplican', () => {
   const p = fresh();
   const all = L.progress(p);
-  assert.ok(all.tramTotal >= 18);
+  assert.ok(all.tramTotal >= 17);
   p.needsSet = true; p.needs = { viaticos: true };
   const some = L.progress(p);
   assert.ok(some.tramTotal < all.tramTotal, 'menos trámites');

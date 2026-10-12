@@ -60,6 +60,7 @@
     gantt: { kind: 'clave', text: 'Es parte del PEA y después se carga en SGP. Se arma una vez y se ajusta si cambian las fechas.' },
     presupuesto: { kind: 'clave', text: 'Es parte del PEA y después se carga en SGP. Aquí planificas cuánto gastarás en cada cuenta.' },
     pea: { kind: 'clave', text: 'Reúne la Carta Gantt, el presupuesto y los datos del proyecto en el documento que revisa CORFO.' },
+    subirpea: { kind: 'clave', text: 'Sube el Word del PEA para que la app lea tu comunidad, tus proyectos y el presupuesto, y guarde el archivo en el Drive.' },
     reitem: { kind: 'segun', text: 'Solo si necesitas cambiar montos o actividades de un PEA que CORFO ya aprobó.' },
     cotizaciones: { kind: 'segun', text: 'Solo para compras grandes (sobre $10.000.000 netos): piden comparar proveedores.' },
     gastos: { kind: 'clave', text: 'Aquí anotas cada gasto con su boleta o factura. Es lo que después se rinde.' },
