@@ -223,10 +223,11 @@
 
   /* ---------- plazos ---------- */
   function peaDeadline(project, todayIso) {
-    if (!project.desembolso1) return null;
-    var fin = U.addDays(project.desembolso1, R.PEA_DIAS);
+    /* plazo: 90 días corridos desde la fecha de aprobación del PEA que pone la comunidad */
+    if (!project.peaAprobadoAt) return null;
+    var fin = U.addDays(project.peaAprobadoAt, R.PEA_DIAS);
     var finProrroga = U.addDays(fin, R.PEA_PRORROGA);
-    return { inicio: project.desembolso1, fin: fin, finProrroga: finProrroga, diasRestantes: todayIso ? U.diffDays(todayIso, fin) : null };
+    return { inicio: project.peaAprobadoAt, fin: fin, finProrroga: finProrroga, diasRestantes: todayIso ? U.diffDays(todayIso, fin) : null };
   }
   function aclaracionDeadline(recibidaIso, holidays) {
     if (!recibidaIso) return '';
@@ -427,7 +428,7 @@
       else if (pd.diasRestantes < 0) add(g2, 'error', 'Pasó el plazo del PEA, incluso con prórroga (' + U.fmtDate(pd.finProrroga) + ').', { tramite: 'TRM-027' });
       else if (pd.diasRestantes <= 15) add(g2, 'warn', 'Te quedan ' + pd.diasRestantes + ' días para entregar el PEA (vence el ' + U.fmtDate(pd.fin) + ').', { tramite: 'TRM-027' });
       else add(g2, 'ok', 'PEA: te quedan ' + pd.diasRestantes + ' días (vence el ' + U.fmtDate(pd.fin) + ').');
-    } else if (!pd && !peaHecho) add(g2, 'info', 'Anota la fecha del primer pago para calcular el plazo del PEA.', { tool: 'proyecto' });
+    } else if (!pd && !peaHecho) add(g2, 'info', 'Anota la fecha de aprobación del PEA para calcular su plazo.', { tool: 'proyecto' });
     (project.observations || []).forEach(function (o) {
       if (o.respondida) return;
       var lim = aclaracionDeadline(o.recibida, holidays || []);

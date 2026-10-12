@@ -37,7 +37,7 @@ test('«gasto» encuentra la herramienta y dice dónde está: Herramientas → R
   assert.ok(r.some(x => x.item.kind === 'Fase' && /Gastos y respaldos/.test(x.item.title)), 'también la fase');
 });
 test('busca dentro de los pasos de los trámites y muestra el fragmento con su número de paso', () => {
-  const r = S('formulario por proyecto', 40).filter(x => x.item.kind === 'Trámite' || x.item.kind === 'Paso');
+  const r = S('llena proyectos', 40).filter(x => x.item.kind === 'Trámite' || x.item.kind === 'Paso');
   assert.ok(r.length > 0);
   assert.ok(r.some(x => /^Paso \d/.test(x.snippetLabel) && x.snippetSegs.some(s => s.m)), 'fragmento con la palabra marcada');
   assert.ok(r.every(x => x.item.href.startsWith('#/t/')));

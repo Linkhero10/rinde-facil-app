@@ -6,9 +6,9 @@
   /* img: [archivo, leyenda]  ·  tools: ids de herramientas  ·  who: actor principal */
   var T = [
     /* ---------- Fase 0: PEA ---------- */
-    { id: 'TRM-027', fase: 'F2', title: 'Armar PEA', why: 'El PEA (Programa de Ejecución de Actividades) explica qué proyectos harás, con qué plazos y presupuesto.', who: 'comunidad', when: '90 días corridos desde el primer pago (se puede prorrogar 30 días, una vez)', need: ['Primer pago recibido', 'Ideas de proyectos', 'Apoyo del Organismo Colaborador (opcional)'],
-      notes: ['Tienes 90 días corridos desde el primer pago; CORFO activa ese plazo.'],
-      steps: ['Si necesitas ayuda, pídela al Organismo Colaborador antes de redactar (Componente 3).', 'Arma los 3 documentos: información general, un formulario por proyecto y el presupuesto con la Carta Gantt.', 'Envía el PEA a CORFO. Si lo observan, corrígelo y reenvíalo.'], stepTools: { 1: ['pea', 'gantt', 'presupuesto'], 2: ['pea', 'subirpea'] }, opt: { 0: 'Opcional' }, related: ['TRM-030'], auto: { 1: 'pea_docs' },
+    { id: 'TRM-027', fase: 'F2', title: 'Armar PEA', why: 'El PEA (Programa de Ejecución de Actividades) explica qué proyectos harás, con qué plazos y presupuesto.', who: 'comunidad', when: '90 días corridos desde la aprobación del PEA (se puede prorrogar 30 días, una vez)', need: ['El Word del PEA (el que ya armaron con CORFO)', 'Apoyo del Organismo Colaborador (opcional)'],
+      notes: ['Tienes 90 días corridos desde la fecha de aprobación del PEA que anotes en la app.'],
+      steps: ['Sube el Word del PEA: la app llena proyectos, presupuestos, cronograma y gastos de administración.', 'Revisa lo que leyó la app, escribe el RUT de la comunidad y confirma.', 'Envía el PEA a CORFO. Si lo observan, corrígelo y reenvíalo.'], stepTools: { 0: ['subirpea'] }, related: ['TRM-030'],
       tools: ['necesidades', 'pea', 'gantt', 'presupuesto', 'subirpea'], img: [['flujograma_overview.jpg', 'Flujograma oficial, pasos 6 a 14']], src: ['Flujograma, pasos 6 a 14', '«Introducción al Acuerdo», diapositiva 2'] },
     { id: 'TRM-030', fase: 'F2', title: 'Pedir prórroga del PEA (opcional)', optional: true, why: 'Si no alcanzas a entregar el PEA dentro de los 90 días, puedes pedir más tiempo: una sola vez y hasta 30 días.', who: 'comunidad', when: 'Antes de que venza el plazo de 90 días', need: ['Plazo del PEA corriendo', 'El motivo por el que necesitas más tiempo'],
       notes: ['Se puede pedir una sola vez y por hasta 30 días más.', 'Tiene que ser una solicitud fundada y hacerse antes de que venza el plazo.'],

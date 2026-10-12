@@ -189,7 +189,7 @@ await step('3. Un trámite muestra pasos cortos, se pueden tachar y cuenta el av
   ok(/\d+ de \d+/.test(cuenta), 'cuenta el avance: ' + cuenta);
   await shot('03-tramite');
   await page.locator('.steps .step').first().locator('label').click();
-  ok(/0 de 2/.test(await page.textContent('.steps-count')));
+  ok(/0 de 3/.test(await page.textContent('.steps-count')));
 });
 
 await step('4. Los datos del proyecto y del presupuesto aprobado se guardan', async () => {
@@ -197,7 +197,7 @@ await step('4. Los datos del proyecto y del presupuesto aprobado se guardan', as
   await page.waitForSelector('.tool-title');
   await page.getByLabel('Inicio del proyecto').fill('2026-01-01');
   await page.getByLabel('Término del proyecto').fill('2027-12-31');
-  await page.getByLabel('Fecha del primer pago (30 %)').fill('2026-06-01');
+  await page.getByLabel('Fecha de aprobación del PEA').fill('2026-06-01');
   await page.getByLabel('Período que estás rindiendo: desde').fill('2026-07-01');
   await page.getByLabel('hasta', { exact: true }).fill('2026-12-31');
   await page.getByLabel('Gastos operacionales').fill('20000000');

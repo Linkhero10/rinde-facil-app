@@ -10,7 +10,7 @@ const state = {
   events: [{ id: 'e1', date: '2026-10-15', title: 'Reunión con la directiva, 19:00', note: 'Llevar libro; actas' }]
 };
 const project = {
-  id: 'p1', name: 'Invernadero', start: '2026-07-01', end: '2027-06-30', desembolso1: '2026-08-01', periodoInicio: '', periodoFin: '',
+  id: 'p1', name: 'Invernadero', start: '2026-07-01', end: '2027-06-30', desembolso1: '2026-08-01', peaAprobadoAt: '2026-08-01', periodoInicio: '', periodoFin: '',
   gantt: { stages: [{ id: 's1', name: 'Preparación', acts: [{ id: 'x1', name: 'Taller de artesanía', start: '2026-09-01', end: '2026-09-30' }] }] },
   expenses: [{ id: 'g1', proveedor: 'Ferretería Sur', fecha: '2026-09-05', montoRendir: '12000' }], observations: []
 };

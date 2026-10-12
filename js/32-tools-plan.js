@@ -43,7 +43,7 @@
         UI.field('Nombre del proyecto', p, 'name', { type: 'text', cls: 'wide' }), UI.field('Código (lo asigna CORFO)', p, 'code', { type: 'text', ph: '22CDR-######' }),
         UI.field('Tipo de proyecto', p, 'tipo', { type: 'select', noEmpty: true, options: D.TIPOS_PROYECTO }),
         UI.field('Inicio del proyecto', p, 'start', { type: 'date' }), UI.field('Término del proyecto', p, 'end', { type: 'date' }),
-        UI.field('Fecha del primer pago (30 %)', p, 'desembolso1', { type: 'date', hint: 'Desde aquí corren los 90 días del PEA.' }),
+        UI.field('Fecha de aprobación del PEA', p, 'peaAprobadoAt', { type: 'date', hint: 'Desde aquí corren los 90 días del PEA.' }),
         UI.field('Período que estás rindiendo: desde', p, 'periodoInicio', { type: 'date' }), UI.field('hasta', p, 'periodoFin', { type: 'date' }));
       root.appendChild(UI.section('Datos de «' + (p.name || 'tu proyecto') + '»', [f]));
       var bud = h('div', { class: 'form-grid' }, D.CUENTAS.map(function (cu) { return UI.field(cu.name, p.budgetApproved, cu.id, { type: 'money', hint: 'Lo aprobado por CORFO' }); }));
@@ -386,9 +386,9 @@
   } };
   TOOLS.plazos = { title: 'Calculadora de plazos', icon: 'clock', desc: 'PEA (90 + 30 días) y aclaración de observaciones (10 días hábiles).', render: function () {
     var st = { pago: '', obs: U.todayISO() }, o1 = h('div'), o2 = h('div');
-    function p1() { U.clear(o1); if (!st.pago) return; var pd = L.peaDeadline({ desembolso1: st.pago }, U.todayISO()); o1.appendChild(UI.callout(pd.diasRestantes < 0 ? 'warn' : 'ok', 'El PEA vence el ' + U.fmtDate(pd.fin) + '.', ' Con la prórroga única (hasta 30 días, pedida antes del vencimiento): ' + U.fmtDate(pd.finProrroga) + '.')); }
+    function p1() { U.clear(o1); if (!st.pago) return; var pd = L.peaDeadline({ peaAprobadoAt: st.pago }, U.todayISO()); o1.appendChild(UI.callout(pd.diasRestantes < 0 ? 'warn' : 'ok', 'El PEA vence el ' + U.fmtDate(pd.fin) + '.', ' Con la prórroga única (hasta 30 días, pedida antes del vencimiento): ' + U.fmtDate(pd.finProrroga) + '.')); }
     function p2() { U.clear(o2); if (!st.obs) return; var lim = L.aclaracionDeadline(st.obs, RF.holidays.all()); o2.appendChild(UI.callout('info', 'Tienes hasta el ' + U.fmtDate(lim) + '.', ' Son 10 días hábiles desde que CORFO comunicó las observaciones' + ' (descontando los feriados de Chile).' + ' La aclaración se hace una sola vez.')); }
-    var root = h('div', null, UI.section('Plazo del PEA', [UI.field('Fecha del primer pago (30 %)', st, 'pago', { type: 'date', onChange: p1 }), o1]), UI.section('Plazo para aclarar observaciones', [UI.field('Fecha en que CORFO comunicó las observaciones', st, 'obs', { type: 'date', onChange: p2 }), o2]));
+    var root = h('div', null, UI.section('Plazo del PEA', [UI.field('Fecha de aprobación del PEA', st, 'pago', { type: 'date', onChange: p1 }), o1]), UI.section('Plazo para aclarar observaciones', [UI.field('Fecha en que CORFO comunicó las observaciones', st, 'obs', { type: 'date', onChange: p2 }), o2]));
     p1(); p2();
     return page('Calculadora de plazos', 'Los plazos que aparecen en los documentos del convenio.', root);
   } };

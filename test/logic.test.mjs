@@ -159,19 +159,19 @@ test('cuadre: presupuesto vs aprobado, anexos 3/4/5 vs gastos, plazos y saltos',
 });
 
 test('plazos: PEA 90 días + 30 y aclaración de 10 días hábiles', () => {
-  const pd = L.peaDeadline({ desembolso1: '2026-07-01' }, '2026-09-01');
+  const pd = L.peaDeadline({ peaAprobadoAt: '2026-07-01' }, '2026-09-01');
   assert.equal(pd.fin, '2026-09-29');
   assert.equal(pd.finProrroga, '2026-10-29');
   assert.equal(pd.diasRestantes, 28);
   assert.equal(L.aclaracionDeadline('2026-09-28', []), '2026-10-12');
   const p = JSON.parse(JSON.stringify(project));
-  p.desembolso1 = '2026-06-15'; /* vence el 13-sep; con prórroga, el 13-oct */
+  p.peaAprobadoAt = '2026-06-15'; /* vence el 13-sep; con prórroga, el 13-oct */
   let rec = L.reconcile(p, community, '2026-09-20', []);
   assert.ok(rec.groups.find(g => g.id === 'plazos').items.some(i => i.level === 'warn' && /prórroga/.test(i.msg)));
   rec = L.reconcile(p, community, '2026-12-01', []);
   assert.ok(rec.groups.find(g => g.id === 'plazos').items.some(i => i.level === 'error'));
   p.observations = [{ id: 'o1', titulo: 'Gasto observado', recibida: '2026-09-01' }];
-  p.desembolso1 = '';
+  p.peaAprobadoAt = '';
   rec = L.reconcile(p, community, '2026-09-20', []);
   assert.ok(rec.groups.find(g => g.id === 'plazos').items.some(i => i.level === 'error' && /Venció/.test(i.msg)));
 });
