@@ -48,6 +48,7 @@ const RF_WEB = {
   projectsName: 'Proyectos',
   stateFile: 'estado-rinde-facil.json',
   maxBytes: 8 * 1024 * 1024,
+  ocrMaxBytes: 20 * 1024 * 1024, /* PDF escaneado: límite de Cloud Vision para archivos */
   maxStateChars: 4 * 1024 * 1024,
   keepBackups: 5,
   rootCategories: { oficial: 'Documentos oficiales', acta: 'Actas de mesas de trabajo' },
@@ -155,7 +156,7 @@ function rfOcr_(p) {
   if (!rfOcrReady_()) return { ok: false, error: 'OCR_NO_CONFIGURADO', message: 'Falta RINDE_FACIL_GCP_PROJECT_ID o CloudOcrAdapter.gs.' };
   if (RF_WEB.okMime.indexOf(String(p.mimeType || '').toLowerCase()) < 0) return { ok: false, error: 'TIPO_NO_PERMITIDO' };
   if (!rfIsBase64_(p.base64)) return { ok: false, error: 'BASE64_INVALIDO' };
-  if (rfBase64Bytes_(p.base64) > RF_WEB.maxBytes) return { ok: false, error: 'ARCHIVO_MUY_GRANDE' };
+  if (rfBase64Bytes_(p.base64) > RF_WEB.ocrMaxBytes) return { ok: false, error: 'ARCHIVO_MUY_GRANDE' };
   const cnt = rfCountOcr_();
   if (!cnt.ok) return cnt;
   const bytes = Utilities.base64Decode(p.base64);

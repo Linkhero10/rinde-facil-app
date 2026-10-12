@@ -223,12 +223,12 @@
   }
 
   /* Lee un PDF (p. ej. el PEA escaneado) con el OCR del servicio. No reduce el archivo: se manda tal cual, en base64.
-     Rechaza con mensaje claro si pesa más de 8 MB. Devuelve { ok, raw_text, pages, page_count, total_pages, document_coverage, error }. */
-  var PDF_MAX_BYTES = 8 * 1024 * 1024;
+     Rechaza con mensaje claro si pesa más de 20 MB. Devuelve { ok, raw_text, pages, page_count, total_pages, document_coverage, error }. */
+  var PDF_MAX_BYTES = 20 * 1024 * 1024; /* límite de Cloud Vision para archivos */
   function recognizeDocument(file, onStage) {
     var say = function (id, label) { if (onStage) onStage(id, label); };
     if (!file) return Promise.reject(new Error('Falta el archivo PDF.'));
-    if (file.size > PDF_MAX_BYTES) return Promise.reject(Object.assign(new Error('El PDF pesa más de 8 MB; sepáralo en partes o usa un Word'), { code: 'ARCHIVO_MUY_GRANDE' }));
+    if (file.size > PDF_MAX_BYTES) return Promise.reject(Object.assign(new Error('El PDF pesa más de 20 MB; sepáralo en partes o usa un Word'), { code: 'ARCHIVO_MUY_GRANDE' }));
     say('prep', 'Preparando el PDF…');
     return blobToBase64(file).then(function (b64) {
       say('read', 'Leyendo el PDF con Google… puede tardar varios minutos.');

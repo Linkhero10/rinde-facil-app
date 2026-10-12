@@ -277,7 +277,7 @@ test('ocr: valida tipo y tamaño, lee, cuenta y respeta el límite diario', () =
   const c = e.call({ action: 'ocr', t: e.t, mimeType: 'image/png', base64: B64 });
   assert.equal(c.error, 'LIMITE_DIARIO'); assert.equal(c.limit, 2);
   assert.equal(e.ctx.__vision.length, 2);
-  const big = Buffer.alloc(9 * 1024 * 1024).toString('base64');
+  const big = Buffer.alloc(21 * 1024 * 1024).toString('base64');
   const e2 = makeEnv({ RINDE_FACIL_ACCESS_KEY: 'k', RINDE_FACIL_GCP_PROJECT_ID: 'proy' });
   assert.equal(e2.call({ action: 'ocr', t: e2.t, mimeType: 'image/jpeg', base64: big }).error, 'ARCHIVO_MUY_GRANDE');
 });
