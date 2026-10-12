@@ -1,0 +1,1 @@
+pdf.js v6.3.289 (pdfjs-dist, Apache-2.0), versión moderna: pdf.min.mjs, pdf.worker.min.mjs e image_decoders/pdf.image_decoders.min.mjs. Fuente: npm pdfjs-dist@6.3.289 (carpeta build). Licencia en LICENSE.

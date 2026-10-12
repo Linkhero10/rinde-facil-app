@@ -230,10 +230,22 @@
 
     /* PDF escaneado: se manda al OCR del servicio y se lee por posición (RF.pea.extractFromOcr) */
     function onPdf(file) {
-      if (!RF.ocr || !RF.ocr.recognizeDocument || !RF.pea.extractFromOcr) { st.notice = 'No está cargada la lectura de PDF en esta versión.'; paint(); return; }
+      if (!RF.ocr || !RF.ocr.recognizePage || !RF.pdfPages || !RF.pea.extractFromOcr) { st.notice = 'No está cargada la lectura de PDF en esta versión.'; paint(); return; }
       if (!RF.cloud || !RF.cloud.configured()) { st.notice = 'Para leer un PDF escaneado conecta primero el servicio en la nube (en Ajustes). Mientras tanto puedes subir el Word del PEA.'; paint(); return; }
       st.file = file; st.reading = true; st.fromPdf = true; st.stage = 'Leyendo el PDF con Google…'; paint();
-      RF.ocr.recognizeDocument(file, function (id, label) { st.stage = label; if (st.file === file) paint(); }).then(function (res) {
+      var say = function (label) { st.stage = label; if (st.file === file) paint(); };
+      readBuffer(file).then(function (buf) {
+        return RF.pdfPages.renderPages(buf, function (num, total) { say('Preparando la página ' + num + ' de ' + total + '…'); });
+      }).then(function (rendered) {
+        var results = [], chain = Promise.resolve();
+        rendered.pages.forEach(function (p) {
+          chain = chain.then(function () {
+            say('Leyendo la página ' + p.number + ' de ' + rendered.total + ' con Google…');
+            return RF.ocr.recognizePage(p.blob, p.number).then(function (r) { results.push(r); });
+          });
+        });
+        return chain.then(function () { return RF.pdfPages.aggregate(results, rendered.total); });
+      }).then(function (res) {
         if (st.file !== file) return;
         if (!res || !res.ok) {
           var det = String((res && res.error) || 'OCR_SIN_TEXTO');

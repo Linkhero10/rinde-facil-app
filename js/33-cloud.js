@@ -249,6 +249,17 @@
     });
   }
 
+  /* Una página ya dibujada derecha (imagen JPEG): así se lee un PDF escaneado aunque la imagen esté girada dentro del archivo. */
+  function recognizePage(blob, number) {
+    return blobToBase64(blob).then(function (b64) {
+      return postRetry('ocr', { fileName: 'pagina-' + number + '.jpg', mimeType: 'image/jpeg', base64: b64 }, 120000, function (r) { return !!(r && (r.ok === false || r.engine || r.pages || r.pages_layout)); }, function () {});
+    }).then(function (res) {
+      res = res || {};
+      var ok = res.ok === true && !!res.raw_text;
+      return { number: number, ok: ok || /SIN_TEXTO/.test(String(res.error || '')), raw_text: ok ? String(res.raw_text) : '', pages: ok ? (res.pages_layout || res.pages || []) : [], error: ok ? null : (res.error || 'OCR_SIN_TEXTO') };
+    });
+  }
+
   /* Convierte el texto leído en campos del gasto usando el analizador ya probado del piloto. */
   /* Los montos, la fecha, el RUT y el N° salen del extractor propio (26-receipt.js), que cuadra neto + IVA = total.
      Del analizador heredado del piloto solo se aprovecha el nombre del proveedor, y solo si coincide el RUT. */
@@ -279,5 +290,5 @@
     return m || 'error desconocido';
   }
   RF.cloud = { approvedUrls: approvedUrls, humanError: humanError, configured: configured, validUrl: validUrl, trustedUrl: trustedUrl, post: post, postRaw: postRaw, postRawTo: postRawTo, postRetry: postRetry, ping: ping, downscale: downscale, blobToBase64: blobToBase64 };
-  RF.ocr = { recognize: recognize, recognizeDocument: recognizeDocument, toExpenseFields: toExpenseFields };
+  RF.ocr = { recognize: recognize, recognizeDocument: recognizeDocument, recognizePage: recognizePage, toExpenseFields: toExpenseFields };
 })(typeof window !== 'undefined' ? window : globalThis);
