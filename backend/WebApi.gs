@@ -167,6 +167,9 @@ function rfOcr_(p) {
     ok: ok, engine: 'cloud_vision', raw_text: ok ? r.raw_text : '', confidence: r && r.confidence != null ? r.confidence : null,
     duration_ms: r && r.duration_ms || null, page_count: r && r.page_count || null,
     pages: ok && r.pages_layout ? r.pages_layout : [],
+    page_count: r && r.page_count || null,
+    total_pages: r && r.total_pages || null,
+    document_coverage: r && r.document_coverage || null,
     used_today: cnt.used, limit: cnt.limit,
     error: ok ? null : (r && r.error) || 'OCR_SIN_TEXTO'
   };

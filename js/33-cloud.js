@@ -222,6 +222,33 @@
     });
   }
 
+  /* Lee un PDF (p. ej. el PEA escaneado) con el OCR del servicio. No reduce el archivo: se manda tal cual, en base64.
+     Rechaza con mensaje claro si pesa más de 8 MB. Devuelve { ok, raw_text, pages, page_count, total_pages, document_coverage, error }. */
+  var PDF_MAX_BYTES = 8 * 1024 * 1024;
+  function recognizeDocument(file, onStage) {
+    var say = function (id, label) { if (onStage) onStage(id, label); };
+    if (!file) return Promise.reject(new Error('Falta el archivo PDF.'));
+    if (file.size > PDF_MAX_BYTES) return Promise.reject(Object.assign(new Error('El PDF pesa más de 8 MB; sepáralo en partes o usa un Word'), { code: 'ARCHIVO_MUY_GRANDE' }));
+    say('prep', 'Preparando el PDF…');
+    return blobToBase64(file).then(function (b64) {
+      say('read', 'Leyendo el PDF con Google… puede tardar varios minutos.');
+      return postRetry('ocr', { fileName: file.name || 'documento.pdf', mimeType: 'application/pdf', base64: b64 }, 300000, function (r) { return !!(r && (r.ok === false || r.engine || r.pages || r.pages_layout)); }, function () { say('read', 'Google no respondió bien. Reintentando…'); });
+    }).then(function (res) {
+      res = res || {};
+      var completo = !res.document_coverage || res.document_coverage === 'COMPLETE';
+      var ok = res.ok === true && !!res.raw_text && completo;
+      return {
+        ok: ok,
+        raw_text: ok ? String(res.raw_text) : '',
+        pages: ok ? (res.pages_layout || res.pages || []) : [],
+        page_count: res.page_count || null,
+        total_pages: res.total_pages || res.page_count || null,
+        document_coverage: res.document_coverage || null,
+        error: ok ? null : (!completo ? 'Google no leyó todas las páginas del PDF; no se aplica el PEA. Prueba de nuevo o sube el Word.' : (res.error || 'OCR_SIN_TEXTO'))
+      };
+    });
+  }
+
   /* Convierte el texto leído en campos del gasto usando el analizador ya probado del piloto. */
   /* Los montos, la fecha, el RUT y el N° salen del extractor propio (26-receipt.js), que cuadra neto + IVA = total.
      Del analizador heredado del piloto solo se aprovecha el nombre del proveedor, y solo si coincide el RUT. */
@@ -252,5 +279,5 @@
     return m || 'error desconocido';
   }
   RF.cloud = { approvedUrls: approvedUrls, humanError: humanError, configured: configured, validUrl: validUrl, trustedUrl: trustedUrl, post: post, postRaw: postRaw, postRawTo: postRawTo, postRetry: postRetry, ping: ping, downscale: downscale, blobToBase64: blobToBase64 };
-  RF.ocr = { recognize: recognize, toExpenseFields: toExpenseFields };
+  RF.ocr = { recognize: recognize, recognizeDocument: recognizeDocument, toExpenseFields: toExpenseFields };
 })(typeof window !== 'undefined' ? window : globalThis);

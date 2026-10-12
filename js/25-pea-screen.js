@@ -13,7 +13,8 @@
   var DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   var CUENTAS = ['rrhh', 'operacion', 'inversion', 'administracion'];
   var CUENTA_LBL = { rrhh: 'Recursos humanos', operacion: 'Gastos operacionales', inversion: 'Gastos de inversión', administracion: 'Gastos de administración' };
-  var PDF_MSG = 'El PEA escaneado todavía se lee con otra herramienta; por ahora sube el Word del PEA.';
+  var PDF_MIME = 'application/pdf';
+  var OCR_AVISO = 'Este PEA se leyó por OCR (PDF escaneado): revisa cada dato contra el documento antes de aplicar. El presupuesto y la carta Gantt no se leen de un escaneado: cárgalos a mano o sube el Word del PEA.';
   var LOCAL_MSG = 'Guardado solo en este equipo; conecta el servicio para copiarlo al Drive.';
   var seq = 0;
 
@@ -21,6 +22,7 @@
 
   function nrm(s) { return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase(); }
   function clean(v) { var s = String(v == null ? '' : v).trim(); return s === '' ? null : s; }
+  function copia(x) { return x == null ? x : JSON.parse(JSON.stringify(x)); }
   function sameName(a, b) { var x = nrm(a); return x !== '' && x === nrm(b); }
   function findNamed(list, name) {
     for (var i = 0; i < (list || []).length; i++) if (sameName(list[i].name, name)) return list[i];
@@ -56,6 +58,9 @@
     };
   }
 
+  /* RUT que se prellena en la pantalla: el del PEA (vacío si el PEA no lo trae) */
+  P.rutInicial = function (model) { return clean(model && model.community && model.community.rut) || ''; };
+
   /* Devuelve un estado NUEVO (no toca el de entrada). Reglas:
    * - nunca borra comunidades, proyectos, líneas ni actividades existentes;
    * - un proyecto con el mismo nombre se reutiliza (no se duplica); sus datos del PEA reemplazan los campos del PEA
@@ -77,6 +82,20 @@
     var legal = opts.legalRep !== undefined ? clean(opts.legalRep) : clean(mc.legalRep);
     c.legalRep = legal || c.legalRep || '';
 
+    /* contacto y datos del PEA: se copian del modelo (o de opts.contacto); nunca borran lo que ya hay */
+    var contacto = opts.contacto || mc.contacto;
+    if (contacto) c.contacto = copia(contacto);
+    var mail = clean(((contacto && contacto.correos) || [])[0]);
+    var fono = clean(((contacto && contacto.telefonos) || [])[0]);
+    if (!clean(c.email) && mail) c.email = mail;
+    if (!clean(c.phone) && fono) c.phone = fono;
+    if (Array.isArray(mc.peaDatos)) c.peaDatos = copia(mc.peaDatos);
+    else if (!Array.isArray(c.peaDatos)) c.peaDatos = [];
+    ['fechaEntrega', 'asambleaValidacion', 'apoyo'].forEach(function (k) {
+      if (mc[k] != null) c[k] = mc[k];
+      else if (c[k] === undefined) c[k] = null;
+    });
+
     s.projects = Array.isArray(s.projects) ? s.projects : [];
     (m.projects || []).forEach(function (mp) {
       if (!mp || sameName(mp.name, ADMIN)) return;
@@ -87,6 +106,8 @@
       if (mp.start) p.start = mp.start;
       if (mp.end) p.end = mp.end;
       if (mp.source) p.peaSource = mp.source;
+      if (Array.isArray(mp.peaDatos)) p.peaDatos = copia(mp.peaDatos);
+      if (mp.fuentes) p.fuentes = copia(mp.fuentes);
 
       p.budgetApproved = Object.assign({ rrhh: 0, operacion: 0, inversion: 0, administracion: 0 }, p.budgetApproved || {});
       CUENTAS.forEach(function (k) {
@@ -149,8 +170,9 @@
   /* guarda el Word del PEA en la carpeta de planificación del Drive; devuelve {local:true} si no hay servicio */
   function savePeaDrive(file, projectName) {
     if (!RF.drive || !RF.drive.enabled()) return Promise.resolve({ local: true });
+    var mime = /\.pdf$/i.test(file.name) ? PDF_MIME : DOCX_MIME;
     return RF.cloud.blobToBase64(file).then(function (b64) {
-      return RF.cloud.post('saveFile', { project: projectName || 'Mi comunidad', category: 'planificacion', fileName: file.name, mimeType: DOCX_MIME, base64: b64 }, 90000);
+      return RF.cloud.post('saveFile', { project: projectName || 'Mi comunidad', category: 'planificacion', fileName: file.name, mimeType: mime, base64: b64 }, 90000);
     }).then(function (r) {
       if (!r || !r.ok) throw new Error(RF.drive.errText(r && r.error));
       return r;
@@ -182,7 +204,7 @@
 
   TOOLS.subirpea = { title: 'Subir el PEA', icon: 'file', desc: 'Sube el Word del PEA: la app lee tu comunidad, tus proyectos, el presupuesto y la Carta Gantt, y los aplica sin borrar nada.', render: function () {
     var U = RF.util, UI = RF.ui, h = U.h;
-    var st = { file: null, model: null, notice: '', reading: false, busy: false, rut: RUT_ACUERDO, legalRep: '', result: null,
+    var st = { file: null, model: null, notice: '', reading: false, stage: '', ocrText: '', fromPdf: false, busy: false, rut: RUT_ACUERDO, legalRep: '', result: null,
       acta: { file: null, date: '', projectId: '', busy: false, result: null } };
     var body = h('div');
 
@@ -192,29 +214,49 @@
 
     function onFile(file) {
       if (!file) return;
-      st.file = null; st.model = null; st.result = null; st.notice = '';
-      if (/\.pdf$/i.test(file.name) || /pdf/i.test(file.type || '')) { st.notice = PDF_MSG; paint(); return; }
-      if (!/\.docx$/i.test(file.name)) { st.notice = 'Ese archivo no es un Word (.docx). Sube el Word del PEA.'; paint(); return; }
+      st.file = null; st.model = null; st.result = null; st.notice = ''; st.ocrText = ''; st.fromPdf = false; st.stage = '';
+      if (/\.pdf$/i.test(file.name) || /pdf/i.test(file.type || '')) { onPdf(file); return; }
+      if (!/\.docx$/i.test(file.name)) { st.notice = 'Ese archivo no es un Word (.docx) ni un PDF. Sube el Word del PEA o el PDF escaneado.'; paint(); return; }
       st.file = file; st.reading = true; paint();
       readBuffer(file).then(function (buf) { return P.extractFromDocxBytes(buf); }).then(function (model) {
         if (st.file !== file) return;
         st.model = model;
-        st.rut = '';
+        st.rut = P.rutInicial(model);
         st.legalRep = clean(model.community && model.community.legalRep) || '';
       }).catch(function (e) {
         if (st.file === file) { st.file = null; st.notice = 'No se pudo leer el Word: ' + msgOf(e) + '. Revisa que sea el Word del PEA.'; }
       }).then(function () { st.reading = false; paint(); });
     }
 
+    /* PDF escaneado: se manda al OCR del servicio y se lee por posición (RF.pea.extractFromOcr) */
+    function onPdf(file) {
+      if (!RF.ocr || !RF.ocr.recognizeDocument || !RF.pea.extractFromOcr) { st.notice = 'No está cargada la lectura de PDF en esta versión.'; paint(); return; }
+      if (!RF.cloud || !RF.cloud.configured()) { st.notice = 'Para leer un PDF escaneado conecta primero el servicio en la nube (en Ajustes). Mientras tanto puedes subir el Word del PEA.'; paint(); return; }
+      st.file = file; st.reading = true; st.fromPdf = true; st.stage = 'Leyendo el PDF con Google…'; paint();
+      RF.ocr.recognizeDocument(file, function (id, label) { st.stage = label; if (st.file === file) paint(); }).then(function (res) {
+        if (st.file !== file) return;
+        if (!res || !res.ok) {
+          var det = String((res && res.error) || 'OCR_SIN_TEXTO');
+          throw new Error(/SIN_TEXTO/.test(det) ? 'el OCR no encontró texto legible en el PDF' : 'el servicio respondió con «' + det + '»');
+        }
+        st.ocrText = res.raw_text || '';
+        st.model = RF.pea.extractFromOcr(res);
+        st.rut = P.rutInicial(st.model);
+        st.legalRep = clean(st.model.community && st.model.community.legalRep) || '';
+      }).catch(function (e) {
+        if (st.file === file) { st.file = null; st.model = null; st.fromPdf = false; st.notice = 'No se pudo leer el PDF: ' + msgOf(e) + '.'; }
+      }).then(function () { st.reading = false; st.stage = ''; paint(); });
+    }
+
     function uploadBox() {
-      var inp = h('input', { type: 'file', accept: '.docx,.pdf', class: 'sr-only', 'aria-label': 'Elegir el Word del PEA' });
-      return UI.section('1 · Elige el Word del PEA', [
+      var inp = h('input', { type: 'file', accept: '.docx,.pdf', class: 'sr-only', 'aria-label': 'Elegir el Word o el PDF del PEA' });
+      return UI.section('1 · Elige el Word o el PDF del PEA', [
         h('div', { class: 'file-pick' }, inp,
-          UI.btn(st.file ? 'Cambiar archivo' : 'Elegir el Word del PEA', { icon: 'file', cls: st.file ? 'ghost' : 'primary', onclick: function () { inp.click(); } }),
-          st.file ? h('span', { class: 'file-name' }, st.file.name + ' · ' + Math.max(1, Math.round(st.file.size / 1024)) + ' KB') : h('span', { class: 'hint' }, 'Formato .docx. Los PDF todavía no se leen.')),
-        UI.fileDrop(inp, { kind: 'official', label: 'Arrastra aquí el Word del PEA o pulsa para buscarlo', hint: 'Solo Word (.docx).', invalidText: 'Ese formato no se puede leer aquí. Sube el Word del PEA (.docx).', onFiles: function (files) { onFile(files[0]); } }),
+          UI.btn(st.file ? 'Cambiar archivo' : 'Elegir el PEA', { icon: 'file', cls: st.file ? 'ghost' : 'primary', onclick: function () { inp.click(); } }),
+          st.file ? h('span', { class: 'file-name' }, st.file.name + ' · ' + Math.max(1, Math.round(st.file.size / 1024)) + ' KB') : h('span', { class: 'hint' }, 'Word (.docx) o PDF escaneado (se lee con el OCR del servicio).')),
+        UI.fileDrop(inp, { kind: 'official', label: 'Arrastra aquí el PEA o pulsa para buscarlo', hint: 'Word (.docx) o PDF.', invalidText: 'Ese formato no se puede leer aquí. Sube el PEA en Word (.docx) o PDF.', onFiles: function (files) { onFile(files[0]); } }),
         st.notice ? UI.callout('warn', '', st.notice) : null,
-        st.reading ? h('p', { class: 'hint' }, 'Leyendo el PEA…') : null
+        st.reading ? h('p', { class: 'hint' }, st.stage || 'Leyendo el PEA…') : null
       ]);
     }
 
@@ -234,7 +276,7 @@
 
       kids.push(UI.section('3 · Datos que se aplican', [
         h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'RUT de la comunidad'), rutInp,
-          h('span', { class: 'hint' }, difiere ? ('El PEA dice ' + pdfRut + '; se usa el del Acuerdo. Cambia si corresponde.') : (pdfRut ? 'Se usa el RUT del Acuerdo CORFO. Cambia si corresponde.' : 'El PEA no trae RUT; se usa el del Acuerdo. Cambia si corresponde.'))),
+          h('span', { class: 'hint' }, difiere ? ('El PEA dice ' + pdfRut + '; revisa cuál corresponde.') : (pdfRut && st.rut ? 'El RUT viene del PEA. Revisa que coincida con el del Acuerdo CORFO.' : (st.rut ? 'Revisa que sea el RUT de la comunidad.' : 'Escribe el RUT de la comunidad (está en el Acuerdo CORFO).')))),
         h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Representante legal'), legalInp,
           h('span', { class: 'hint' }, mc.legalRep ? 'Tomado del PEA; puedes cambiarlo.' : 'El PEA no lo trae: queda vacío hasta que lo escribas.'))
       ]));
@@ -259,6 +301,13 @@
           : UI.callout('warn', 'Sin monto:', ' el PEA no trae el total de gastos de administración.')
       ]));
 
+      kids.push(UI.section('Todo lo que encontramos en el PEA', todoBox(mc, projs)));
+
+      if (st.fromPdf) {
+        kids.push(UI.callout('warn', 'PDF escaneado:', ' ' + OCR_AVISO));
+        kids.push(h('details', { class: 'ocr-raw' }, h('summary', null, 'Texto que leyó el OCR'), h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, st.ocrText || '(sin texto)')));
+      }
+
       var w = m.warnings || [];
       kids.push(UI.section('Avisos del PEA (' + w.length + ')', w.length
         ? [h('p', { class: 'hint' }, 'Revisa cada aviso antes de aplicar. Lo que no se pudo leer con certeza queda vacío.'), h('ul', { class: 'pea-warn' }, w.map(function (x) { return h('li', null, x); }))]
@@ -270,6 +319,43 @@
         st.result ? UI.callout(st.result.kind, '', st.result.text) : null
       ]));
       return h('div', null, kids);
+    }
+
+    /* bloque «Todo lo que encontramos»: texto completo (sin cortar), con saltos de línea */
+    var WRAP = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' };
+    function ddw(label, value) { return [h('dt', null, label), h('dd', { style: WRAP }, (value === null || value === undefined || value === '') ? 'No aparece en el PEA' : String(value))]; }
+    function filasPea(list, vacio) {
+      var rows = (list || []).filter(function (r) { return r && r.k; });
+      if (!rows.length) return h('p', { class: 'hint' }, vacio);
+      return h('dl', { class: 'kv' }, rows.map(function (r) { return ddw(r.k, r.v); }));
+    }
+    function fuentesPea(f) {
+      f = f || {};
+      var peso = function (v) { return v == null ? null : U.fmtCLP(v); };
+      return h('dl', { class: 'kv' }, ddw('Con cargo al 30 % del AIA', peso(f.aia30)), ddw('Con cargo al 70 % del AIA', peso(f.aia70)), ddw('Financiamiento con otras fuentes', peso(f.otras)));
+    }
+    function todoBox(mc, projs) {
+      var ct = mc.contacto || {}, sec = ct.secretaria || null;
+      var kids = [h('p', { class: 'hint' }, 'Lectura completa del PEA. Lo que el PEA no trae aparece como «No aparece en el PEA».')];
+      var comDatos = mc.peaDatos || [];
+      kids.push(h('details', { open: true }, h('summary', null, 'Comunidad (' + comDatos.length + ' datos)'), filasPea(comDatos, 'El PEA no trae datos de la comunidad.')));
+      kids.push(h('details', { open: true }, h('summary', null, 'Contacto y fechas'),
+        h('dl', { class: 'kv' },
+          ddw('Encargado del convenio', ct.encargado),
+          ddw('Secretaria', sec && sec.nombre),
+          ddw('RUT de la secretaria', sec && sec.rut),
+          ddw('Teléfonos', (ct.telefonos || []).join('\n')),
+          ddw('Correos', (ct.correos || []).join('\n')),
+          ddw('Fecha de entrega a CORFO', mc.fechaEntrega ? U.fmtDate(mc.fechaEntrega) : null),
+          ddw('Validación por la Asamblea', mc.asambleaValidacion ? U.fmtDate(mc.asambleaValidacion) : null))));
+      projs.forEach(function (mp) {
+        var datos = mp.peaDatos || [];
+        kids.push(h('details', null, h('summary', null, P.nameOf(mp) + ' (' + datos.length + ' datos)'),
+          filasPea(datos, 'El PEA no trae datos de este proyecto.'),
+          h('h4', null, 'Fuentes de financiamiento'),
+          fuentesPea(mp.fuentes)));
+      });
+      return kids;
     }
 
     function apply() {

@@ -135,3 +135,94 @@ test('una fuente «Aporte propio» en el PEA queda como propio; una línea sin m
   assert.equal(eq.fuente, 'propio');
   assert.equal(lines.some(l => l.item === 'Sin monto'), false);
 });
+
+/* modelo sintético con los datos nuevos del extractor (contacto, peaDatos, fechas, fuentes); todo inventado */
+function modeloConDatos() {
+  const m = model();
+  m.community.peaDatos = [{ k: 'Dato comunidad 1', v: 'Valor A' }, { k: 'Dato comunidad 2', v: 'Línea 1\nLínea 2' }];
+  m.community.contacto = { encargado: 'Persona Sintética', secretaria: { nombre: 'Secretaria Sintética', rut: '22.222.222-2' },
+    telefonos: ['+56 9 1111 1111', '+56 9 2222 2222'], correos: ['sintetico1@example.com', 'sintetico2@example.com'] };
+  m.community.fechaEntrega = '2026-03-01';
+  m.community.asambleaValidacion = '2026-02-15';
+  m.community.apoyo = 'Sí';
+  m.projects[0].peaDatos = [{ k: 'Fila A', v: 'x' }, { k: 'Fila B', v: '' }];
+  m.projects[0].fuentes = { aia30: 147419606, aia70: 343646081, otras: null };
+  m.projects[1].peaDatos = [{ k: 'Fila C', v: 'y' }];
+  m.projects[1].fuentes = { aia30: 0, aia70: null, otras: 1000 };
+  m.projects[2].peaDatos = [];
+  m.projects[2].fuentes = { aia30: null, aia70: null, otras: null };
+  return m;
+}
+
+test('contacto, datos del PEA, fechas y apoyo quedan en la comunidad', () => {
+  const s = P.applyToState({ community: {}, projects: [] }, modeloConDatos(), { rut: '11.111.111-1' });
+  assert.equal(s.community.contacto.encargado, 'Persona Sintética');
+  assert.equal(s.community.contacto.secretaria.rut, '22.222.222-2');
+  assert.deepEqual(clone(s.community.contacto.telefonos), ['+56 9 1111 1111', '+56 9 2222 2222']);
+  assert.equal(s.community.email, 'sintetico1@example.com');
+  assert.equal(s.community.phone, '+56 9 1111 1111');
+  assert.equal(s.community.peaDatos.length, 2);
+  assert.equal(s.community.peaDatos[1].v, 'Línea 1\nLínea 2');
+  assert.equal(s.community.fechaEntrega, '2026-03-01');
+  assert.equal(s.community.asambleaValidacion, '2026-02-15');
+  assert.equal(s.community.apoyo, 'Sí');
+});
+
+test('reaplicar el mismo PEA no duplica datos, contacto ni fuentes', () => {
+  const once = P.applyToState({ community: {}, projects: [] }, modeloConDatos(), { rut: '11.111.111-1' });
+  const twice = P.applyToState(once, modeloConDatos(), { rut: '11.111.111-1' });
+  assert.deepEqual(clone(twice), clone(once));
+  assert.equal(twice.community.peaDatos.length, 2);
+  assert.equal(twice.projects.find(p => p.name === 'Proyecto Uno').peaDatos.length, 2);
+});
+
+test('el correo y el teléfono no pisan los que ya están cargados', () => {
+  const st = { community: { email: 'ya@example.com', phone: '+56 9 0000 0000' }, projects: [] };
+  const s = P.applyToState(st, modeloConDatos(), { rut: '11.111.111-1' });
+  assert.equal(s.community.email, 'ya@example.com');
+  assert.equal(s.community.phone, '+56 9 0000 0000');
+});
+
+test('opts.contacto reemplaza al contacto del modelo', () => {
+  const otro = { encargado: 'Otra Persona', secretaria: null, telefonos: [], correos: [] };
+  const s = P.applyToState({ community: {}, projects: [] }, modeloConDatos(), { rut: '11.111.111-1', contacto: otro });
+  assert.equal(s.community.contacto.encargado, 'Otra Persona');
+});
+
+test('las fuentes y los datos llegan a cada proyecto; el automático no lleva datos del PEA', () => {
+  const s = P.applyToState({ community: {}, projects: [] }, modeloConDatos(), { rut: '11.111.111-1' });
+  const uno = s.projects.find(p => p.name === 'Proyecto Uno');
+  const dos = s.projects.find(p => p.name === 'Proyecto Dos');
+  assert.deepEqual(clone(uno.fuentes), { aia30: 147419606, aia70: 343646081, otras: null });
+  assert.equal(uno.peaDatos[0].k, 'Fila A');
+  assert.deepEqual(clone(dos.fuentes), { aia30: 0, aia70: null, otras: 1000 });
+  assert.equal(dos.peaDatos.length, 1);
+  const adm = s.projects.find(p => p.name === 'Gastos de administración');
+  assert.equal(adm.peaDatos, undefined);
+});
+
+test('el RUT del modelo queda prellenado en la pantalla (función pura P.rutInicial)', () => {
+  assert.equal(P.rutInicial(modeloConDatos()), '11.111.111-1');
+  const sinRut = modeloConDatos();
+  sinRut.community.rut = null;
+  assert.equal(P.rutInicial(sinRut), '');
+  assert.equal(P.rutInicial(null), '');
+});
+
+/* PEA escaneado (OCR) sintético: el modelo que sale de RF.pea.extractFromOcr se aplica sin duplicar nada */
+test('OCR: el modelo de un PEA escaneado se aplica una sola vez y no duplica proyectos', () => {
+  const page = { number: 1, angle: 0, width: 1000, height: 1400, paragraphs: [
+    { text: 'Nombre del proyecto', angle: 0, box: { x0: 0.05, y0: 0.19, x1: 0.35, y1: 0.21 } },
+    { text: 'Proyecto OCR Sintético', angle: 0, box: { x0: 0.45, y0: 0.19, x1: 0.8, y1: 0.21 } },
+    { text: 'Fecha de inicio', angle: 0, box: { x0: 0.05, y0: 0.23, x1: 0.35, y1: 0.25 } },
+    { text: '01-03-2026', angle: 0, box: { x0: 0.45, y0: 0.23, x1: 0.6, y1: 0.25 } },
+  ] };
+  const m = P.extractFromOcr({ ok: true, raw_text: 'x', pages: [page] });
+  const once = P.applyToState({ community: {}, projects: [] }, m, { rut: '11.111.111-1', legalRep: null });
+  const twice = P.applyToState(once, m, { rut: '11.111.111-1', legalRep: null });
+  assert.equal(once.projects.length, 1);
+  assert.equal(once.projects[0].name, 'Proyecto OCR Sintético');
+  assert.equal(once.projects[0].start, '2026-03-01');
+  assert.equal(twice.projects.length, 1, 'aplicar otra vez no duplica el proyecto');
+  assert.deepEqual(clone(twice.projects[0].budgetLines), []);
+});
