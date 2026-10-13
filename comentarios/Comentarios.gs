@@ -74,11 +74,25 @@ function hoja_() {
   var libro = SpreadsheetApp.getActiveSpreadsheet();
   var hoja = libro.getSheetByName(COMENTARIOS.hoja);
   if (!hoja) {
-    hoja = libro.insertSheet(COMENTARIOS.hoja);
+    /* una hoja nueva trae una primera pestaña vacía: si está vacía, esa pestaña pasa a llamarse Comentarios
+       (así no queda una pestaña vacía al lado, que es la que se abre al entrar al enlace) */
+    var primera = libro.getSheets()[0];
+    if (primera.getLastRow() === 0) {
+      hoja = primera;
+      hoja.setName(COMENTARIOS.hoja);
+    } else {
+      hoja = libro.insertSheet(COMENTARIOS.hoja);
+    }
     hoja.appendRow(ENCABEZADOS);
     hoja.setFrozenRows(1);
   }
   return hoja;
+}
+
+/* enlace directo a la pestaña de comentarios (no a la primera pestaña) */
+function hojaUrl_() {
+  var hoja = hoja_();
+  return hoja.getParent().getUrl() + '#gid=' + hoja.getSheetId();
 }
 
 function leerFilas_() {
@@ -110,7 +124,7 @@ function avisar_(fila) {
     var cuerpo = 'Pantalla: ' + fila[1] + '\n' +
       (fila[3] ? 'Sobre el texto: «' + fila[3] + '»\n' : '') +
       'De: ' + (fila[5] || 'sin nombre') + '\n\n' + fila[6] + '\n\n' +
-      'Hoja: ' + SpreadsheetApp.getActiveSpreadsheet().getUrl();
+      'Hoja (pestaña Comentarios): ' + hojaUrl_();
     MailApp.sendEmail(Session.getEffectiveUser().getEmail(), asunto, cuerpo);
   } catch (err) {
     /* si el correo falla, el comentario ya quedó en la hoja */

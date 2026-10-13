@@ -57,6 +57,12 @@
   }
   /* texto del comentario: el servicio lo devuelve como «comentario» (y acepta «texto» por si cambia) */
   function textoDe(c) { return String(c.comentario != null ? c.comentario : (c.texto || '')); }
+  /* la fecha llega en UTC; se muestra en la hora de este equipo, como aparece en la hoja */
+  function fechaLegible(f) {
+    var d = new Date(f);
+    if (isNaN(d.getTime())) return String(f || '').slice(0, 16).replace('T', ' ');
+    return d.toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
   /* texto tal como se ve: innerText pone espacio entre elementos vecinos (textContent los pega: «Subir el PEAElegir») */
   function textoVisible(n) { return String(n.innerText || n.textContent || '').replace(/\s+/g, ' ').trim(); }
   function descripcion(n) {
@@ -138,7 +144,7 @@
       enviarBtn.disabled = true; estado.textContent = 'Enviando…';
       enviar({ pantalla: pantallaActual(), tipo: tipo, cita: cita || '', selector: selector || '', nombre: nombre.value.trim(), texto: t })
         .then(function (r) {
-          if (r && r.ok) { cerrarPanel(); aviso('Comentario enviado. Gracias.'); refrescar(); return; }
+          if (r && r.ok) { cerrarPanel(); aviso('Comentario enviado: «' + (t.length > 140 ? t.slice(0, 140) + '…' : t) + '». Gracias.'); refrescar(); return; }
           enviarBtn.disabled = false;
           estado.textContent = r && r.error === 'SIN_SERVICIO' ? 'El servicio de comentarios todavía no está conectado.' : 'No se pudo enviar (' + ((r && r.error) || 'error') + '). Tu texto sigue aquí; inténtalo de nuevo.';
         });
@@ -164,7 +170,7 @@
     if (!propios.length) est.panel.appendChild(el('div', 'rf-com-cuerpo', 'Todavía no hay comentarios aquí. Usa "Dejar un comentario" para ser el primero.'));
     propios.forEach(function (c, i) {
       var item = el('div', 'rf-com-item');
-      item.appendChild(el('div', 'rf-com-meta', (i + 1) + '. ' + (c.nombre || 'Sin nombre') + ' · ' + String(c.fecha || '').slice(0, 16).replace('T', ' ')));
+      item.appendChild(el('div', 'rf-com-meta', (i + 1) + '. ' + (c.nombre || 'Sin nombre') + ' · ' + fechaLegible(c.fecha)));
       if (c.cita) item.appendChild(el('blockquote', 'rf-com-cita', String(c.cita).slice(0, 160)));
       item.appendChild(el('div', 'rf-com-cuerpo', textoDe(c)));
       if (c.selector && buscar(c.selector)) {

@@ -223,7 +223,7 @@
   function claveDePagina(t, n) { return 'pea-pagina|' + t.id + '|' + n; }
   function esFalloDePagina(r) { return !r || (r.ok === false && !/SIN_TEXTO|no devolvió texto/.test(String(r.error || ''))); }
   function guardarPagina(t, n, r) {
-    if (!RF.blobs || !RF.blobs.put) return;
+    if (!RF.blobs || !RF.blobs.put || !bovedaAbierta()) return;
     RF.blobs.put(claveDePagina(t, n), new Blob([JSON.stringify(r)], { type: 'application/json' })).catch(function () { /* sin espacio: esa página se volverá a leer si se reanuda */ });
   }
   function leerPaginasGuardadas(t, total) {
@@ -239,13 +239,20 @@
     return Promise.all(pedidas).then(function () { return out; });
   }
   function guardarMeta(t, total) {
-    if (!RF.blobs || !RF.blobs.put) return;
+    if (!RF.blobs || !RF.blobs.put || !bovedaAbierta()) return;
     RF.blobs.put('pea-trabajo', new Blob([JSON.stringify({ id: t.id, nombre: t.nombre, tamano: t.tamano, total: total })], { type: 'application/json' })).catch(function () { /* sin espacio */ });
   }
   function borrarTrabajo(t, total) {
     if (!RF.blobs || !RF.blobs.del) return;
     for (var n = 1; n <= total; n++) RF.blobs.del(claveDePagina(t, n));
     RF.blobs.del('pea-trabajo');
+  }
+  /* con la bóveda cerrada no se guarda nada: lo que llegue después de cerrar la sesión no entra a IndexedDB sin cifrar */
+  function bovedaAbierta() { return !!(RF.vault && RF.vault.isOpen && RF.vault.isOpen()); }
+  function sesionCerrada() { return new Error('SESION_CERRADA'); }
+  /* al terminar una lectura, la pantalla que quedó abierta (si la hay) recibe el resultado sin tener que cambiar de página */
+  function avisarLecturaTerminada(detalle) {
+    document.dispatchEvent(new CustomEvent('rf-pea-lectura-terminada', { detail: detalle }));
   }
 
   TOOLS.subirpea = { title: 'Subir el PEA', icon: 'file', desc: 'Sube el Word del PEA: la app lee tu comunidad, tus proyectos, el presupuesto y la Carta Gantt, y los aplica sin borrar nada.', render: function () {
@@ -255,7 +262,7 @@
 
     /* la lectura se guarda en IndexedDB (RF.blobs), aparte del estado de la app: no se pierde al sincronizar y no viaja en las copias de Drive */
     function guardarLectura() {
-      if (!st.model || !RF.blobs || !RF.blobs.put) return;
+      if (!st.model || !RF.blobs || !RF.blobs.put || !bovedaAbierta()) return;
       var datos = { model: st.model, leido: st.leido, ocrText: st.ocrText, fromPdf: st.fromPdf, fileName: st.file ? st.file.name : null, guardado: new Date().toISOString() };
       RF.blobs.put('pea-lectura-datos', new Blob([JSON.stringify(datos)], { type: 'application/json' })).catch(function () { /* sin espacio: la lectura queda solo en esta pestaña */ });
       if (st.file) RF.blobs.put('pea-lectura', st.file).catch(function () { /* el archivo no se pudo guardar: se puede volver a elegir */ });
@@ -310,6 +317,27 @@
     ofrecerContinuar();
     var body = h('div');
 
+    /* si la lectura sigue en segundo plano al abrir esta pantalla, al terminar se pone al día sola (sin cambiar de página) */
+    var conectada = false;
+    function alTerminarLectura(ev) {
+      if (body.isConnected) conectada = true;
+      if (conectada && !body.isConnected) { document.removeEventListener('rf-pea-lectura-terminada', alTerminarLectura); return; }
+      var d = ev.detail || {};
+      if (!body.isConnected || st.reading || d.corrida === st.pdfRun) return;
+      if (d.ok) {
+        soltarDescarga();
+        st.file = d.file; st.fromPdf = true; st.trabajo = null; st.notice = '';
+        st.model = d.model; st.leido = copia(d.model); st.ocrText = d.ocrText || '';
+        st.lectura = d.lectura; st.lecturaUrl = URL.createObjectURL(new Blob([JSON.stringify(d.lectura)], { type: 'application/json' }));
+        st.paginas = (d.paginas || []).map(function (p) { return { number: p.number, url: URL.createObjectURL(p.blob) }; });
+      } else {
+        st.file = null; st.model = null; st.leido = null; st.fromPdf = false; st.ocrText = ''; soltarDescarga();
+        st.trabajo = d.trabajo; st.notice = d.notice || '';
+      }
+      paint();
+    }
+    if (PEA_EN_CURSO) document.addEventListener('rf-pea-lectura-terminada', alTerminarLectura);
+
     /* libera el enlace de descarga de la lectura técnica (JSON) del PDF anterior */
     function soltarDescarga() {
       if (st.lecturaUrl) URL.revokeObjectURL(st.lecturaUrl);
@@ -348,6 +376,7 @@
         st.notice = PEA_EN_CURSO.id === trabajo.id ? 'Esa lectura ya está en curso. Espera a que termine.' : 'Hay otra lectura en curso (' + PEA_EN_CURSO.nombre + '). Espera a que termine antes de empezar otra.';
         paint(); return;
       }
+      if (!bovedaAbierta()) { st.notice = 'La sesión está cerrada. Vuelve a entrar para leer el PDF.'; paint(); return; }
       PEA_EN_CURSO = trabajo;
       var corrida = {}, blobsPagina = [], total = 0, hechas = 0;
       st.file = file; st.pdfRun = corrida; st.reading = true; st.fromPdf = true; st.stage = 'Preparando el PDF…'; st.trabajo = null; st.notice = ''; paint();
@@ -364,17 +393,21 @@
       }).then(function (rendered) {
         total = rendered.total;
         blobsPagina = rendered.pages.map(function (p) { return { number: p.number, blob: p.blob }; });
+        if (!bovedaAbierta()) throw sesionCerrada();
         guardarMeta(trabajo, total);
         return leerPaginasGuardadas(trabajo, total).then(function (guardadas) {
           var results = [], chain = Promise.resolve();
           rendered.pages.forEach(function (p) {
             chain = chain.then(function () {
               if (guardadas[p.number]) { results.push(guardadas[p.number]); hechas++; return null; }
+              if (!bovedaAbierta()) throw sesionCerrada();
               say('Leyendo la página ' + p.number + ' de ' + total + ' con Google…');
               return RF.ocr.recognizePage(p.blob, p.number, function (intento) {
                 say('Google no respondió bien con la página ' + p.number + '. Reintentando (intento ' + intento + ' de 3)…');
               }).then(function (r) {
                 results.push(r);
+                /* si la sesión se cerró mientras Google respondía, esa página no se guarda sin cifrar */
+                if (!bovedaAbierta()) throw sesionCerrada();
                 /* cada página buena queda guardada al momento: si se corta la lectura, no se vuelve a pagar */
                 if (!esFalloDePagina(r)) { hechas++; guardarPagina(trabajo, p.number, r); }
               });
@@ -393,17 +426,22 @@
         st.paginas = blobsPagina.map(function (p) { return { number: p.number, url: URL.createObjectURL(p.blob) }; });
         st.model = P.normalizarModelo(RF.pea.extractFromOcr(res));
         st.leido = copia(st.model);
+        /* sin sesión no se guarda la lectura final: las páginas quedan cifradas y, al volver a entrar, se aplica sin volver a cobrar */
+        if (!bovedaAbierta()) throw sesionCerrada();
         guardarLectura();
         borrarTrabajo(trabajo, total);
         st.reading = false; st.stage = ''; st.notice = ''; paint();
+        avisarLecturaTerminada({ ok: true, corrida: corrida, model: st.model, ocrText: st.ocrText, file: file, lectura: res, paginas: blobsPagina });
       }).catch(function (e) {
         terminar();
         if (!vigente()) return soltarLectura();
         var pendiente = total ? { nombre: trabajo.nombre, hechas: hechas, total: total, file: file } : null;
         st.file = null; st.model = null; st.leido = null; st.fromPdf = false; st.ocrText = ''; soltarDescarga();
         st.reading = false; st.stage = ''; st.trabajo = pendiente;
-        st.notice = 'No se pudo leer el PDF: ' + msgOf(e).replace(/\.$/, '') + '.' + (pendiente && hechas ? ' Lo que ya se leyó queda guardado: al reintentar no se cobra de nuevo.' : '');
+        var motivo = e && e.message === 'SESION_CERRADA' ? 'se cerró la sesión durante la lectura' : msgOf(e).replace(/\.$/, '');
+        st.notice = 'No se pudo leer el PDF: ' + motivo + '.' + (pendiente && hechas ? ' Lo que ya se leyó queda guardado cifrado: al reintentar no se cobra de nuevo.' : '');
         paint();
+        avisarLecturaTerminada({ ok: false, corrida: corrida, trabajo: pendiente, notice: st.notice });
       });
     }
 
