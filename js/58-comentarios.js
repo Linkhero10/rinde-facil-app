@@ -9,7 +9,7 @@
   /* servicio de comentarios (comentarios/Comentarios.gs, en la cuenta de quien administra la revisión). Cualquiera puede leer y comentar */
   var SERVICIO = root.RF_COMENTARIOS_URL || 'https://script.google.com/macros/s/AKfycbxGzAkr4fgzeIQbqPXdkkRAguUZEblncalVcpL0LMh8Ig8_8sJoNPj3yhQEUlYmOM5e0Q/exec';
   var MAX_TEXTO = 1500, MAX_NOMBRE = 60;
-  var est = { seleccionando: false, comentarios: [], pins: [], resaltado: null, etiqueta: null, panel: null, menu: null, principal: null, banner: null, aviso: null, objetivo: null, marcas: [], activo: null, vista: null };
+  var est = { seleccionando: false, comentarios: [], pinesPorClave: {}, resaltado: null, etiqueta: null, panel: null, menu: null, principal: null, banner: null, aviso: null, objetivo: null, marcas: [], activo: null, vista: null };
 
   function estilos() {
     if (doc.getElementById('rf-com-estilos')) return;
@@ -25,7 +25,8 @@
       '.rf-com-cita{margin:0 0 10px;padding:8px 10px;border-left:3px solid var(--action);background:var(--action-soft);color:var(--ink-2);font-size:14px;border-radius:4px;white-space:pre-wrap}',
       '.rf-com-meta{font-family:var(--mono);font-size:12px;color:var(--muted);margin:0 0 4px}',
       '.rf-com-cuerpo{white-space:pre-wrap;color:var(--ink);font-size:15px;margin:4px 0 6px}',
-      '.rf-com-item{border-top:1px solid var(--line);padding:10px 0}',
+      '.rf-com-item{border-top:1px solid var(--line);padding:10px 8px;margin:0 -8px;border-radius:8px;cursor:pointer}',
+      '.rf-com-item:hover,.rf-com-item:focus-visible{background:var(--action-soft);outline:none}',
       '.rf-com-acciones{display:flex;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap}',
       '.rf-com-estado{min-height:18px;font-size:13px;color:var(--bad);margin-top:6px}',
       '.rf-com-pin{position:fixed;width:26px;height:26px;border-radius:50%;background:var(--action);color:var(--action-ink);font:600 12px/22px var(--mono);text-align:center;border:2px solid var(--canvas);box-shadow:var(--shadow);cursor:pointer;z-index:2147483000}',
@@ -115,24 +116,41 @@
       .catch(function () { return { ok: false, error: 'SIN_CONEXION' }; });
   }
 
-  /* ---- marcas sobre la pantalla: un número en el lugar del comentario ---- */
+  /* ---- marcas sobre la pantalla: un número en el lugar del comentario, con el mismo número que la lista de esta pantalla.
+     Los pines se conservan y solo se mueven: si se volvieran a crear cada vez, el botón se soltaría sobre otro nodo y el clic se perdería. */
+  function clavesDe(lista) {
+    var usadas = {};
+    return lista.map(function (c) {
+      var base = [c.pantalla, c.fecha, c.tipo, c.selector, c.nombre].join('|');
+      usadas[base] = (usadas[base] || 0) + 1;
+      return usadas[base] > 1 ? base + '#' + usadas[base] : base;
+    });
+  }
   function marcar() {
-    est.pins.forEach(function (p) { p.remove(); });
-    est.pins = [];
-    var pantalla = pantallaActual();
-    est.comentarios.forEach(function (c, i) {
-      if (c.pantalla !== pantalla || !c.selector) return;
-      var destino = buscar(c.selector);
-      if (!destino) return;
-      var r = destino.getBoundingClientRect();
-      if (r.width === 0 && r.height === 0) return;
-      var pin = el('div', 'rf-com-pin', String(i + 1));
+    var pantalla = pantallaActual(), propios = est.comentarios.filter(function (c) { return c.pantalla === pantalla; });
+    var claves = clavesDe(propios), vistos = {};
+    propios.forEach(function (c, i) {
+      if (!c.selector) return;
+      var destino = buscar(c.selector), r = destino ? destino.getBoundingClientRect() : null;
+      if (!r || (r.width === 0 && r.height === 0)) return;
+      var clave = claves[i], pin = est.pinesPorClave[clave];
+      if (!pin) {
+        pin = el('div', 'rf-com-pin');
+        pin.addEventListener('click', function (e) { e.stopPropagation(); mostrarComentario(pin.comentario); });
+        est.pinesPorClave[clave] = pin;
+        doc.body.appendChild(pin);
+      }
+      pin.comentario = c;
+      if (pin.textContent !== String(i + 1)) pin.textContent = String(i + 1);
+      pin.title = etiquetaTipo(c) + ': ' + textoDe(c);
       pin.style.left = (r.left - 10) + 'px';
       pin.style.top = (r.top - 10) + 'px';
-      pin.title = textoDe(c);
-      pin.addEventListener('click', function (e) { e.stopPropagation(); mostrarComentario(c); });
-      doc.body.appendChild(pin);
-      est.pins.push(pin);
+      vistos[clave] = true;
+    });
+    Object.keys(est.pinesPorClave).forEach(function (k) {
+      if (vistos[k]) return;
+      est.pinesPorClave[k].remove();
+      delete est.pinesPorClave[k];
     });
   }
   function refrescar() { cargar().then(function (lista) { est.comentarios = lista; marcar(); }); }
@@ -179,12 +197,17 @@
     if (!SERVICIO) est.panel.appendChild(el('div', 'rf-com-estado', 'El servicio de comentarios todavía no está conectado.'));
     if (!propios.length) est.panel.appendChild(el('div', 'rf-com-cuerpo', 'Todavía no hay comentarios aquí. Usa "Dejar un comentario" para ser el primero.'));
     propios.forEach(function (c, i) {
+      /* toda la tarjeta muestra lo comentado al tocarla (o con Enter), no solo el botón */
       var item = el('div', 'rf-com-item');
+      item.tabIndex = 0;
+      item.title = 'Mostrar lo comentado en la pantalla';
       item.appendChild(el('div', 'rf-com-chip', etiquetaTipo(c)));
       item.appendChild(el('div', 'rf-com-meta', (i + 1) + '. ' + (c.nombre || 'Sin nombre') + ' · ' + fechaLegible(c.fecha)));
       if (c.cita) item.appendChild(el('blockquote', 'rf-com-cita', String(c.cita).slice(0, 300)));
       item.appendChild(el('div', 'rf-com-cuerpo', textoDe(c)));
       item.appendChild(boton('Mostrar lo comentado', function () { mostrarComentario(c); }, 'primary small'));
+      item.addEventListener('click', function () { mostrarComentario(c); });
+      item.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target === item) mostrarComentario(c); });
       est.panel.appendChild(item);
     });
     var acciones = el('div', 'rf-com-acciones');
@@ -195,17 +218,12 @@
 
   /* ---- qué se comentó: el tipo, y el texto exacto, el cuadro o toda la pantalla, para volver a mostrarlo ---- */
   function tipoDe(c) { return c.tipo === 'texto' || c.tipo === 'general' ? c.tipo : 'elemento'; }
+  /* lo que se comentó, en palabras de quien revisa: un texto, una caja o toda la pantalla */
   function etiquetaTipo(c) {
     var tipo = tipoDe(c);
-    if (tipo === 'texto') return 'Texto seleccionado';
-    if (tipo === 'general') return 'Comentario general';
-    var d = buscar(c.selector), tag = d ? d.tagName.toLowerCase() : etiquetaElemento(c.selector);
-    return 'Elemento' + (tag ? ' · ' + tag : '');
-  }
-  function etiquetaElemento(selector) {
-    var ultima = String(selector || '').split(' > ').pop() || '';
-    var m = /^([a-z][a-z0-9]*)/i.exec(ultima);
-    return m ? m[1].toLowerCase() : '';
+    if (tipo === 'texto') return 'Texto';
+    if (tipo === 'general') return 'Toda la pantalla';
+    return 'Caja';
   }
   /* el texto sin espacios repetidos y, para cada carácter, su posición en el texto original */
   function normalizarTexto(crudo) {

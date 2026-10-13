@@ -219,37 +219,53 @@
   /* Lectura de PDF escaneado por páginas: cada página leída se guarda en IndexedDB (RF.blobs) al terminar. Si la página se recarga,
    * se descarta o se cambia de pantalla, la lectura se reanuda y las páginas ya leídas no se vuelven a pagar. */
   var PEA_EN_CURSO = null; /* la lectura que corre en esta página, para no pagar dos veces lo mismo */
-  function trabajoDe(file) { return { id: 'pea|' + file.name + '|' + file.size, nombre: file.name, tamano: file.size }; }
-  function claveDePagina(t, n) { return 'pea-pagina|' + t.id + '|' + n; }
+  /* el trabajo de un PDF: al empezar solo se conoce el nombre y el tamaño; el id real (la huella del archivo) llega al calcularla */
+  function trabajoDe(file) { return { id: 'espera|' + file.name + '|' + file.size, nombre: file.name, tamano: file.size, legado: 'pea|' + file.name + '|' + file.size }; }
+  function mismoArchivo(t, file) { return !!t && t.nombre === file.name && t.tamano === file.size; }
+  /* clave de la versión anterior (solo nombre y tamaño): las páginas que quedaron con ella se siguen reconociendo */
+  function claveLegada(t, n) { return 'pea-pagina|' + t.legado + '|' + n; }
   function esFalloDePagina(r) { return !r || (r.ok === false && !/SIN_TEXTO|no devolvió texto/.test(String(r.error || ''))); }
-  function guardarPagina(t, n, r) {
-    if (!RF.blobs || !RF.blobs.put || !bovedaAbierta()) return;
-    RF.blobs.put(claveDePagina(t, n), new Blob([JSON.stringify(r)], { type: 'application/json' })).catch(function () { /* sin espacio: esa página se volverá a leer si se reanuda */ });
-  }
-  function leerPaginasGuardadas(t, total) {
+  /* páginas ya leídas de este PDF. Con «migrar», las que quedaron con la clave de la versión anterior pasan a la nueva (y no se vuelven a cobrar) */
+  function leerPaginasGuardadas(t, total, migrar) {
     var out = {}, pedidas = [];
-    if (!RF.blobs || !RF.blobs.get) return Promise.resolve(out);
+    if (!RF.ocr || !RF.ocr.leerGuardada) return Promise.resolve(out);
     var leerUna = function (num) {
-      return RF.blobs.get(claveDePagina(t, num)).then(function (b) {
-        if (!b || !b.text) return null;
-        return b.text().then(function (x) { out[num] = JSON.parse(x); });
-      }).catch(function () { /* esa página no estaba guardada o no se pudo leer */ });
+      var parte = 'pagina-' + num;
+      return RF.ocr.leerGuardada(t.id, parte).then(function (r) {
+        if (r || !t.legado) return r;
+        return leerLegada(t, num).then(function (viejo) {
+          if (!viejo || !migrar) return viejo;
+          return RF.ocr.guardarLectura(t.id, parte, viejo).then(function (ok) { return ok ? RF.blobs.del(claveLegada(t, num)) : null; }).then(function () { return viejo; });
+        });
+      }).then(function (r) { if (r) out[num] = r; }).catch(function () { /* esa página no estaba guardada o no se pudo leer */ });
     };
     for (var n = 1; n <= total; n++) pedidas.push(leerUna(n));
     return Promise.all(pedidas).then(function () { return out; });
   }
+  function leerLegada(t, num) {
+    return RF.blobs.get(claveLegada(t, num)).then(function (b) {
+      if (!b || !b.text) return null;
+      return b.text().then(function (x) { return JSON.parse(x); });
+    }).catch(function () { return null; });
+  }
   function guardarMeta(t, total) {
     if (!RF.blobs || !RF.blobs.put || !bovedaAbierta()) return;
-    RF.blobs.put('pea-trabajo', new Blob([JSON.stringify({ id: t.id, nombre: t.nombre, tamano: t.tamano, total: total })], { type: 'application/json' })).catch(function () { /* sin espacio */ });
+    RF.blobs.put('pea-trabajo', new Blob([JSON.stringify({ id: t.id, nombre: t.nombre, tamano: t.tamano, total: total, legado: t.legado })], { type: 'application/json' })).catch(function () { /* sin espacio */ });
   }
-  function borrarTrabajo(t, total) {
-    if (!RF.blobs || !RF.blobs.del) return;
-    for (var n = 1; n <= total; n++) RF.blobs.del(claveDePagina(t, n));
-    RF.blobs.del('pea-trabajo');
-  }
+  /* al terminar se quita la marca de «lectura a medias»; las páginas leídas quedan guardadas: el mismo PDF no se vuelve a cobrar */
+  function soltarMarca() { if (RF.blobs && RF.blobs.del) RF.blobs.del('pea-trabajo'); }
   /* con la bóveda cerrada no se guarda nada: lo que llegue después de cerrar la sesión no entra a IndexedDB sin cifrar */
   function bovedaAbierta() { return !!(RF.vault && RF.vault.isOpen && RF.vault.isOpen()); }
   function sesionCerrada() { return new Error('SESION_CERRADA'); }
+  /* lo que se le dice a quien sube un PDF que ya se leyó, o en parte: nada de lo leído se cobra de nuevo */
+  function textoRepetido(previas, total, doc, file) {
+    if (!previas || !total) return '';
+    var cuando = doc && doc.primera ? ' el ' + fechaCorta(doc.primera) : '';
+    var antes = doc && doc.nombre && doc.nombre !== file.name ? ' (la primera vez se llamaba «' + doc.nombre + '»)' : '';
+    if (previas >= total) return 'Este PDF ya se había leído' + cuando + antes + '. No se cobró de nuevo: se usó la lectura guardada en este equipo.';
+    return 'Ya estaban leídas ' + previas + ' de ' + total + ' páginas de este PDF' + cuando + antes + '. Solo se leen las que faltan; lo ya leído no se cobra de nuevo.';
+  }
+  function fechaCorta(iso) { var d = new Date(iso); return isNaN(d.getTime()) ? '' : d.toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' }); }
   /* al terminar una lectura, la pantalla que quedó abierta (si la hay) recibe el resultado sin tener que cambiar de página */
   function avisarLecturaTerminada(detalle) {
     document.dispatchEvent(new CustomEvent('rf-pea-lectura-terminada', { detail: detalle }));
@@ -257,7 +273,7 @@
 
   TOOLS.subirpea = { title: 'Subir el PEA', icon: 'file', desc: 'Sube el Word del PEA: la app lee tu comunidad, tus proyectos, el presupuesto y la Carta Gantt, y los aplica sin borrar nada.', render: function () {
     var U = RF.util, UI = RF.ui, h = U.h;
-    var st = { file: null, model: null, leido: null, notice: '', reading: false, stage: '', ocrText: '', fromPdf: false, busy: false, result: null, lectura: null, lecturaUrl: null, paginas: [],
+    var st = { file: null, model: null, leido: null, notice: '', aviso: '', reading: false, stage: '', ocrText: '', fromPdf: false, busy: false, result: null, lectura: null, lecturaUrl: null, paginas: [],
       acta: { file: null, date: '', projectId: '', busy: false, result: null } };
 
     /* la lectura se guarda en IndexedDB (RF.blobs), aparte del estado de la app: no se pierde al sincronizar y no viaja en las copias de Drive */
@@ -298,7 +314,7 @@
       }).then(function (meta) {
         if (!meta || !meta.id || !meta.total || st.model || st.reading) return null;
         if (PEA_EN_CURSO) { st.notice = 'La lectura de «' + PEA_EN_CURSO.nombre + '» sigue en curso. Vuelve a esta pantalla cuando termine.'; paint(); return null; }
-        return leerPaginasGuardadas(meta, meta.total).then(function (guardadas) {
+        return leerPaginasGuardadas({ id: meta.id, legado: meta.legado || meta.id }, meta.total, false).then(function (guardadas) {
           return RF.blobs.get('pea-lectura').then(function (f) {
             if (!f || st.model || st.reading) return;
             st.trabajo = { nombre: meta.nombre, hechas: Object.keys(guardadas).length, total: meta.total, file: f.name ? f : new File([f], meta.nombre || 'PEA.pdf', { type: f.type || 'application/pdf' }) };
@@ -327,13 +343,13 @@
       if (!body.isConnected || st.reading || d.corrida === st.pdfRun) return;
       if (d.ok) {
         soltarDescarga();
-        st.file = d.file; st.fromPdf = true; st.trabajo = null; st.notice = '';
+        st.file = d.file; st.fromPdf = true; st.trabajo = null; st.notice = ''; st.aviso = d.aviso || '';
         st.model = d.model; st.leido = copia(d.model); st.ocrText = d.ocrText || '';
         st.lectura = d.lectura; st.lecturaUrl = URL.createObjectURL(new Blob([JSON.stringify(d.lectura)], { type: 'application/json' }));
         st.paginas = (d.paginas || []).map(function (p) { return { number: p.number, url: URL.createObjectURL(p.blob) }; });
       } else {
         st.file = null; st.model = null; st.leido = null; st.fromPdf = false; st.ocrText = ''; soltarDescarga();
-        st.trabajo = d.trabajo; st.notice = d.notice || '';
+        st.trabajo = d.trabajo; st.notice = d.notice || ''; st.aviso = '';
       }
       paint();
       RF.ocr.tarjetaLimites(cuotaBox, {});
@@ -351,10 +367,10 @@
       if (!file) return;
       /* mientras una lectura de PDF corre, elegir otro archivo no toca la pantalla: esa lectura termina y aplica su resultado */
       if (PEA_EN_CURSO) {
-        st.notice = PEA_EN_CURSO.id === trabajoDe(file).id ? 'Esa lectura ya está en curso. Espera a que termine.' : 'Hay otra lectura en curso (' + PEA_EN_CURSO.nombre + '). Espera a que termine antes de empezar otra.';
+        st.notice = mismoArchivo(PEA_EN_CURSO, file) ? 'Esa lectura ya está en curso. Espera a que termine.' : 'Hay otra lectura en curso (' + PEA_EN_CURSO.nombre + '). Espera a que termine antes de empezar otra.';
         paint(); return;
       }
-      st.file = null; st.model = null; st.leido = null; st.result = null; st.notice = ''; st.ocrText = ''; st.fromPdf = false; st.stage = ''; soltarDescarga();
+      st.file = null; st.model = null; st.leido = null; st.result = null; st.notice = ''; st.aviso = ''; st.ocrText = ''; st.fromPdf = false; st.stage = ''; soltarDescarga();
       var esPdf = /\.pdf$/i.test(file.name) || /pdf/i.test(file.type || '');
       if (esPdf) { onPdf(file); return; }
       RF.ocr.tarjetaLimites(cuotaBox, { word: true });
@@ -375,50 +391,62 @@
     function onPdf(file) {
       if (!RF.ocr || !RF.ocr.recognizePage || !RF.pdfPages || !RF.pea.extractFromOcr) { st.notice = 'No está cargada la lectura de PDF en esta versión.'; paint(); return; }
       if (!RF.cloud || !RF.cloud.configured()) { st.notice = 'Para leer un PDF escaneado conecta primero el servicio en la nube (en Ajustes). Mientras tanto puedes subir el Word del PEA.'; paint(); return; }
-      var trabajo = trabajoDe(file);
       if (PEA_EN_CURSO) {
-        st.notice = PEA_EN_CURSO.id === trabajo.id ? 'Esa lectura ya está en curso. Espera a que termine.' : 'Hay otra lectura en curso (' + PEA_EN_CURSO.nombre + '). Espera a que termine antes de empezar otra.';
+        st.notice = mismoArchivo(PEA_EN_CURSO, file) ? 'Esa lectura ya está en curso. Espera a que termine.' : 'Hay otra lectura en curso (' + PEA_EN_CURSO.nombre + '). Espera a que termine antes de empezar otra.';
         paint(); return;
       }
       if (!bovedaAbierta()) { st.notice = 'La sesión está cerrada. Vuelve a entrar para leer el PDF.'; paint(); return; }
+      var trabajo = trabajoDe(file), idn = null;
       PEA_EN_CURSO = trabajo;
       var corrida = {}, blobsPagina = [], total = 0, hechas = 0;
-      st.file = file; st.pdfRun = corrida; st.reading = true; st.fromPdf = true; st.stage = 'Preparando el PDF…'; st.trabajo = null; st.notice = ''; paint();
-      /* el archivo se guarda antes de leer: si la página se cierra a mitad de camino, la lectura se puede reanudar */
-      if (RF.blobs && RF.blobs.put) RF.blobs.put('pea-lectura', file).catch(function () { /* sin espacio */ });
+      st.file = file; st.pdfRun = corrida; st.reading = true; st.fromPdf = true; st.stage = 'Revisando si este PDF ya se leyó…'; st.trabajo = null; st.notice = ''; st.aviso = ''; paint();
       /* vigente: sigue siendo este archivo y esta misma corrida; si el usuario eligió otro, lo de aquí ya no se aplica */
       var vigente = function () { return st.file === file && st.pdfRun === corrida; };
       var say = function (label) { if (vigente()) { st.stage = label; paint(); } };
       /* si la corrida quedó abandonada sin que otra lectura tomara la pantalla (p. ej. se eligió un archivo que no es PDF), solo apaga su indicador */
       var soltarLectura = function () { if (st.file === null && st.pdfRun === corrida) { st.reading = false; st.stage = ''; paint(); } };
       var terminar = function () { if (PEA_EN_CURSO === trabajo) PEA_EN_CURSO = null; };
-      readBuffer(file).then(function (buf) {
+      /* la huella del archivo dice si ya se leyó: lo leído antes se reconoce aunque el archivo tenga otro nombre */
+      RF.ocr.identidad(file).then(function (x) {
+        idn = x; trabajo.id = x.id;
+        /* el archivo se guarda antes de leer: si la página se cierra a mitad de camino, la lectura se puede reanudar */
+        if (RF.blobs && RF.blobs.put) RF.blobs.put('pea-lectura', file).catch(function () { /* sin espacio */ });
+        return readBuffer(file);
+      }).then(function (buf) {
         return RF.pdfPages.renderPages(buf, function (num, t) { say('Preparando la página ' + num + ' de ' + t + '…'); }, vigente);
       }).then(function (rendered) {
         total = rendered.total;
         blobsPagina = rendered.pages.map(function (p) { return { number: p.number, blob: p.blob }; });
         if (!bovedaAbierta()) throw sesionCerrada();
         guardarMeta(trabajo, total);
-        return leerPaginasGuardadas(trabajo, total).then(function (guardadas) {
-          RF.ocr.tarjetaLimites(cuotaBox, { paginas: total, leidas: Object.keys(guardadas).length });
-          var results = [], chain = Promise.resolve();
-          rendered.pages.forEach(function (p) {
-            chain = chain.then(function () {
-              if (guardadas[p.number]) { results.push(guardadas[p.number]); hechas++; return null; }
-              if (!bovedaAbierta()) throw sesionCerrada();
-              say('Leyendo la página ' + p.number + ' de ' + total + ' con Google…');
-              return RF.ocr.recognizePage(p.blob, p.number, function (intento) {
-                say('Google no respondió bien con la página ' + p.number + '. Reintentando (intento ' + intento + ' de 3)…');
-              }).then(function (r) {
-                results.push(r);
-                /* si la sesión se cerró mientras Google respondía, esa página no se guarda sin cifrar */
+        return leerPaginasGuardadas(trabajo, total, true).then(function (guardadas) {
+          var previas = Object.keys(guardadas).length;
+          return RF.ocr.documentoGuardado(trabajo.id).then(function (doc) {
+            if (!vigente()) return null;
+            st.aviso = textoRepetido(previas, total, doc, file);
+            RF.ocr.tarjetaLimites(cuotaBox, { paginas: total, leidas: previas });
+            paint();
+            var results = [], chain = Promise.resolve();
+            rendered.pages.forEach(function (p) {
+              chain = chain.then(function () {
+                if (guardadas[p.number]) { results.push(guardadas[p.number]); hechas++; return null; }
                 if (!bovedaAbierta()) throw sesionCerrada();
-                /* cada página buena queda guardada al momento: si se corta la lectura, no se vuelve a pagar */
-                if (!esFalloDePagina(r)) { hechas++; guardarPagina(trabajo, p.number, r); }
+                say('Leyendo la página ' + p.number + ' de ' + total + ' con Google…');
+                return RF.ocr.recognizePage(p.blob, p.number, function (intento) {
+                  say('Google no respondió bien con la página ' + p.number + '. Reintentando (intento ' + intento + ' de 3)…');
+                }).then(function (r) {
+                  results.push(r);
+                  /* si la sesión se cerró mientras Google respondía, esa página no se guarda sin cifrar */
+                  if (!bovedaAbierta()) throw sesionCerrada();
+                  if (esFalloDePagina(r)) return null;
+                  /* cada página buena queda guardada al momento: si se corta la lectura, no se vuelve a pagar */
+                  hechas++;
+                  return RF.ocr.guardarLectura(trabajo.id, 'pagina-' + p.number, r).then(function () { return RF.ocr.anotarDocumento(idn, total); });
+                });
               });
             });
+            return chain.then(function () { return RF.pdfPages.aggregate(results, total); });
           });
-          return chain.then(function () { return RF.pdfPages.aggregate(results, total); });
         });
       }).then(function (res) {
         terminar();
@@ -434,9 +462,10 @@
         /* sin sesión no se guarda la lectura final: las páginas quedan cifradas y, al volver a entrar, se aplica sin volver a cobrar */
         if (!bovedaAbierta()) throw sesionCerrada();
         guardarLectura();
-        borrarTrabajo(trabajo, total);
+        RF.ocr.anotarDocumento(idn, total);
+        soltarMarca();
         st.reading = false; st.stage = ''; st.notice = ''; paint();
-        avisarLecturaTerminada({ ok: true, corrida: corrida, model: st.model, ocrText: st.ocrText, file: file, lectura: res, paginas: blobsPagina });
+        avisarLecturaTerminada({ ok: true, corrida: corrida, model: st.model, ocrText: st.ocrText, file: file, lectura: res, paginas: blobsPagina, aviso: st.aviso });
         RF.ocr.tarjetaLimites(cuotaBox, {});
       }).catch(function (e) {
         terminar();
@@ -471,6 +500,7 @@
         UI.fileDrop(inp, { kind: 'official', label: 'Arrastra aquí el PEA o pulsa para buscarlo', hint: 'Word (.docx) o PDF.', invalidText: 'Ese formato no se puede leer aquí. Sube el PEA en Word (.docx) o PDF.', onFiles: function (files) { onFile(files[0]); } }),
         cuotaBox,
         st.notice ? UI.callout('warn', '', st.notice) : null,
+        st.aviso ? UI.callout('info', '', st.aviso) : null,
         st.trabajo && !st.reading ? UI.callout('warn', 'Lectura a medias:', ' ' + st.trabajo.nombre + ': ' + st.trabajo.hechas + ' de ' + st.trabajo.total + ' páginas ya están leídas. Continuar no vuelve a cobrar esas páginas.') : null,
         st.trabajo && !st.reading ? UI.btn('Continuar la lectura', { icon: 'check', cls: 'primary', onclick: continuarTrabajo }) : null,
         st.reading ? h('p', { class: 'hint' }, st.stage || 'Leyendo el PEA…') : null

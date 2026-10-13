@@ -9,6 +9,7 @@
   function ctx() { return RF.forms.ctxNow(); }
   function needProject() { return UI.callout('warn', 'Primero crea tu proyecto.', ' Ve a «Mi comunidad y proyectos» y agrega el primero.'); }
   function silent() { RF.store.update(function () { }, { silent: true }); }
+  function fechaLarga(iso) { var d = new Date(iso); return isNaN(d.getTime()) ? '' : d.toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' }); }
   var STATUS_LABEL = { ok: 'Listo', warn: 'Revisar', error: 'Pendiente' };
 
   function newExpense() {
@@ -89,12 +90,13 @@
     }
     /* lectura en la nube con barra de progreso: preparar → enviar y leer → ordenar */
     var STAGES = [{ id: 'prep', label: 'Preparando la foto…', from: 0, to: 12, tau: 1.5 }, { id: 'read', label: 'Enviando la foto y leyéndola con Google…', from: 12, to: 88, tau: 9 }, { id: 'parse', label: 'Ordenando los datos…', from: 88, to: 98, tau: 1 }];
-    function ocrJob(file, e, title) {
+    /* forzar = «Leer de nuevo»: vuelve a leer aunque la foto ya se haya leído (y eso sí se cobra) */
+    function ocrJob(file, e, title, forzar) {
       var b = UI.busy(title, STAGES);
-      return RF.ocr.recognize(file, b.stage).then(function (res) {
+      return RF.ocr.recognizeCached(file, b.stage, forzar).then(function (res) {
         b.stage('parse', 'Ordenando los datos…');
         applyOcr(e, res);
-        if (res && res.ok) b.done('Listo. Compara los datos con la foto.'); else b.fail('Google no pudo leer esta foto (' + ((res && res.error) || 'error') + '). Anota los datos a mano.');
+        if (res && res.ok) b.done(res.desdeCache ? 'Listo: esta foto ya se había leído; no se cobró.' : 'Listo. Compara los datos con la foto.'); else b.fail('Google no pudo leer esta foto (' + ((res && res.error) || 'error') + '). Anota los datos a mano.');
         e._reading = false; refreshIfList();
         RF.ocr.tarjetaLimites(cuotaBox, {});
         return res;
@@ -115,7 +117,8 @@
       e.ocr = { engine: res.engine || 'cloud_vision', at: new Date().toISOString(), raw: String(res.raw_text || '').slice(0, 6000), confidence: res.confidence == null ? null : res.confidence, ms: res.duration_ms || null, note: out.note, auto: JSON.parse(JSON.stringify(f)) };
       if (!e.fechaPago && e.fecha && /^(debito|tarjeta|prepago)$/.test(e.formaPago || '')) e.fechaPago = e.fecha; /* pago con tarjeta: se paga al comprar */
       e.verified = false; e._manualRendir = false; syncRendir(e, c.community);
-      e._ocrNote = 'Leído con Google Cloud Vision. Compara cada dato con la foto antes de seguir.' + (out.note ? ' ' + out.note : '');
+      var antes = res.desdeCache ? 'Esta foto ya se había leído' + (res.leidoEl ? ' el ' + fechaLarga(res.leidoEl) : '') + (res.nombreAntes ? ' (la primera vez se llamaba «' + res.nombreAntes + '»)' : '') + ': se usó esa lectura y no se cobró otra vez. ' : '';
+      e._ocrNote = antes + 'Leído con Google Cloud Vision. Compara cada dato con la foto antes de seguir.' + (out.note ? ' ' + out.note : '');
       silent();
     }
     camInput.addEventListener('change', function () { handleFiles(camInput.files); camInput.value = ''; });
@@ -316,7 +319,7 @@
           if (/pdf/.test(blob.type)) photo.appendChild(h('a', { class: 'btn', href: url, target: '_blank', rel: 'noopener' }, 'Abrir el PDF'));
           else { photo.appendChild(zoomBox(url)); photo.appendChild(h('p', { class: 'hint' }, 'Pasa el cursor sobre la foto para acercarla (en el celular, tócala y arrastra).')); }
           var acts = h('div', { class: 'row-actions' });
-          if (RF.cloud.configured()) acts.appendChild(UI.btn(e.ocr ? 'Leer de nuevo' : 'Leer con la nube', { icon: 'cloud', cls: 'ghost', onclick: function (ev) { var bt = ev.currentTarget; bt.disabled = true; bt.querySelector('span').textContent = 'Leyendo…'; ocrJob(new File([blob], 'comprobante', { type: blob.type }), e, 'Leyendo el comprobante de nuevo').then(function () { paint(); }); } }));
+          if (RF.cloud.configured()) acts.appendChild(UI.btn(e.ocr ? 'Leer de nuevo (gasta lecturas)' : 'Leer con la nube', { icon: 'cloud', cls: 'ghost', onclick: function (ev) { var bt = ev.currentTarget; bt.disabled = true; bt.querySelector('span').textContent = 'Leyendo…'; ocrJob(new File([blob], e.fileName || 'comprobante', { type: blob.type }), e, 'Leyendo el comprobante de nuevo', true).then(function () { paint(); }); } }));
           if (RF.cloud.configured()) acts.appendChild(UI.btn(e.driveId ? 'Ya está en el Drive' : 'Guardar en el Drive', { icon: 'cloud', cls: 'ghost', disabled: !!e.driveId, onclick: function () {
             RF.drive.archiveExpense(e, p, c.community).then(function () { paintPhoto(); }).catch(function () { });
           } }));

@@ -212,7 +212,7 @@
 
   /* ---- límites de lectura: lo leído hoy, esta semana y este mes, y los límites vigentes (los informa el servicio) ---- */
   var LIMITES = {
-    LIMITE_DIARIO: ['se alcanzó el límite diario de lecturas', 'se reinicia a medianoche (hora de Chile)'],
+    LIMITE_DIARIO: ['se alcanzó el límite diario de lecturas', 'se reinicia a medianoche'],
     LIMITE_SEMANAL: ['se alcanzó el límite semanal de lecturas', 'se reinicia el lunes'],
     LIMITE_MENSUAL: ['se alcanzó el límite mensual de lecturas', 'se reinicia el día 1 del mes']
   };
@@ -230,20 +230,18 @@
       throw new Error(r && r.error ? humanError({ message: String(r.error) }) : 'El servicio no respondió.');
     });
   }
-  /* cuántas lecturas quedan y cuándo se reinician: la más restrictiva de los límites que existan */
+  /* cuántas lecturas quedan y cuándo se reinician: la más restrictiva entre el diario y el mensual (si está configurado) */
   function lecturasDisponibles(c) {
     var opciones = [{ n: c.diario.restan, cuando: 'mañana (a medianoche)' }];
-    if (c.semanal.limite) opciones.push({ n: c.semanal.restan, cuando: 'el lunes' });
     if (c.mensual.limite) opciones.push({ n: c.mensual.restan, cuando: 'el día 1 del mes' });
     return opciones.reduce(function (a, b) { return b.n < a.n ? b : a; });
   }
-  /* las líneas que se muestran: hoy, esta semana, este mes y, si se va a leer un PDF, cuántas páginas faltan */
+  /* las líneas que se muestran: hoy, este mes y, si se va a leer un PDF, cuántas páginas faltan */
   function lineasLimites(c, opts) {
     var n = function (x) { return Number(x || 0).toLocaleString('es-CL'); };
-    var d = c.diario, s = c.semanal, m = c.mensual, out = [];
+    var d = c.diario, m = c.mensual, out = [];
     opts = opts || {};
-    out.push({ titulo: 'Hoy', texto: n(d.usadas) + ' de ' + n(d.limite) + ' lecturas · quedan ' + n(d.restan) + ' · se reinicia a medianoche (hora de Chile)' });
-    out.push({ titulo: 'Esta semana', texto: s.limite ? n(s.usadas) + ' de ' + n(s.limite) + ' · quedan ' + n(s.restan) : n(s.usadas) + ' lecturas · sin límite semanal configurado' });
+    out.push({ titulo: 'Hoy', texto: n(d.usadas) + ' de ' + n(d.limite) + ' lecturas · quedan ' + n(d.restan) + ' · se reinicia a medianoche' });
     out.push({ titulo: 'Este mes', texto: m.limite ? n(m.usadas) + ' de ' + n(m.limite) + ' · quedan ' + n(m.restan) : n(m.usadas) + ' lecturas · sin límite mensual configurado' });
     if (opts.word) out.push({ titulo: 'Este Word', texto: 'no gasta lecturas: el Word se lee sin Google.' });
     if (opts.paginas) {
@@ -270,15 +268,87 @@
       });
       contenedor.appendChild(U2.h('section', { class: 'card limit-card', 'aria-label': 'Límites de lectura' },
         U2.h('h3', { class: 'card-title' }, 'Límites de lectura con Google'),
-        filas,
-        U2.h('p', { class: 'hint' }, 'Cuenta cada página o foto que se envía a leer, también los reintentos y los intentos que fallan. Google Cloud Vision incluye ' +
-          Number(c.referenciaGratisMes || 1000).toLocaleString('es-CL') + ' unidades gratis al mes; cada página cuenta como una. ',
-          U2.h('a', { href: 'https://cloud.google.com/vision/pricing', target: '_blank', rel: 'noopener' }, 'Ver precios de Google'))));
+        filas));
       return c;
     }).catch(function (e) {
       U2.clear(contenedor);
       contenedor.appendChild(UI2.callout('warn', 'No se pudieron leer los límites.', ' ' + (e && e.message ? e.message : 'Revisa la conexión y vuelve a intentar.')));
       return null;
+    });
+  }
+
+  /* ---------- lecturas ya hechas: un mismo archivo no se vuelve a pagar ----------
+     La identidad del archivo es su huella (SHA-256 de sus bytes): el mismo contenido da la misma huella aunque cambie el nombre.
+     Sin crypto.subtle (la app abierta sin https) se usan los metadatos: nombre, tamaño y tipo. Las lecturas se guardan en IndexedDB,
+     cifradas, y solo con la bóveda abierta: sin ella no se guarda nada en claro. */
+  function bovedaAbierta() { return !!(RF.vault && RF.vault.isOpen && RF.vault.isOpen()); }
+  function bytesDe(blob) {
+    if (blob.arrayBuffer) return blob.arrayBuffer();
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { resolve(fr.result); };
+      fr.onerror = function () { reject(fr.error); };
+      fr.readAsArrayBuffer(blob);
+    });
+  }
+  function huellaDe(blob) {
+    var subtle = root.crypto && root.crypto.subtle;
+    if (!subtle) return Promise.resolve(null);
+    return bytesDe(blob).then(function (buf) { return subtle.digest('SHA-256', buf); }).then(function (d) {
+      return Array.prototype.map.call(new Uint8Array(d), function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+    }).catch(function () { return null; });
+  }
+  /* la identidad del archivo (su huella o, sin ella, nombre + tamaño + tipo) y los metadatos que se muestran al repetirlo */
+  function identidad(file) {
+    var meta = { nombre: String(file.name || 'archivo'), tamano: Number(file.size) || 0, tipo: String(file.type || ''), modificado: file.lastModified ? new Date(file.lastModified).toISOString() : null };
+    return huellaDe(file).then(function (h) {
+      return { id: h ? 'h' + h : 'm|' + meta.nombre + '|' + meta.tamano + '|' + meta.tipo, meta: meta };
+    });
+  }
+  function leerJson(clave) {
+    return blobs.get(clave).then(function (b) { return b && b.text ? b.text().then(function (t) { return JSON.parse(t); }) : null; }).catch(function () { return null; });
+  }
+  function guardarJson(clave, obj) {
+    if (!bovedaAbierta()) return Promise.resolve(false);
+    return blobs.put(clave, new Blob([JSON.stringify(obj)], { type: 'application/json' })).then(function () { return true; }, function () { return false; });
+  }
+  function claveLectura(id, parte) { return 'ocr-lectura|' + id + '|' + parte; }
+  function claveDocumento(id) { return 'ocr-doc|' + id; }
+  /* una lectura guardada: 'doc' (foto o PDF entero) o 'pagina-N' (una página del PDF del PEA). null si no hay */
+  function leerGuardada(id, parte) { return leerJson(claveLectura(id, parte)); }
+  /* guarda una lectura buena (los fallos no se guardan, para volver a intentarlos); devuelve si quedó guardada */
+  function guardarLectura(id, parte, res) {
+    if (!res) return Promise.resolve(false);
+    var copia = Object.assign({}, res);
+    delete copia._blob; /* el comprobante ya está guardado aparte */
+    return guardarJson(claveLectura(id, parte), copia);
+  }
+  function documentoGuardado(id) { return leerJson(claveDocumento(id)); }
+  /* deja constancia del documento: cuándo se leyó por primera vez y cuántas páginas tiene; lo ya anotado no cambia */
+  function anotarDocumento(idn, paginas) {
+    return documentoGuardado(idn.id).then(function (doc) {
+      var nuevo = doc || { id: idn.id, nombre: idn.meta.nombre, tamano: idn.meta.tamano, tipo: idn.meta.tipo, modificado: idn.meta.modificado, primera: new Date().toISOString(), paginas: null };
+      if (paginas) nuevo.paginas = paginas;
+      return guardarJson(claveDocumento(idn.id), nuevo);
+    });
+  }
+  /* una foto o un PDF de gasto. Si ya se leyó, se devuelve esa lectura (desdeCache) sin llamar al servicio;
+     con forzar («Leer de nuevo») sí se vuelve a leer y se cobra. RF.ocr.recognize solo se llama si hay que leer. */
+  function recognizeCached(file, onStage, forzar) {
+    return identidad(file).then(function (idn) {
+      var leerYGuardar = function () {
+        return RF.ocr.recognize(file, onStage).then(function (res) {
+          if (!res || !res.ok) return res;
+          return guardarLectura(idn.id, 'doc', res).then(function (ok) { return ok ? anotarDocumento(idn, 1) : null; }).then(function () { return res; });
+        });
+      };
+      if (forzar) return leerYGuardar();
+      return leerGuardada(idn.id, 'doc').then(function (previa) {
+        if (!previa || !previa.ok) return leerYGuardar();
+        return documentoGuardado(idn.id).then(function (doc) {
+          return Object.assign({}, previa, { desdeCache: true, leidoEl: doc ? doc.primera : null, nombreAntes: doc && doc.nombre !== idn.meta.nombre ? doc.nombre : null });
+        });
+      });
     });
   }
 
@@ -416,5 +486,6 @@
   }
   RF.cloud = { approvedUrls: approvedUrls, humanError: humanError, configured: configured, validUrl: validUrl, trustedUrl: trustedUrl, post: post, postRaw: postRaw, postRawTo: postRawTo, postRetry: postRetry, ping: ping, downscale: downscale, blobToBase64: blobToBase64 };
   RF.ocr = { recognize: recognize, recognizeDocument: recognizeDocument, recognizePage: recognizePage, toExpenseFields: toExpenseFields,
-    cuota: cuota, lineasLimites: lineasLimites, lecturasDisponibles: lecturasDisponibles, tarjetaLimites: tarjetaLimites, mensajeLimite: mensajeLimite };
+    cuota: cuota, lineasLimites: lineasLimites, lecturasDisponibles: lecturasDisponibles, tarjetaLimites: tarjetaLimites, mensajeLimite: mensajeLimite,
+    identidad: identidad, leerGuardada: leerGuardada, guardarLectura: guardarLectura, documentoGuardado: documentoGuardado, anotarDocumento: anotarDocumento, recognizeCached: recognizeCached };
 })(typeof window !== 'undefined' ? window : globalThis);
