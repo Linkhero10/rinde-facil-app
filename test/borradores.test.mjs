@@ -100,6 +100,18 @@ test('la memoria de datos guarda, recuerda y borra por clave', () => {
   assert.equal(RF.borradores.recordar('pea'), null);
 });
 
+test('las pantallas con modo de edición (gastos, documentos, actas) no restauran ni guardan campos', () => {
+  const estado = { ui: { borradores: { gastos: { 'monto|INPUT|text#1': '999' } } } };
+  const RF = cargar(estado);
+  const campos = [campo('input', { type: 'text', name: 'monto', value: '' })];
+  RF.borradores.despues('gastos', pantalla(campos));
+  assert.equal(campos[0].value, '');
+  assert.deepEqual(campos[0].events, []);
+  RF.borradores.despues('gastos', pantalla([]));
+  RF.borradores.antes();
+  assert.equal(RF.store.llamadas.length, 0);
+});
+
 test('antes y después no fallan sin pantalla de herramienta (rutas que no son herramientas)', () => {
   const estado = { ui: {} };
   const RF = cargar(estado);

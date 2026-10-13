@@ -7,6 +7,8 @@
   var RF = root.RF = root.RF || {};
   var B = RF.borradores = RF.borradores || {};
   var NO_TIPO = { password: 1, file: 1, button: 1, submit: 1, reset: 1, image: 1, hidden: 1 };
+  /* pantallas con modo de edición (un gasto o un documento abierto): restaurar sus campos podría mezclar un registro con otro */
+  var SIN_BORRADORES = { gastos: 1, documentos: 1, actas: 1 };
   var pantalla = null, pendiente = null;
   /* el enrutador llama a este módulo en cada dibujo: un fallo aquí no puede dejar la app sin pantalla */
   function seguro(fn) { return function () { try { return fn.apply(this, arguments); } catch (e) { if (root.console) root.console.error(e); } }; }
@@ -64,14 +66,14 @@
   B.antes = seguro(function () {
     cancelar();
     var main = root.document && root.document.getElementById('main');
-    if (pantalla && main) B.guardar(pantalla, main);
+    if (pantalla && main && !SIN_BORRADORES[pantalla]) B.guardar(pantalla, main);
     pantalla = null;
   });
 
   /* después de dibujar: pone lo guardado y empieza a guardar lo que se escribe (tid = null si no es una herramienta) */
   B.despues = seguro(function (tid, main) {
     pantalla = tid || null;
-    if (!tid || !main) return;
+    if (!tid || !main || SIN_BORRADORES[tid]) return;
     B.restaurar(tid, main);
     var programar = function () {
       cancelar();
@@ -100,7 +102,7 @@
   /* al recargar o cerrar la pestaña: lo último escrito queda en disco antes de irse */
   if (root.addEventListener) root.addEventListener('pagehide', seguro(function () {
     var main = root.document && root.document.getElementById('main');
-    if (pantalla && main) B.guardar(pantalla, main);
+    if (pantalla && main && !SIN_BORRADORES[pantalla]) B.guardar(pantalla, main);
     if (RF.store && RF.store.persistNow) RF.store.persistNow();
   }));
 })(typeof window !== 'undefined' ? window : globalThis);

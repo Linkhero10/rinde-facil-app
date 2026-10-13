@@ -63,7 +63,7 @@ test('omite fixtures privados y cachés generadas en lugar de copiarlos o bloque
 });
 
 test('la publicación invalida la caché anterior y precarga el módulo de confianza', () => {
-  assert.match(swSource, /var VERSION\s*=\s*['"]rf-v3-42['"]/);
+  assert.match(swSource, /var VERSION\s*=\s*['"]rf-v3-43['"]/);
   assert.match(swSource, /CORE\s*=\s*\[[^\]]*['"]js\/00-service-trust\.js['"]/s);
 });
 
