@@ -1,6 +1,6 @@
-/* Comentarios de la versión de revisión (temporal; se carga en todas las pantallas). Quien revisa puede dejar un comentario general,
+/* Comentarios de la versión de revisión (temporal; se carga en todas las pantallas). Quien revisa puede dejar un comentario general, uno de la pestaña en la que está,
  * o elegir cualquier cosa de la pantalla (un bloque, un cuadro, una tabla) o un fragmento de texto seleccionado. Los comentarios
- * se guardan en el servicio de Felipe (comentarios/Comentarios.gs), así que vuelven a aparecer en su lugar al reabrir la página.
+ * se guardan en el servicio de Felipe (comentarios/Comentarios.gs), así que vuelven a aparecer en su lugar al reabrir la página. La pestaña se guarda con el nombre que se ve en la app (Mi ruta, Subir el PEA…).
  * Los colores y las formas son los de la app (variables del tema y clases btn/card), para que se vea igual en claro y en oscuro. */
 (function (root) {
   'use strict';
@@ -100,7 +100,16 @@
     if (!selector) return null;
     try { return doc.querySelector(selector); } catch (e) { return null; }
   }
-  function pantallaActual() { return root.location.hash || '#/'; }
+  /* la pestaña se guarda con el nombre que ve quien revisa («Mi ruta», «Subir el PEA»…), para leerla en la hoja de cálculo */
+  function pantallaActual() {
+    var R = root.RF || {}, r = R.app && R.app.route ? R.app.route() : { name: 'home' };
+    if (R.auth && R.auth.phase && R.auth.phase() !== 'open') return 'Entrada a Rinde Fácil';
+    if (r.name === 'home') return 'Mi ruta';
+    if (r.name === 'tool') { var tl = R.tools && R.tools[r.id]; return tl && tl.title ? tl.title : r.id; }
+    if (r.name === 'fase') { var fa = ((R.data && R.data.FASES) || []).filter(function (x) { return x.id === r.id; })[0]; return fa ? 'Fase ' + fa.n + ': ' + fa.name : r.id; }
+    if (r.name === 'tramite') { var tr = R.tramites && R.tramites.byId ? R.tramites.byId[r.id] : null; return tr && tr.title ? tr.title : r.id; }
+    return root.location.hash || '#/';
+  }
 
   /* ---- red: nunca lanza; si algo falla, se avisa y no se pierde el texto escrito ---- */
   function cargar() {
@@ -178,7 +187,8 @@
         });
     }, 'primary small');
     est.panel = el('div', 'card rf-com-panel');
-    est.panel.appendChild(el('div', 'rf-com-titulo', tipo === 'general' ? 'Comentario general' : 'Comentario sobre lo que señalaste'));
+    est.panel.appendChild(el('div', 'rf-com-titulo', tipo === 'general' ? 'Comentario general' : tipo === 'pestana' ? 'Comentario de esta pestaña' : 'Comentario sobre lo que señalaste'));
+    est.panel.appendChild(el('div', 'rf-com-meta', 'Pestaña: ' + pantallaActual()));
     if (cita) est.panel.appendChild(el('blockquote', 'rf-com-cita', cita.length > 200 ? cita.slice(0, 200) + '…' : cita));
     est.panel.appendChild(nombre); est.panel.appendChild(texto); est.panel.appendChild(estado);
     var acciones = el('div', 'rf-com-acciones');
@@ -217,12 +227,13 @@
   }
 
   /* ---- qué se comentó: el tipo, y el texto exacto, el cuadro o toda la pantalla, para volver a mostrarlo ---- */
-  function tipoDe(c) { return c.tipo === 'texto' || c.tipo === 'general' ? c.tipo : 'elemento'; }
-  /* lo que se comentó, en palabras de quien revisa: un texto, una caja o toda la pantalla */
+  function tipoDe(c) { return c.tipo === 'texto' || c.tipo === 'general' || c.tipo === 'pestana' ? c.tipo : 'elemento'; }
+  /* lo que se comentó, en palabras de quien revisa: un texto, una caja, toda la pantalla o la pestaña entera */
   function etiquetaTipo(c) {
     var tipo = tipoDe(c);
     if (tipo === 'texto') return 'Texto';
     if (tipo === 'general') return 'Toda la pantalla';
+    if (tipo === 'pestana') return 'Esta pestaña';
     return 'Caja';
   }
   /* el texto sin espacios repetidos y, para cada carácter, su posición en el texto original */
@@ -283,11 +294,21 @@
   /* al mover la pantalla, la marca sigue el mismo lugar del comentario */
   function repintarMarca() {
     var a = est.activo;
-    if (!a) return;
+    if (!a || !a.marcada) return;
     est.marcas.forEach(function (m) { m.remove(); });
     est.marcas = [];
     if (a.rango) dibujarCajas(a.rango.getClientRects(), 'rf-com-marca');
-    else if (a.elemento && a.elemento.isConnected) dibujarCajas([a.elemento.getBoundingClientRect()], a.modo === 'general' ? 'rf-com-area' : 'rf-com-caja');
+    else if (a.elemento && a.elemento.isConnected) dibujarCajas([a.elemento.getBoundingClientRect()], a.modo === 'general' || a.modo === 'pestana' ? 'rf-com-area' : 'rf-com-caja');
+  }
+  /* la pestaña entera no se marca sola: solo si quien revisa lo pide (mismo recuadro que el comentario general) */
+  function marcarPestana() {
+    if (!est.activo) return;
+    est.activo.elemento = doc.getElementById('main') || doc.body;
+    est.activo.marcada = true;
+    est.marcas.forEach(function (m) { m.remove(); });
+    est.marcas = [];
+    dibujarCajas([est.activo.elemento.getBoundingClientRect()], 'rf-com-area');
+    mostrarVista(est.activo.comentario, '');
   }
   function mostrarVista(c, avisoLugar) {
     if (est.vista) est.vista.remove();
@@ -299,6 +320,7 @@
     if (avisoLugar) est.vista.appendChild(el('div', 'rf-com-estado', avisoLugar));
     var acciones = el('div', 'rf-com-acciones');
     acciones.appendChild(boton('Ver lista', abrirLista, 'ghost small'));
+    if (est.activo && est.activo.modo === 'pestana' && !est.activo.marcada) acciones.appendChild(boton('Marcar la pestaña', marcarPestana, 'ghost small'));
     acciones.appendChild(boton('Quitar resaltado', quitarMarcas, 'small'));
     est.vista.appendChild(acciones);
     doc.body.appendChild(est.vista);
@@ -309,6 +331,8 @@
     cerrarMenu();
     quitarMarcas();
     var tipo = tipoDe(c), rango = null, elemento = null, aviso = '';
+    /* la pestaña entera no se marca sola: se ve el comentario y la marca se pone solo si quien revisa la pide */
+    if (tipo === 'pestana') { est.activo = { comentario: c, rango: null, elemento: null, modo: tipo, marcada: false }; mostrarVista(c, ''); return; }
     if (tipo === 'general') {
       elemento = doc.getElementById('main') || doc.body;
     } else {
@@ -317,7 +341,7 @@
       if (!rango && !elemento) { elemento = doc.getElementById('main') || doc.body; aviso = 'No encontré ese lugar en la pantalla de ahora; se marca toda la pantalla.'; }
       else if (!rango && tipo === 'texto') aviso = 'No encontré el texto exacto; se marca el bloque donde se comentó.';
     }
-    est.activo = { comentario: c, rango: rango, elemento: elemento, modo: tipo };
+    est.activo = { comentario: c, rango: rango, elemento: elemento, modo: tipo, marcada: true };
     if (rango) dibujarCajas(rango.getClientRects(), 'rf-com-marca');
     else dibujarCajas([elemento.getBoundingClientRect()], tipo === 'general' || aviso ? 'rf-com-area' : 'rf-com-caja');
     var donde = rango ? rango.startContainer : elemento;
@@ -366,6 +390,7 @@
     var propios = est.comentarios.filter(function (c) { return c.pantalla === pantallaActual(); }).length;
     est.menu = el('div', 'card rf-com-menu');
     est.menu.appendChild(boton('Comentario general', function () { cerrarMenu(); abrirPanel('general', '', ''); }, 'ghost small rf-com-op'));
+    est.menu.appendChild(boton('Comentario de esta pestaña', function () { cerrarMenu(); abrirPanel('pestana', '', ''); }, 'ghost small rf-com-op'));
     est.menu.appendChild(boton('Seleccionar algo de la pantalla', entrarEnSeleccion, 'ghost small rf-com-op'));
     est.menu.appendChild(boton('Ver comentarios (' + propios + ')', function () { cerrarMenu(); abrirLista(); }, 'ghost small rf-com-op'));
     est.principal.appendChild(est.menu);
