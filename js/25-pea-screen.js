@@ -216,6 +216,38 @@
     });
   }
 
+  /* Lectura de PDF escaneado por páginas: cada página leída se guarda en IndexedDB (RF.blobs) al terminar. Si la página se recarga,
+   * se descarta o se cambia de pantalla, la lectura se reanuda y las páginas ya leídas no se vuelven a pagar. */
+  var PEA_EN_CURSO = null; /* la lectura que corre en esta página, para no pagar dos veces lo mismo */
+  function trabajoDe(file) { return { id: 'pea|' + file.name + '|' + file.size, nombre: file.name, tamano: file.size }; }
+  function claveDePagina(t, n) { return 'pea-pagina|' + t.id + '|' + n; }
+  function esFalloDePagina(r) { return !r || (r.ok === false && !/SIN_TEXTO|no devolvió texto/.test(String(r.error || ''))); }
+  function guardarPagina(t, n, r) {
+    if (!RF.blobs || !RF.blobs.put) return;
+    RF.blobs.put(claveDePagina(t, n), new Blob([JSON.stringify(r)], { type: 'application/json' })).catch(function () { /* sin espacio: esa página se volverá a leer si se reanuda */ });
+  }
+  function leerPaginasGuardadas(t, total) {
+    var out = {}, pedidas = [];
+    if (!RF.blobs || !RF.blobs.get) return Promise.resolve(out);
+    var leerUna = function (num) {
+      return RF.blobs.get(claveDePagina(t, num)).then(function (b) {
+        if (!b || !b.text) return null;
+        return b.text().then(function (x) { out[num] = JSON.parse(x); });
+      }).catch(function () { /* esa página no estaba guardada o no se pudo leer */ });
+    };
+    for (var n = 1; n <= total; n++) pedidas.push(leerUna(n));
+    return Promise.all(pedidas).then(function () { return out; });
+  }
+  function guardarMeta(t, total) {
+    if (!RF.blobs || !RF.blobs.put) return;
+    RF.blobs.put('pea-trabajo', new Blob([JSON.stringify({ id: t.id, nombre: t.nombre, tamano: t.tamano, total: total })], { type: 'application/json' })).catch(function () { /* sin espacio */ });
+  }
+  function borrarTrabajo(t, total) {
+    if (!RF.blobs || !RF.blobs.del) return;
+    for (var n = 1; n <= total; n++) RF.blobs.del(claveDePagina(t, n));
+    RF.blobs.del('pea-trabajo');
+  }
+
   TOOLS.subirpea = { title: 'Subir el PEA', icon: 'file', desc: 'Sube el Word del PEA: la app lee tu comunidad, tus proyectos, el presupuesto y la Carta Gantt, y los aplica sin borrar nada.', render: function () {
     var U = RF.util, UI = RF.ui, h = U.h;
     var st = { file: null, model: null, leido: null, notice: '', reading: false, stage: '', ocrText: '', fromPdf: false, busy: false, result: null, lectura: null, lecturaUrl: null, paginas: [],
@@ -250,7 +282,32 @@
         paint();
       }).catch(function () { /* sin lectura guardada o con la bóveda cerrada: se puede volver a elegir el archivo */ });
     }
+    /* si una lectura quedó a medias (se cerró la página o se recargó), se ofrece reanudarla: lo ya leído no se vuelve a cobrar */
+    function ofrecerContinuar() {
+      if (!RF.blobs || !RF.blobs.get) return;
+      RF.blobs.get('pea-trabajo').then(function (b) {
+        if (!b || !b.text || st.model || st.reading) return null;
+        return b.text().then(function (x) { return JSON.parse(x); });
+      }).then(function (meta) {
+        if (!meta || !meta.id || !meta.total || st.model || st.reading) return null;
+        if (PEA_EN_CURSO) { st.notice = 'La lectura de «' + PEA_EN_CURSO.nombre + '» sigue en curso. Vuelve a esta pantalla cuando termine.'; paint(); return null; }
+        return leerPaginasGuardadas(meta, meta.total).then(function (guardadas) {
+          return RF.blobs.get('pea-lectura').then(function (f) {
+            if (!f || st.model || st.reading) return;
+            st.trabajo = { nombre: meta.nombre, hechas: Object.keys(guardadas).length, total: meta.total, file: f.name ? f : new File([f], meta.nombre || 'PEA.pdf', { type: f.type || 'application/pdf' }) };
+            paint();
+          });
+        });
+      }).catch(function () { /* sin lectura a medias */ });
+    }
+    function continuarTrabajo() {
+      var t = st.trabajo;
+      if (!t || !t.file) return;
+      st.trabajo = null;
+      onPdf(t.file);
+    }
     recuperarLectura();
+    ofrecerContinuar();
     var body = h('div');
 
     /* libera el enlace de descarga de la lectura técnica (JSON) del PDF anterior */
@@ -281,29 +338,47 @@
     function onPdf(file) {
       if (!RF.ocr || !RF.ocr.recognizePage || !RF.pdfPages || !RF.pea.extractFromOcr) { st.notice = 'No está cargada la lectura de PDF en esta versión.'; paint(); return; }
       if (!RF.cloud || !RF.cloud.configured()) { st.notice = 'Para leer un PDF escaneado conecta primero el servicio en la nube (en Ajustes). Mientras tanto puedes subir el Word del PEA.'; paint(); return; }
-      var corrida = {}, blobsPagina = [];
-      st.file = file; st.pdfRun = corrida; st.reading = true; st.fromPdf = true; st.stage = 'Preparando el PDF…'; paint();
+      var trabajo = trabajoDe(file);
+      if (PEA_EN_CURSO) {
+        st.notice = PEA_EN_CURSO.id === trabajo.id ? 'Esa lectura ya está en curso. Espera a que termine.' : 'Hay otra lectura en curso (' + PEA_EN_CURSO.nombre + '). Espera a que termine antes de empezar otra.';
+        paint(); return;
+      }
+      PEA_EN_CURSO = trabajo;
+      var corrida = {}, blobsPagina = [], total = 0, hechas = 0;
+      st.file = file; st.pdfRun = corrida; st.reading = true; st.fromPdf = true; st.stage = 'Preparando el PDF…'; st.trabajo = null; paint();
+      /* el archivo se guarda antes de leer: si la página se cierra a mitad de camino, la lectura se puede reanudar */
+      if (RF.blobs && RF.blobs.put) RF.blobs.put('pea-lectura', file).catch(function () { /* sin espacio */ });
       /* vigente: sigue siendo este archivo y esta misma corrida; si el usuario eligió otro, lo de aquí ya no se aplica */
       var vigente = function () { return st.file === file && st.pdfRun === corrida; };
       var say = function (label) { if (vigente()) { st.stage = label; paint(); } };
       /* si la corrida quedó abandonada sin que otra lectura tomara la pantalla (p. ej. se eligió un archivo que no es PDF), solo apaga su indicador */
       var soltarLectura = function () { if (st.file === null && st.pdfRun === corrida) { st.reading = false; st.stage = ''; paint(); } };
+      var terminar = function () { if (PEA_EN_CURSO === trabajo) PEA_EN_CURSO = null; };
       readBuffer(file).then(function (buf) {
-        return RF.pdfPages.renderPages(buf, function (num, total) { say('Preparando la página ' + num + ' de ' + total + '…'); }, vigente);
+        return RF.pdfPages.renderPages(buf, function (num, t) { say('Preparando la página ' + num + ' de ' + t + '…'); }, vigente);
       }).then(function (rendered) {
+        total = rendered.total;
         blobsPagina = rendered.pages.map(function (p) { return { number: p.number, blob: p.blob }; });
-        var results = [], chain = Promise.resolve();
-        rendered.pages.forEach(function (p) {
-          chain = chain.then(function () {
-            if (!vigente()) return null;
-            say('Leyendo la página ' + p.number + ' de ' + rendered.total + ' con Google…');
-            return RF.ocr.recognizePage(p.blob, p.number, function (intento) {
-              say('Google no respondió bien con la página ' + p.number + '. Reintentando (intento ' + intento + ' de 3)…');
-            }).then(function (r) { results.push(r); });
+        guardarMeta(trabajo, total);
+        return leerPaginasGuardadas(trabajo, total).then(function (guardadas) {
+          var results = [], chain = Promise.resolve();
+          rendered.pages.forEach(function (p) {
+            chain = chain.then(function () {
+              if (guardadas[p.number]) { results.push(guardadas[p.number]); hechas++; return null; }
+              say('Leyendo la página ' + p.number + ' de ' + total + ' con Google…');
+              return RF.ocr.recognizePage(p.blob, p.number, function (intento) {
+                say('Google no respondió bien con la página ' + p.number + '. Reintentando (intento ' + intento + ' de 3)…');
+              }).then(function (r) {
+                results.push(r);
+                /* cada página buena queda guardada al momento: si se corta la lectura, no se vuelve a pagar */
+                if (!esFalloDePagina(r)) { hechas++; guardarPagina(trabajo, p.number, r); }
+              });
+            });
           });
+          return chain.then(function () { return RF.pdfPages.aggregate(results, total); });
         });
-        return chain.then(function () { return RF.pdfPages.aggregate(results, rendered.total); });
       }).then(function (res) {
+        terminar();
         if (!vigente()) return soltarLectura();
         if (!res || !res.ok) throw new Error(motivoPdf(res));
         st.ocrText = RF.pdfPages.reviewText(res);
@@ -314,12 +389,15 @@
         st.model = P.normalizarModelo(RF.pea.extractFromOcr(res));
         st.leido = copia(st.model);
         guardarLectura();
+        borrarTrabajo(trabajo, total);
         st.reading = false; st.stage = ''; paint();
       }).catch(function (e) {
+        terminar();
         if (!vigente()) return soltarLectura();
+        var pendiente = total ? { nombre: trabajo.nombre, hechas: hechas, total: total, file: file } : null;
         st.file = null; st.model = null; st.leido = null; st.fromPdf = false; st.ocrText = ''; soltarDescarga();
-        st.reading = false; st.stage = '';
-        st.notice = 'No se pudo leer el PDF: ' + msgOf(e).replace(/\.$/, '') + '.';
+        st.reading = false; st.stage = ''; st.trabajo = pendiente;
+        st.notice = 'No se pudo leer el PDF: ' + msgOf(e).replace(/\.$/, '') + '.' + (pendiente && hechas ? ' Lo que ya se leyó queda guardado: al reintentar no se cobra de nuevo.' : '');
         paint();
       });
     }
@@ -342,6 +420,8 @@
           st.file ? h('span', { class: 'file-name' }, st.file.name + ' · ' + Math.max(1, Math.round(st.file.size / 1024)) + ' KB') : h('span', { class: 'hint' }, 'Word (.docx) o PDF escaneado (se lee con el OCR del servicio).')),
         UI.fileDrop(inp, { kind: 'official', label: 'Arrastra aquí el PEA o pulsa para buscarlo', hint: 'Word (.docx) o PDF.', invalidText: 'Ese formato no se puede leer aquí. Sube el PEA en Word (.docx) o PDF.', onFiles: function (files) { onFile(files[0]); } }),
         st.notice ? UI.callout('warn', '', st.notice) : null,
+        st.trabajo && !st.reading ? UI.callout('warn', 'Lectura a medias:', ' ' + st.trabajo.nombre + ': ' + st.trabajo.hechas + ' de ' + st.trabajo.total + ' páginas ya están leídas. Continuar no vuelve a cobrar esas páginas.') : null,
+        st.trabajo && !st.reading ? UI.btn('Continuar la lectura', { icon: 'check', cls: 'primary', onclick: continuarTrabajo }) : null,
         st.reading ? h('p', { class: 'hint' }, st.stage || 'Leyendo el PEA…') : null
       ]);
     }
