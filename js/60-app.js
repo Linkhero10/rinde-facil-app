@@ -193,4 +193,10 @@
     } catch (e) { } }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  /* versión de revisión: con ?comentarios=1 se carga la capa de comentarios (temporal; la app normal no la carga) */
+  if (/[?&]comentarios=1(&|$)/.test(root.location.search)) {
+    var scriptComentarios = document.createElement('script');
+    scriptComentarios.src = 'js/58-comentarios.js';
+    document.head.appendChild(scriptComentarios);
+  }
 })(typeof window !== 'undefined' ? window : globalThis);
