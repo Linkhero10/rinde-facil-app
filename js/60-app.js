@@ -62,7 +62,7 @@
     /* sin contraseña no se muestra nada de la comunidad: primero la pantalla de acceso */
     var ph = RF.auth.phase();
     if (ph === 'open') RF.data.useConvenio(RF.store.project()); /* las reglas son las del convenio del proyecto activo */
-    if (ph !== 'open' || (RF.authui && RF.authui.pending())) { U.clear(host); host.appendChild(RF.authui.screen(ph)); document.body.classList.remove('menu-open'); return; }
+    if (ph !== 'open' || (RF.authui && RF.authui.pending())) { if (RF.borradores) RF.borradores.antes(); U.clear(host); host.appendChild(RF.authui.screen(ph)); document.body.classList.remove('menu-open'); return; }
     var side = document.getElementById('side'), sideScroll = side ? side.scrollTop : 0;
     var main = h('main', { id: 'main', class: 'main', tabindex: '-1' });
     var view;
@@ -88,6 +88,7 @@
       view = h('div', { class: 'view' }, UI.callout('bad', 'Algo salió mal al mostrar esta pantalla.', ' ' + (e && e.message ? e.message : '') + ' Tus datos están guardados. Prueba volver al inicio.'), h('a', { class: 'btn', href: '#/' }, 'Volver al inicio'));
     }
     main.appendChild(view);
+    if (RF.borradores) RF.borradores.antes(); /* lo escrito en la pantalla que se va no se pierde */
     U.clear(host);
     var top = h('header', { class: 'topbar' },
       h('button', { type: 'button', class: 'icon-btn menu-btn', 'aria-label': 'Abrir el menú', 'aria-controls': 'side', 'aria-expanded': 'false', onclick: toggleMenu }, UI.icon('menu', 24)),
@@ -98,6 +99,7 @@
     var scrim = h('div', { class: 'scrim', onclick: closeMenu });
     var sideEl = RF.views.sidebar(r);
     host.appendChild(h('div', { class: 'shell' }, top, sideEl, scrim, main));
+    if (RF.borradores) RF.borradores.despues(r.name === 'tool' && RF.tools[r.id] ? r.id : null, main); /* lo que se escribió antes vuelve a aparecer */
     fitSide(); sideEl.scrollTop = sideScroll; paintChip();
     U.$$('a', sideEl).forEach(function (a) { a.addEventListener('click', closeMenu); });
     applyThemeLabel();

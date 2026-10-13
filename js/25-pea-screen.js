@@ -220,6 +220,25 @@
     var U = RF.util, UI = RF.ui, h = U.h;
     var st = { file: null, model: null, leido: null, notice: '', reading: false, stage: '', ocrText: '', fromPdf: false, busy: false, result: null, lectura: null, lecturaUrl: null, paginas: [],
       acta: { file: null, date: '', projectId: '', busy: false, result: null } };
+
+    /* la última lectura se recuerda: sobrevive a cambiar de pestaña y a recargar (RF.borradores). El archivo vuelve desde RF.blobs */
+    function guardarLectura() {
+      if (!RF.borradores || !st.model) return;
+      RF.borradores.memorizar('pea', { model: st.model, leido: st.leido, ocrText: st.ocrText, fromPdf: st.fromPdf, fileName: st.file ? st.file.name : null });
+      if (st.file && RF.blobs && RF.blobs.put) RF.blobs.put('pea-lectura', st.file).catch(function () { /* sin espacio: la lectura igual queda */ });
+    }
+    var recordado = RF.borradores ? RF.borradores.recordar('pea') : null;
+    if (recordado && recordado.model) {
+      st.model = recordado.model; st.leido = recordado.leido || copia(recordado.model);
+      st.ocrText = recordado.ocrText || ''; st.fromPdf = !!recordado.fromPdf;
+      st.notice = 'Recuperamos la lectura de «' + (recordado.fileName || 'tu PEA') + '» que dejaste antes. Si quieres ver las páginas, vuelve a elegir el archivo.';
+      if (RF.blobs && RF.blobs.get) RF.blobs.get('pea-lectura').then(function (f) {
+        if (!f || st.model !== recordado.model) return;
+        /* con la bóveda abierta el archivo vuelve cifrado y sin nombre: se le pone el que tenía */
+        st.file = f.name ? f : new File([f], recordado.fileName || 'PEA.pdf', { type: f.type || '' });
+        paint();
+      }, function () { /* sin archivo: se puede volver a elegir */ });
+    }
     var body = h('div');
 
     /* libera el enlace de descarga de la lectura técnica (JSON) del PDF anterior */
@@ -232,6 +251,7 @@
     function onFile(file) {
       if (!file) return;
       st.file = null; st.model = null; st.leido = null; st.result = null; st.notice = ''; st.ocrText = ''; st.fromPdf = false; st.stage = ''; soltarDescarga();
+      if (RF.borradores) RF.borradores.memorizar('pea', null);
       if (/\.pdf$/i.test(file.name) || /pdf/i.test(file.type || '')) { onPdf(file); return; }
       if (!/\.docx$/i.test(file.name)) { st.notice = 'Ese archivo no es un Word (.docx) ni un PDF. Sube el Word del PEA o el PDF escaneado.'; paint(); return; }
       st.file = file; st.reading = true; paint();
@@ -239,6 +259,7 @@
         if (st.file !== file) return;
         st.model = P.normalizarModelo(model);
         st.leido = copia(st.model);
+        guardarLectura();
       }).catch(function (e) {
         if (st.file === file) { st.file = null; st.notice = 'No se pudo leer el Word: ' + msgOf(e) + '. Revisa que sea el Word del PEA.'; }
       }).then(function () { st.reading = false; paint(); });
@@ -281,6 +302,7 @@
         st.paginas = blobsPagina.map(function (p) { return { number: p.number, url: URL.createObjectURL(p.blob) }; });
         st.model = P.normalizarModelo(RF.pea.extractFromOcr(res));
         st.leido = copia(st.model);
+        guardarLectura();
         st.reading = false; st.stage = ''; paint();
       }).catch(function (e) {
         if (!vigente()) return soltarLectura();
