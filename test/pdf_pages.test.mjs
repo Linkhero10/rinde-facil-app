@@ -48,6 +48,13 @@ test('una página en blanco (sin texto) cuenta como leída', () => {
   assert.equal(r.raw_text, 'uno');
 });
 
+test('una hoja en blanco con el mensaje del servicio «no devolvió texto» cuenta como leída', () => {
+  const blanca = { number: 2, ok: false, raw_text: '', pages: [], error: 'Cloud Vision no devolvió texto.' };
+  const r = plain(PP.aggregate([pagina(1, 'uno'), blanca], 2));
+  assert.equal(r.document_coverage, 'COMPLETE');
+  assert.equal(r.raw_text, 'uno');
+});
+
 test('ningún texto en ninguna página: error claro', () => {
   const vacias = [1, 2].map(n => ({ number: n, ok: false, raw_text: '', pages: [], error: 'OCR_SIN_TEXTO' }));
   const r = plain(PP.aggregate(vacias, 2));

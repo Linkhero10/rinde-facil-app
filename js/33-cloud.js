@@ -256,7 +256,9 @@
     }).then(function (res) {
       res = res || {};
       var ok = res.ok === true && !!res.raw_text;
-      return { number: number, ok: ok || /SIN_TEXTO/.test(String(res.error || '')), raw_text: ok ? String(res.raw_text) : '', pages: ok ? (res.pages_layout || res.pages || []) : [], error: ok ? null : (res.error || 'OCR_SIN_TEXTO') };
+      /* una hoja sin texto (en blanco) no es un fallo: el servicio responde «no devolvió texto» */
+      var enBlanco = /SIN_TEXTO|no devolvió texto/.test(String(res.error || ''));
+      return { number: number, ok: ok || enBlanco, raw_text: ok ? String(res.raw_text) : '', pages: ok ? (res.pages_layout || res.pages || []) : [], error: ok || enBlanco ? null : (res.error || 'OCR_SIN_TEXTO') };
     });
   }
 

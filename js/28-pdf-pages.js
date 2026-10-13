@@ -58,7 +58,7 @@
     for (var i = 1; i <= total; i++) {
       var r = byNumber[i];
       if (!r) { missing.push(i); continue; }
-      if (r.ok === false && !/SIN_TEXTO/.test(String(r.error || ''))) { errors.push('página ' + i + ': ' + (r.error || 'error')); continue; }
+      if (r.ok === false && !/SIN_TEXTO|no devolvió texto/.test(String(r.error || ''))) { errors.push('página ' + i + ': ' + (r.error || 'error')); continue; }
       if (r.raw_text) texts.push(String(r.raw_text));
       (r.pages || []).forEach(function (p) { layout.push(Object.assign({}, p, { number: i })); });
     }
