@@ -1,6 +1,6 @@
 /* Comentarios de la versión de revisión (temporal; se carga en todas las pantallas). Quien revisa puede dejar un comentario general, uno de la pestaña en la que está,
  * o elegir cualquier cosa de la pantalla (un bloque, un cuadro, una tabla) o un fragmento de texto seleccionado. Los comentarios
- * se guardan en el servicio de Felipe (comentarios/Comentarios.gs), así que vuelven a aparecer en su lugar al reabrir la página. La pestaña se guarda con el nombre que se ve en la app (Mi ruta, Subir el PEA…).
+ * se guardan en el servicio de Felipe (comentarios/Comentarios.gs), así que vuelven a aparecer en su lugar al reabrir la página. La pestaña se guarda con el nombre que se ve en la app (Mi ruta, Subir el PEA…); el comentario general sigue guardando la dirección de la pantalla, como antes.
  * Los colores y las formas son los de la app (variables del tema y clases btn/card), para que se vea igual en claro y en oscuro. */
 (function (root) {
   'use strict';
@@ -111,10 +111,16 @@
     return root.location.hash || '#/';
   }
 
+  /* el comentario general no hace referencia a ninguna pestaña: se guarda y se ve en la pantalla donde se escribió, como antes */
+  function direccionActual() { return root.location.hash || '#/'; }
+  /* qué comentarios se ven en esta pestaña: los generales por su dirección; pestaña, texto y caja por el nombre de la pestaña */
+  function esDeAqui(c) { return c.tipo === 'general' ? c.pantalla === direccionActual() : c.pantalla === pantallaActual(); }
+
   /* ---- red: nunca lanza; si algo falla, se avisa y no se pierde el texto escrito ---- */
   function cargar() {
     if (!SERVICIO) return Promise.resolve([]);
-    return root.fetch(SERVICIO + '?pantalla=' + encodeURIComponent(pantallaActual()), { cache: 'no-store' })
+    /* trae todos: el servicio filtra por texto exacto y los generales se guardan con la dirección; el filtro de cada pantalla está en esDeAqui */
+    return root.fetch(SERVICIO, { cache: 'no-store' })
       .then(function (r) { return r.json(); }).then(function (j) { return (j && j.comentarios) || []; })
       .catch(function () { return []; });
   }
@@ -136,7 +142,7 @@
     });
   }
   function marcar() {
-    var pantalla = pantallaActual(), propios = est.comentarios.filter(function (c) { return c.pantalla === pantalla; });
+    var propios = est.comentarios.filter(esDeAqui);
     var claves = clavesDe(propios), vistos = {};
     propios.forEach(function (c, i) {
       if (!c.selector) return;
@@ -179,7 +185,7 @@
       if (!t) { estado.textContent = 'Escribe el comentario antes de enviar.'; return; }
       try { root.localStorage.setItem('rf-com-nombre', nombre.value.trim()); } catch (e) { /* sin almacenamiento */ }
       enviarBtn.disabled = true; estado.textContent = 'Enviando…';
-      enviar({ pantalla: pantallaActual(), tipo: tipo, cita: cita || '', selector: selector || '', nombre: nombre.value.trim(), texto: t })
+      enviar({ pantalla: tipo === 'general' ? direccionActual() : pantallaActual(), tipo: tipo, cita: cita || '', selector: selector || '', nombre: nombre.value.trim(), texto: t })
         .then(function (r) {
           if (r && r.ok) { cerrarPanel(); aviso('Comentario enviado: «' + (t.length > 140 ? t.slice(0, 140) + '…' : t) + '». Gracias.'); refrescar(); return; }
           enviarBtn.disabled = false;
@@ -188,7 +194,7 @@
     }, 'primary small');
     est.panel = el('div', 'card rf-com-panel');
     est.panel.appendChild(el('div', 'rf-com-titulo', tipo === 'general' ? 'Comentario general' : tipo === 'pestana' ? 'Comentario de esta pestaña' : 'Comentario sobre lo que señalaste'));
-    est.panel.appendChild(el('div', 'rf-com-meta', 'Pestaña: ' + pantallaActual()));
+    if (tipo === 'pestana') est.panel.appendChild(el('div', 'rf-com-meta', 'Pestaña: ' + pantallaActual()));
     if (cita) est.panel.appendChild(el('blockquote', 'rf-com-cita', cita.length > 200 ? cita.slice(0, 200) + '…' : cita));
     est.panel.appendChild(nombre); est.panel.appendChild(texto); est.panel.appendChild(estado);
     var acciones = el('div', 'rf-com-acciones');
@@ -200,8 +206,7 @@
   }
   function abrirLista() {
     cerrarPanel();
-    var pantalla = pantallaActual();
-    var propios = est.comentarios.filter(function (c) { return c.pantalla === pantalla; });
+    var propios = est.comentarios.filter(esDeAqui);
     est.panel = el('div', 'card rf-com-panel');
     est.panel.appendChild(el('div', 'rf-com-titulo', 'Comentarios de esta pantalla (' + propios.length + ')'));
     if (!SERVICIO) est.panel.appendChild(el('div', 'rf-com-estado', 'El servicio de comentarios todavía no está conectado.'));
@@ -387,7 +392,7 @@
   function cerrarMenu() { if (est.menu) { est.menu.remove(); est.menu = null; } }
   function abrirMenu() {
     if (est.menu) { cerrarMenu(); return; }
-    var propios = est.comentarios.filter(function (c) { return c.pantalla === pantallaActual(); }).length;
+    var propios = est.comentarios.filter(esDeAqui).length;
     est.menu = el('div', 'card rf-com-menu');
     est.menu.appendChild(boton('Comentario general', function () { cerrarMenu(); abrirPanel('general', '', ''); }, 'ghost small rf-com-op'));
     est.menu.appendChild(boton('Comentario de esta pestaña', function () { cerrarMenu(); abrirPanel('pestana', '', ''); }, 'ghost small rf-com-op'));
