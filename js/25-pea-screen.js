@@ -319,6 +319,11 @@
 
     function onFile(file) {
       if (!file) return;
+      /* mientras una lectura de PDF corre, elegir otro archivo no toca la pantalla: esa lectura termina y aplica su resultado */
+      if (PEA_EN_CURSO) {
+        st.notice = PEA_EN_CURSO.id === trabajoDe(file).id ? 'Esa lectura ya está en curso. Espera a que termine.' : 'Hay otra lectura en curso (' + PEA_EN_CURSO.nombre + '). Espera a que termine antes de empezar otra.';
+        paint(); return;
+      }
       st.file = null; st.model = null; st.leido = null; st.result = null; st.notice = ''; st.ocrText = ''; st.fromPdf = false; st.stage = ''; soltarDescarga();
       if (/\.pdf$/i.test(file.name) || /pdf/i.test(file.type || '')) { onPdf(file); return; }
       if (!/\.docx$/i.test(file.name)) { st.notice = 'Ese archivo no es un Word (.docx) ni un PDF. Sube el Word del PEA o el PDF escaneado.'; paint(); return; }

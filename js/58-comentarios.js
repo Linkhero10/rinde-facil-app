@@ -57,8 +57,10 @@
   }
   /* texto del comentario: el servicio lo devuelve como «comentario» (y acepta «texto» por si cambia) */
   function textoDe(c) { return String(c.comentario != null ? c.comentario : (c.texto || '')); }
+  /* texto tal como se ve: innerText pone espacio entre elementos vecinos (textContent los pega: «Subir el PEAElegir») */
+  function textoVisible(n) { return String(n.innerText || n.textContent || '').replace(/\s+/g, ' ').trim(); }
   function descripcion(n) {
-    var t = String(n.textContent || '').replace(/\s+/g, ' ').trim();
+    var t = textoVisible(n);
     return n.tagName.toLowerCase() + (n.id ? '#' + n.id : '') + (t ? ' · ' + t.slice(0, 60) + (t.length > 60 ? '…' : '') : '');
   }
 
@@ -249,7 +251,7 @@
       e.preventDefault(); e.stopPropagation();
       var n = e.target;
       var sel = root.getSelection ? String(root.getSelection()).trim() : '';
-      var cita = sel || (n.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      var cita = sel || textoVisible(n).slice(0, 200);
       salirDeSeleccion();
       abrirPanel(sel ? 'texto' : 'elemento', cita, rutaCss(n));
     }, true);
