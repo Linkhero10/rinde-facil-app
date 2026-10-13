@@ -1,5 +1,5 @@
-/* Rinde Fácil — «Subir el PEA»: lee el Word del PEA (RF.pea, js/24-pea-extract.js), muestra un resumen para revisar
- * y lo aplica al proyecto sin borrar nada de lo que ya existe.
+/* Rinde Fácil — «Subir el PEA»: lee el Word del PEA (RF.pea, js/24-pea-extract.js) o su PDF escaneado, muestra lo que leyó
+ * para revisarlo y corregirlo, y lo aplica al proyecto sin borrar nada de lo que ya existe.
  * La parte pura (RF.pea.applyToState: modelo del PEA -> estado nuevo) no toca el DOM ni los servicios; se prueba en test/pea_apply.test.mjs.
  * Los campos de cada proyecto siguen el esquema de js/02-store.js (newProject) y de js/32-tools-plan.js (budgetLines, gantt). */
 (function (root) {
@@ -9,12 +9,12 @@
   var TOOLS = RF.tools = RF.tools || {};
 
   var ADMIN = 'Gastos de administración';
-  var RUT_ACUERDO = ''; /* el RUT de la comunidad se escribe al subir el PEA (está en el Acuerdo): no va en el código */
   var DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   var CUENTAS = ['rrhh', 'operacion', 'inversion', 'administracion'];
-  var CUENTA_LBL = { rrhh: 'Recursos humanos', operacion: 'Gastos operacionales', inversion: 'Gastos de inversión', administracion: 'Gastos de administración' };
+  /* cuentas que se presupuestan en un proyecto; la de administración va al proyecto automático */
+  var CUENTAS_OPC = [{ id: 'rrhh', name: 'Recursos humanos' }, { id: 'operacion', name: 'Gastos operacionales' }, { id: 'inversion', name: 'Gastos de inversión' }];
   var PDF_MIME = 'application/pdf';
-  var OCR_AVISO = 'Este PEA se leyó por OCR (PDF escaneado): revisa cada dato contra el documento antes de aplicar. El presupuesto y la carta Gantt no se leen de un escaneado: cárgalos a mano o sube el Word del PEA.';
+  var OCR_AVISO = 'Este PEA se leyó por OCR (PDF escaneado): revisa cada dato contra el documento antes de aplicar. El presupuesto y la carta Gantt no se leen de un escaneado: escríbelos en la sección de cada proyecto, o sube el Word del PEA.';
   var LOCAL_MSG = 'Guardado solo en este equipo; conecta el servicio para copiarlo al Drive.';
   var seq = 0;
 
@@ -36,12 +36,19 @@
   }
   /* etiqueta de cuenta del PEA («RECURSOS HUMANOS», «GASTOS DE INVERSIÓN»…) -> clave de la app */
   function cuentaKey(label) {
+    if (CUENTAS.indexOf(label) >= 0) return label; /* ya es la clave de la app */
     var n = nrm(label).toUpperCase();
     if (/RECURSOS HUMANOS/.test(n)) return 'rrhh';
     if (/OPERACION/.test(n)) return 'operacion';
     if (/INVERSION/.test(n)) return 'inversion';
     if (/ADMINISTRACION/.test(n)) return 'administracion';
     return null;
+  }
+  /* el proyecto de administración (automático) y los proyectos que se aplican */
+  function esAdmin(p) { return !!p && sameName(p.name, ADMIN); }
+  /* el de administración solo se aplica si trae un monto mayor que cero: no se crea uno vacío ni en $0 */
+  function aplicables(m) {
+    return (m.projects || []).filter(function (p) { return p && !(esAdmin(p) && !((p.budgetApproved || {}).administracion > 0)); });
   }
   /* nombre con el que se crea el proyecto; si el PEA no trae nombre no se inventa uno */
   P.nameOf = function (mp) { return clean(mp && mp.name) || ('Proyecto ' + ((mp && mp.code) || 'sin nombre')); };
@@ -66,7 +73,7 @@
    * - un proyecto con el mismo nombre se reutiliza (no se duplica); sus datos del PEA reemplazan los campos del PEA
    *   solo cuando el PEA trae un valor (un campo vacío en el PEA no borra lo que hubiera);
    * - las líneas de presupuesto y las actividades que ya existen (mismo contenido) no se repiten;
-   * - «Gastos de administración» se crea o actualiza una sola vez, con auto: true;
+   * - «Gastos de administración» se crea o actualiza una sola vez, con auto: true, y solo si trae un monto mayor que cero;
    * - opts.rut y opts.legalRep, si vienen, reemplazan los del modelo (opts.rut undefined = usar el del modelo). */
   P.applyToState = function (state, model, opts) {
     opts = opts || {};
@@ -81,6 +88,10 @@
     c.rut = rut || c.rut || '';
     var legal = opts.legalRep !== undefined ? clean(opts.legalRep) : clean(mc.legalRep);
     c.legalRep = legal || c.legalRep || '';
+    var direccion = clean(mc.address);
+    if (direccion) c.address = direccion; else if (c.address === undefined) c.address = '';
+    var organismo = clean(mc.oc);
+    if (organismo) c.oc = organismo; else if (c.oc === undefined) c.oc = '';
 
     /* contacto y datos del PEA: se copian del modelo (o de opts.contacto); nunca borran lo que ya hay */
     var contacto = opts.contacto || mc.contacto;
@@ -91,14 +102,14 @@
     if (!clean(c.phone) && fono) c.phone = fono;
     if (Array.isArray(mc.peaDatos)) c.peaDatos = copia(mc.peaDatos);
     else if (!Array.isArray(c.peaDatos)) c.peaDatos = [];
-    ['fechaEntrega', 'asambleaValidacion', 'apoyo'].forEach(function (k) {
+    ['fechaEntrega', 'asambleaValidacion', 'asambleaTexto', 'apoyo'].forEach(function (k) {
       if (mc[k] != null) c[k] = mc[k];
       else if (c[k] === undefined) c[k] = null;
     });
 
     s.projects = Array.isArray(s.projects) ? s.projects : [];
     (m.projects || []).forEach(function (mp) {
-      if (!mp || sameName(mp.name, ADMIN)) return;
+      if (!mp || esAdmin(mp)) return;
       var p = findNamed(s.projects, P.nameOf(mp));
       if (!p) { p = makeProject(P.nameOf(mp), opts); s.projects.push(p); }
 
@@ -143,14 +154,17 @@
       });
     });
 
-    var admin = (m.projects || []).filter(function (x) { return x && sameName(x.name, ADMIN); })[0];
+    var admin = (m.projects || []).filter(function (x) { return x && esAdmin(x); })[0];
     if (admin) {
-      var ap = findNamed(s.projects, ADMIN);
-      if (!ap) { ap = makeProject(ADMIN, opts); s.projects.push(ap); }
-      ap.auto = true;
-      ap.budgetApproved = Object.assign({ rrhh: 0, operacion: 0, inversion: 0, administracion: 0 }, ap.budgetApproved || {});
       var monto = admin.budgetApproved && admin.budgetApproved.administracion;
-      if (monto != null) ap.budgetApproved.administracion = monto;
+      var ap = findNamed(s.projects, ADMIN);
+      /* el proyecto automático solo nace con un monto mayor que cero: ninguna comunidad recibe uno vacío por defecto */
+      if (!ap && monto > 0) { ap = makeProject(ADMIN, opts); s.projects.push(ap); }
+      if (ap) {
+        ap.auto = true;
+        ap.budgetApproved = Object.assign({ rrhh: 0, operacion: 0, inversion: 0, administracion: 0 }, ap.budgetApproved || {});
+        if (monto != null) ap.budgetApproved.administracion = monto;
+      }
     }
     return s;
   };
@@ -204,31 +218,27 @@
 
   TOOLS.subirpea = { title: 'Subir el PEA', icon: 'file', desc: 'Sube el Word del PEA: la app lee tu comunidad, tus proyectos, el presupuesto y la Carta Gantt, y los aplica sin borrar nada.', render: function () {
     var U = RF.util, UI = RF.ui, h = U.h;
-    var st = { file: null, model: null, notice: '', reading: false, stage: '', ocrText: '', fromPdf: false, busy: false, rut: RUT_ACUERDO, legalRep: '', result: null, lectura: null, lecturaUrl: null,
+    var st = { file: null, model: null, leido: null, notice: '', reading: false, stage: '', ocrText: '', fromPdf: false, busy: false, result: null, lectura: null, lecturaUrl: null, paginas: [],
       acta: { file: null, date: '', projectId: '', busy: false, result: null } };
     var body = h('div');
-
-    function dd(label, value, fallback) { return [h('dt', null, label), h('dd', null, value ? String(value) : (fallback || 'No aparece en el PEA'))]; }
-    function fechaTxt(iso) { return iso ? U.fmtDate(iso) : null; }
-    function money(v) { return v == null ? '—' : U.fmtCLP(v); }
 
     /* libera el enlace de descarga de la lectura técnica (JSON) del PDF anterior */
     function soltarDescarga() {
       if (st.lecturaUrl) URL.revokeObjectURL(st.lecturaUrl);
-      st.lectura = null; st.lecturaUrl = null;
+      (st.paginas || []).forEach(function (p) { URL.revokeObjectURL(p.url); });
+      st.lectura = null; st.lecturaUrl = null; st.paginas = [];
     }
 
     function onFile(file) {
       if (!file) return;
-      st.file = null; st.model = null; st.result = null; st.notice = ''; st.ocrText = ''; st.fromPdf = false; st.stage = ''; soltarDescarga();
+      st.file = null; st.model = null; st.leido = null; st.result = null; st.notice = ''; st.ocrText = ''; st.fromPdf = false; st.stage = ''; soltarDescarga();
       if (/\.pdf$/i.test(file.name) || /pdf/i.test(file.type || '')) { onPdf(file); return; }
       if (!/\.docx$/i.test(file.name)) { st.notice = 'Ese archivo no es un Word (.docx) ni un PDF. Sube el Word del PEA o el PDF escaneado.'; paint(); return; }
       st.file = file; st.reading = true; paint();
       readBuffer(file).then(function (buf) { return P.extractFromDocxBytes(buf); }).then(function (model) {
         if (st.file !== file) return;
-        st.model = model;
-        st.rut = P.rutInicial(model);
-        st.legalRep = clean(model.community && model.community.legalRep) || '';
+        st.model = P.normalizarModelo(model);
+        st.leido = copia(st.model);
       }).catch(function (e) {
         if (st.file === file) { st.file = null; st.notice = 'No se pudo leer el Word: ' + msgOf(e) + '. Revisa que sea el Word del PEA.'; }
       }).then(function () { st.reading = false; paint(); });
@@ -239,7 +249,7 @@
     function onPdf(file) {
       if (!RF.ocr || !RF.ocr.recognizePage || !RF.pdfPages || !RF.pea.extractFromOcr) { st.notice = 'No está cargada la lectura de PDF en esta versión.'; paint(); return; }
       if (!RF.cloud || !RF.cloud.configured()) { st.notice = 'Para leer un PDF escaneado conecta primero el servicio en la nube (en Ajustes). Mientras tanto puedes subir el Word del PEA.'; paint(); return; }
-      var corrida = {};
+      var corrida = {}, blobsPagina = [];
       st.file = file; st.pdfRun = corrida; st.reading = true; st.fromPdf = true; st.stage = 'Preparando el PDF…'; paint();
       /* vigente: sigue siendo este archivo y esta misma corrida; si el usuario eligió otro, lo de aquí ya no se aplica */
       var vigente = function () { return st.file === file && st.pdfRun === corrida; };
@@ -249,6 +259,7 @@
       readBuffer(file).then(function (buf) {
         return RF.pdfPages.renderPages(buf, function (num, total) { say('Preparando la página ' + num + ' de ' + total + '…'); }, vigente);
       }).then(function (rendered) {
+        blobsPagina = rendered.pages.map(function (p) { return { number: p.number, blob: p.blob }; });
         var results = [], chain = Promise.resolve();
         rendered.pages.forEach(function (p) {
           chain = chain.then(function () {
@@ -267,13 +278,13 @@
         soltarDescarga();
         st.lectura = res;
         st.lecturaUrl = URL.createObjectURL(new Blob([JSON.stringify(res)], { type: 'application/json' }));
-        st.model = RF.pea.extractFromOcr(res);
-        st.rut = P.rutInicial(st.model);
-        st.legalRep = clean(st.model.community && st.model.community.legalRep) || '';
+        st.paginas = blobsPagina.map(function (p) { return { number: p.number, url: URL.createObjectURL(p.blob) }; });
+        st.model = P.normalizarModelo(RF.pea.extractFromOcr(res));
+        st.leido = copia(st.model);
         st.reading = false; st.stage = ''; paint();
       }).catch(function (e) {
         if (!vigente()) return soltarLectura();
-        st.file = null; st.model = null; st.fromPdf = false; st.ocrText = ''; soltarDescarga();
+        st.file = null; st.model = null; st.leido = null; st.fromPdf = false; st.ocrText = ''; soltarDescarga();
         st.reading = false; st.stage = '';
         st.notice = 'No se pudo leer el PDF: ' + msgOf(e).replace(/\.$/, '') + '.';
         paint();
@@ -302,48 +313,161 @@
       ]);
     }
 
+    /* campos de una lista (teléfonos, correos): uno por valor y un campo vacío al final para agregar otro */
+    function listaEditable(arr, etiqueta, ph) {
+      var out = [];
+      for (var i = 0; i <= arr.length; i++) out.push(UI.field(i === 0 ? etiqueta : etiqueta + ' ' + (i + 1), arr, i, { ph: i === 0 ? ph : 'Opcional' }));
+      return out;
+    }
+
+    /* documento a la izquierda: las páginas del PDF escaneado; del Word no hay imagen aquí */
+    function visor() {
+      var kids;
+      if (st.paginas && st.paginas.length) {
+        kids = st.paginas.map(function (p) {
+          return h('figure', null, h('img', { src: p.url, alt: 'Página ' + p.number + ' del PEA', loading: 'lazy' }), h('figcaption', null, 'Página ' + p.number));
+        });
+      } else {
+        kids = [h('p', { class: 'hint' }, 'Del Word no se muestra una vista aquí. Ábrelo al lado y revisa cada campo de la derecha.')];
+      }
+      return h('aside', { class: 'pea-doc', 'aria-label': 'Documento del PEA' }, kids);
+    }
+
+    /* líneas de presupuesto del proyecto: las mismas columnas que la herramienta Presupuesto */
+    function lineasEditor(mp) {
+      mp.budgetLines = Array.isArray(mp.budgetLines) ? mp.budgetLines : [];
+      var tb = h('tbody');
+      mp.budgetLines.forEach(function (l, i) {
+        l.cuenta = cuentaKey(l.cuenta) || 'operacion';
+        tb.appendChild(h('tr', null,
+          h('td', { 'data-label': 'Cuenta' }, UI.bind(l, 'cuenta', { type: 'select', noEmpty: true, options: CUENTAS_OPC, aria: 'Cuenta' })),
+          h('td', { 'data-label': 'Ítem' }, UI.bind(l, 'item', { type: 'text', ph: 'Ej: Materiales', aria: 'Ítem' })),
+          h('td', { 'data-label': 'Glosa' }, UI.bind(l, 'glosa', { type: 'text', ph: 'Qué es y para qué', max: 200, aria: 'Glosa' })),
+          h('td', { 'data-label': 'Fuente' }, UI.bind(l, 'fuente', { type: 'select', noEmpty: true, options: [{ id: 'corfo', name: 'F1 · CORFO' }, { id: 'propio', name: 'F2 · Aporte propio' }], aria: 'Fuente' })),
+          h('td', { 'data-label': 'Monto' }, UI.bind(l, 'monto', { type: 'money', aria: 'Monto' })),
+          h('td', { class: 'act' }, h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar línea', title: 'Quitar línea', onclick: function () { mp.budgetLines.splice(i, 1); paint(); } }, UI.icon('trash', 18)))));
+      });
+      return [
+        mp.budgetLines.length ? null : h('p', { class: 'hint' }, 'Aún no hay líneas de presupuesto. Agrega la primera.'),
+        h('div', { class: 'table-scroll' }, h('table', { class: 'edit-grid' }, h('thead', null, h('tr', null, ['Cuenta', 'Ítem', 'Glosa (máx. 200)', 'Fuente', 'Monto', ''].map(function (x) { return h('th', null, x); }))), tb)),
+        UI.btn('Agregar línea', { icon: 'plus', cls: 'ghost', onclick: function () { mp.budgetLines.push({ id: U.uid('b'), cuenta: 'operacion', item: '', glosa: '', fuente: 'corfo', monto: 0, actId: '' }); paint(); } })
+      ];
+    }
+
+    /* Carta Gantt del proyecto: etapas y actividades, con las mismas columnas que la herramienta Carta Gantt */
+    function ganttEditor(mp) {
+      mp.gantt = mp.gantt && Array.isArray(mp.gantt.stages) ? mp.gantt : { stages: [] };
+      var out = [];
+      mp.gantt.stages.forEach(function (etapa, si) {
+        etapa.acts = Array.isArray(etapa.acts) ? etapa.acts : [];
+        var tb = h('tbody');
+        etapa.acts.forEach(function (a, ai) {
+          tb.appendChild(h('tr', null,
+            h('td', { 'data-label': 'Actividad' }, UI.bind(a, 'name', { type: 'text', ph: 'Ej: Taller de capacitación', aria: 'Nombre de la actividad' })),
+            h('td', { 'data-label': 'Inicio' }, UI.bind(a, 'start', { type: 'date', aria: 'Inicio' })),
+            h('td', { 'data-label': 'Término' }, UI.bind(a, 'end', { type: 'date', aria: 'Término' })),
+            h('td', { 'data-label': 'Resultado o hito' }, UI.bind(a, 'result', { type: 'text', ph: 'Qué se logra', aria: 'Resultado' })),
+            h('td', { class: 'act' }, h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar actividad', title: 'Quitar actividad', onclick: function () { etapa.acts.splice(ai, 1); paint(); } }, UI.icon('trash', 18)))));
+        });
+        out.push(h('div', { class: 'stage-card' },
+          h('div', { class: 'stage-head' }, h('span', { class: 'stage-n' }, 'Etapa ' + (si + 1)),
+            UI.bind(etapa, 'name', { type: 'text', ph: 'Nombre de la etapa', aria: 'Nombre de la etapa' }),
+            h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar etapa', title: 'Quitar etapa', onclick: function () { mp.gantt.stages.splice(si, 1); paint(); } }, UI.icon('trash', 18))),
+          h('div', { class: 'table-scroll' }, h('table', { class: 'edit-grid' }, h('thead', null, h('tr', null, ['Actividad', 'Inicio', 'Término', 'Resultado o hito', ''].map(function (x) { return h('th', null, x); }))), tb)),
+          UI.btn('Agregar actividad', { icon: 'plus', cls: 'ghost', onclick: function () { etapa.acts.push({ id: U.uid('a'), name: '', start: '', end: '', result: '' }); paint(); } })));
+      });
+      out.push(UI.btn('Agregar etapa', { icon: 'plus', cls: 'primary', onclick: function () { mp.gantt.stages.push({ id: U.uid('s'), name: '', acts: [] }); paint(); } }));
+      return out;
+    }
+
+    /* lo que leyó la app, en campos que se pueden corregir. Todo se escribe en el modelo y se aplica tal como quede aquí. */
     function summaryBox() {
-      var m = st.model, mc = m.community || {}, kids = [];
-      var pdfRut = clean(mc.rut);
-      var difiere = pdfRut && st.rut && pdfRut.replace(/\D/g, '') !== st.rut.replace(/\D/g, '');
-      var rutInp = h('input', { type: 'text', value: st.rut, autocomplete: 'off', 'aria-label': 'RUT de la comunidad' });
-      rutInp.addEventListener('input', function () { st.rut = rutInp.value; });
-      var legalInp = h('input', { type: 'text', value: st.legalRep, autocomplete: 'off', 'aria-label': 'Representante legal' });
-      legalInp.addEventListener('input', function () { st.legalRep = legalInp.value; });
+      var m = st.model, mc = m.community = m.community || {}, kids = [];
+      var ct = mc.contacto = mc.contacto || { encargado: null, secretaria: null, telefonos: [], correos: [] };
+      ct.secretaria = ct.secretaria || { nombre: null, rut: null };
+      ct.telefonos = ct.telefonos || []; ct.correos = ct.correos || [];
+      mc.aia30 = mc.aia30 || { recibido: null, saldo: null };
+      var leido = (st.leido && st.leido.community) || {};
+      var noLeido = 'No aparece en el PEA';
+      var rutHint = (leido.rut && mc.rut && leido.rut.replace(/\D/g, '') !== String(mc.rut).replace(/\D/g, ''))
+        ? 'El PEA dice ' + leido.rut + '; revisa cuál corresponde.'
+        : (leido.rut ? 'Viene del PEA; revisa que coincida con el del Acuerdo CORFO.' : 'El PEA no lo trae. Escríbelo: está en el Acuerdo CORFO.');
 
-      kids.push(UI.section('2 · Lo que dice el PEA', [
-        h('dl', { class: 'kv' }, dd('Comunidad', mc.name), dd('RUT en el PEA', pdfRut), dd('Dirección', mc.address), dd('Representante legal en el PEA', mc.legalRep, 'No aparece en el PEA'), dd('Organismo colaborador', null, 'No aparece con nombre en el PEA; queda vacío')),
-        h('p', { class: 'hint' }, 'Organismo colaborador: el PEA solo marca opciones, así que no se completa.')
+      kids.push(UI.section('2 · Comunidad', [
+        h('p', { class: 'hint' }, 'Revisa lo que leyó la app y corrige lo que esté mal. Lo que el PEA no trae queda vacío: escríbelo si lo necesitas.'),
+        h('div', { class: 'form-grid' },
+          UI.field('Nombre de la comunidad', mc, 'name', { cls: 'wide', ph: noLeido }),
+          UI.field('RUT de la comunidad', mc, 'rut', { type: 'rut', ph: '12.345.678-5', hint: rutHint }),
+          UI.field('Representante legal', mc, 'legalRep', { ph: noLeido, hint: 'El PEA no dice quién es el representante legal. Escríbelo solo si lo confirmas; no lo tomes de las firmas.' }),
+          UI.field('Dirección', mc, 'address', { cls: 'wide', ph: noLeido }),
+          UI.field('Organismo colaborador', mc, 'oc', { ph: noLeido, hint: 'El PEA solo marca las opciones; escribe el nombre si corresponde.' }),
+          UI.field('Apoyo para elaborar el PEA', mc, 'apoyo', { ph: noLeido, hint: 'Escribe la opción marcada en el PEA: asesores, organismo u otros.' }))
       ]));
 
-      kids.push(UI.section('3 · Datos que se aplican', [
-        h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'RUT de la comunidad'), rutInp,
-          h('span', { class: 'hint' }, difiere ? ('El PEA dice ' + pdfRut + '; revisa cuál corresponde.') : (pdfRut && st.rut ? 'El RUT viene del PEA. Revisa que coincida con el del Acuerdo CORFO.' : (st.rut ? 'Revisa que sea el RUT de la comunidad.' : 'Escribe el RUT de la comunidad (está en el Acuerdo CORFO).')))),
-        h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Representante legal'), legalInp,
-          h('span', { class: 'hint' }, mc.legalRep ? 'Tomado del PEA; puedes cambiarlo.' : 'El PEA no lo trae: queda vacío hasta que lo escribas.'))
+      kids.push(UI.section('Contacto y fechas', [
+        h('div', { class: 'form-grid' },
+          UI.field('Encargado del convenio', ct, 'encargado', { cls: 'wide', ph: noLeido }),
+          UI.field('RUT del encargado', ct.secretaria, 'rut', { type: 'rut', ph: noLeido }),
+          listaEditable(ct.telefonos, 'Teléfono', noLeido),
+          listaEditable(ct.correos, 'Correo electrónico', noLeido),
+          UI.field('Fecha de entrega a CORFO', mc, 'fechaEntrega', { type: 'date' }),
+          UI.field('Validación por la Asamblea, como dice el PEA', mc, 'asambleaTexto', { cls: 'wide', ph: noLeido }),
+          UI.field('Fecha de la validación por la Asamblea', mc, 'asambleaValidacion', { type: 'date', hint: 'Solo si el PEA trae una fecha.' }))
       ]));
 
-      var projs = (m.projects || []).filter(function (x) { return x && !sameName(x.name, ADMIN); });
+      /* el saldo es lo recibido menos lo que se asigna a los proyectos; si todo está, se muestra la cuenta */
+      var del = (m.projects || []).filter(function (p) { return p && !esAdmin(p); });
+      var asignado = (del.length && del.every(function (p) { return p.fuentes && p.fuentes.aia30 != null; }))
+        ? del.reduce(function (s, p) { return s + p.fuentes.aia30; }, 0) : null;
+      var saldoHint = (mc.aia30.recibido != null && asignado != null)
+        ? 'Lo recibido menos lo que asignas a los proyectos da ' + U.fmtCLP(mc.aia30.recibido - asignado) + '.'
+        : 'Lo que queda del 30 % del AIA después de asignarlo a los proyectos.';
+      var descuadre = (mc.aia30.recibido != null && mc.aia30.saldo != null && asignado != null && mc.aia30.recibido - asignado !== mc.aia30.saldo)
+        ? UI.callout('warn', 'El saldo no cuadra:', ' lo recibido menos lo asignado a los proyectos da ' + U.fmtCLP(mc.aia30.recibido - asignado) + ', y el saldo dice ' + U.fmtCLP(mc.aia30.saldo) + '. Revisa cuál es el dato correcto.')
+        : null;
+      kids.push(UI.section('Fondos del 30 % del AIA', [
+        h('div', { class: 'form-grid' },
+          UI.field('Monto recibido como primera cuota', mc.aia30, 'recibido', { type: 'money', hint: 'Es el 30 % del Aporte Inicial Acumulado.' }),
+          UI.field('Saldo del 30 % del AIA', mc.aia30, 'saldo', { type: 'money', hint: saldoHint })),
+        descuadre
+      ]));
+
+      var projs = (m.projects || []).filter(function (x) { return x && !esAdmin(x); });
       if (!projs.length) kids.push(UI.callout('warn', 'El PEA no trae proyectos.', ' Revisa el Word: la app busca tablas «Nombre del proyecto».'));
-      projs.forEach(function (mp) {
-        var acts = 0, stages = ((mp.gantt && mp.gantt.stages) || []);
-        stages.forEach(function (x) { acts += (x.acts || []).length; });
-        var bud = mp.budgetApproved || {};
-        kids.push(h('article', { class: 'pea-proj' },
-          h('h3', null, P.nameOf(mp)),
-          h('dl', { class: 'kv' }, dd('Código', mp.code, 'Sin código: lo asigna CORFO'), dd('Inicio', fechaTxt(mp.start), 'No aparece en el PEA'), dd('Término', fechaTxt(mp.end), 'No aparece en el PEA')),
-          h('table', { class: 'plain-grid' }, h('tbody', null, CUENTAS.map(function (k) { return h('tr', null, h('th', { scope: 'row' }, CUENTA_LBL[k]), h('td', { class: 'r' }, money(bud[k]))); }))),
-          h('p', { class: 'hint' }, (mp.budgetLines || []).length + ' línea(s) de presupuesto · ' + acts + ' actividad(es) en ' + stages.length + ' etapa(s) de la Carta Gantt.')));
+      projs.forEach(function (mp, i) {
+        mp.budgetApproved = mp.budgetApproved || { rrhh: null, operacion: null, inversion: null, administracion: null };
+        mp.fuentes = mp.fuentes || { aia30: null, aia70: null, otras: null };
+        kids.push(UI.section('3 · Proyecto ' + (i + 1), [
+          h('div', { class: 'form-grid' },
+            UI.field('Nombre del proyecto', mp, 'name', { cls: 'wide', ph: noLeido }),
+            UI.field('Código', mp, 'code', { ph: 'Sin código: lo asigna CORFO' }),
+            UI.field('Inicio', mp, 'start', { type: 'date' }),
+            UI.field('Término', mp, 'end', { type: 'date' })),
+          h('h4', null, 'Presupuesto por cuenta'),
+          h('div', { class: 'form-grid' },
+            UI.field('Recursos humanos', mp.budgetApproved, 'rrhh', { type: 'money' }),
+            UI.field('Gastos operacionales', mp.budgetApproved, 'operacion', { type: 'money' }),
+            UI.field('Gastos de inversión', mp.budgetApproved, 'inversion', { type: 'money' })),
+          h('h4', null, 'Fuentes de financiamiento'),
+          h('div', { class: 'form-grid' },
+            UI.field('Con cargo al 30 % del AIA', mp.fuentes, 'aia30', { type: 'money' }),
+            UI.field('Con cargo al 70 % del AIA', mp.fuentes, 'aia70', { type: 'money' }),
+            UI.field('Otras fuentes', mp.fuentes, 'otras', { type: 'money' })),
+          h('p', { class: 'hint' }, (mp.presupuestoTotal != null ? 'Total declarado en el PEA: ' + U.fmtCLP(mp.presupuestoTotal) + '. ' : '') + 'La administración no se reparte: va al proyecto «' + ADMIN + '».'),
+        ].concat(
+          [h('h4', null, 'Presupuesto: líneas por cuenta y fuente')], lineasEditor(mp),
+          [h('h4', null, 'Carta Gantt: etapas y actividades')], ganttEditor(mp))));
       });
 
-      var adm = (m.projects || []).filter(function (x) { return x && sameName(x.name, ADMIN); })[0];
+      var adm = (m.projects || []).filter(function (x) { return x && esAdmin(x); })[0];
+      if (!adm) {
+        adm = { name: ADMIN, code: null, start: null, end: null, budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: null }, budgetLines: [], gantt: { stages: [] }, peaDatos: [], fuentes: { aia30: null, aia70: null, otras: null }, source: 'manual' };
+        m.projects.push(adm);
+      }
       kids.push(UI.section('Proyecto automático «' + ADMIN + '»', [
-        adm && adm.budgetApproved && adm.budgetApproved.administracion != null
-          ? h('p', null, 'Monto de administración: ', h('strong', null, U.fmtCLP(adm.budgetApproved.administracion)), '. Se crea o actualiza una sola vez.')
-          : UI.callout('warn', 'Sin monto:', ' el PEA no trae el total de gastos de administración.')
+        h('p', { class: 'hint' }, 'Los gastos de administración no se reparten entre proyectos. Se crea o actualiza una sola vez; si lo dejas vacío no se crea.'),
+        h('div', { class: 'form-grid' }, UI.field('Monto de gastos de administración', adm.budgetApproved, 'administracion', { type: 'money', ph: noLeido }))
       ]));
-
-      kids.push(UI.section('Todo lo que encontramos en el PEA', todoBox(mc, projs)));
 
       if (st.fromPdf) {
         kids.push(UI.callout('warn', 'PDF escaneado:', ' ' + OCR_AVISO));
@@ -352,10 +476,11 @@
         kids.push(h.apply(null, ['details', { class: 'ocr-raw' }].concat(lecturaKids)));
       }
 
-      var w = m.warnings || [];
-      kids.push(UI.section('Avisos del PEA (' + w.length + ')', w.length
-        ? [h('p', { class: 'hint' }, 'Revisa cada aviso antes de aplicar. Lo que no se pudo leer con certeza queda vacío.'), h('ul', { class: 'pea-warn' }, w.map(function (x) { return h('li', null, x); }))]
-        : [UI.callout('ok', '', 'El lector no encontró avisos.')]));
+      /* el aviso del saldo se calcula en vivo arriba; la lista muestra lo que dijo la lectura al inicio, como registro */
+      var w = (m.warnings || []).filter(function (x) { return !/El saldo del 30 % del AIA no cuadra/.test(x); });
+      kids.push(UI.section('Avisos de la lectura (' + w.length + ')', w.length
+        ? [h('p', { class: 'hint' }, 'Así se leyó el PEA al subirlo. Si ya corregiste un campo, el aviso queda como registro: vale lo que hay en los campos.'), h('ul', { class: 'pea-warn' }, w.map(function (x) { return h('li', null, x); }))]
+        : [UI.callout('ok', '', 'La lectura no encontró avisos.')]));
 
       kids.push(UI.section('4 · Aplicar', [
         h('p', { class: 'hint' }, 'No borra nada de lo que ya tienes: actualiza la comunidad y agrega o completa los proyectos sin duplicarlos. Si aplicas el mismo PEA otra vez, no se repite nada.'),
@@ -365,58 +490,24 @@
       return h('div', null, kids);
     }
 
-    /* bloque «Todo lo que encontramos»: texto completo (sin cortar), con saltos de línea */
-    var WRAP = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' };
-    function ddw(label, value) { return [h('dt', null, label), h('dd', { style: WRAP }, (value === null || value === undefined || value === '') ? 'No aparece en el PEA' : String(value))]; }
-    function filasPea(list, vacio) {
-      var rows = (list || []).filter(function (r) { return r && r.k; });
-      if (!rows.length) return h('p', { class: 'hint' }, vacio);
-      return h('dl', { class: 'kv' }, rows.map(function (r) { return ddw(r.k, r.v); }));
-    }
-    function fuentesPea(f) {
-      f = f || {};
-      var peso = function (v) { return v == null ? null : U.fmtCLP(v); };
-      return h('dl', { class: 'kv' }, ddw('Con cargo al 30 % del AIA', peso(f.aia30)), ddw('Con cargo al 70 % del AIA', peso(f.aia70)), ddw('Financiamiento con otras fuentes', peso(f.otras)));
-    }
-    function todoBox(mc, projs) {
-      var ct = mc.contacto || {}, sec = ct.secretaria || null;
-      var kids = [h('p', { class: 'hint' }, 'Lectura completa del PEA. Lo que el PEA no trae aparece como «No aparece en el PEA».')];
-      var comDatos = mc.peaDatos || [];
-      kids.push(h('details', { open: true }, h('summary', null, 'Comunidad (' + comDatos.length + ' datos)'), filasPea(comDatos, 'El PEA no trae datos de la comunidad.')));
-      kids.push(h('details', { open: true }, h('summary', null, 'Contacto y fechas'),
-        h('dl', { class: 'kv' },
-          ddw('Encargado del convenio', ct.encargado),
-          ddw('Secretaria', sec && sec.nombre),
-          ddw('RUT de la secretaria', sec && sec.rut),
-          ddw('Teléfonos', (ct.telefonos || []).join('\n')),
-          ddw('Correos', (ct.correos || []).join('\n')),
-          ddw('Fecha de entrega a CORFO', mc.fechaEntrega ? U.fmtDate(mc.fechaEntrega) : null),
-          ddw('Validación por la Asamblea', mc.asambleaValidacion ? U.fmtDate(mc.asambleaValidacion) : null))));
-      projs.forEach(function (mp) {
-        var datos = mp.peaDatos || [];
-        kids.push(h('details', null, h('summary', null, P.nameOf(mp) + ' (' + datos.length + ' datos)'),
-          filasPea(datos, 'El PEA no trae datos de este proyecto.'),
-          h('h4', null, 'Fuentes de financiamiento'),
-          fuentesPea(mp.fuentes)));
-      });
-      return kids;
-    }
-
     function apply() {
-      var m = st.model, n = (m && m.projects || []).length;
-      if (!m || !st.file) return;
-      UI.confirmBox('Se actualizará tu comunidad y se aplicarán ' + n + ' proyecto(s) del PEA, incluido «' + ADMIN + '». No se borra nada de lo que ya tienes. ¿Aplicar?', 'Aplicar').then(function (ok) {
+      var n = aplicables(P.normalizarModelo(st.model)).length;
+      if (!st.model || !st.file) return;
+      UI.confirmBox('Se actualizará tu comunidad y se aplicarán ' + n + ' proyecto(s) del PEA, incluido «' + ADMIN + '» si trae monto. No se borra nada de lo que ya tienes. ¿Aplicar?', 'Aplicar').then(function (ok) {
         if (ok) doApply();
       });
     }
 
     function doApply() {
-      var m = st.model, file = st.file, prevActive = RF.store.get().activeProjectId;
+      /* se aplica lo que quedó en pantalla: el modelo corregido, sin el proyecto de administración vacío */
+      var m = JSON.parse(JSON.stringify(P.refrescarDatos(P.normalizarModelo(st.model))));
+      m.projects = aplicables(m);
+      var file = st.file, prevActive = RF.store.get().activeProjectId;
       st.busy = true; st.result = null; paint();
       var names = (m.projects || []).filter(Boolean).map(P.nameOf);
       try {
         names.forEach(function (nm) { if (!findNamed(RF.store.get().projects, nm)) RF.store.addProject(nm); });
-        var res = P.applyToState(RF.store.get(), m, { rut: st.rut, legalRep: st.legalRep });
+        var res = P.applyToState(RF.store.get(), m, {});
         RF.store.update(function (s) {
           s.community = res.community;
           s.projects = res.projects;
@@ -442,7 +533,7 @@
             RF.store.update(function () { }, { silent: true });
             note = 'El Word quedó en la carpeta de Planificación del Drive.';
           } else { kind = 'warn'; note = 'El Word no se pudo copiar al Drive (' + msgOf(out.err) + '); queda guardado en este equipo.'; }
-          var adm = (m.projects || []).filter(function (x) { return x && sameName(x.name, ADMIN); })[0];
+          var adm = (m.projects || []).filter(function (x) { return x && esAdmin(x); })[0];
           st.busy = false;
           st.result = { kind: kind, text: 'PEA aplicado: comunidad actualizada y ' + names.length + ' proyecto(s) listos' + (adm ? ' (con «' + ADMIN + '»)' : '') + '. ' + note + ' Revisa «Mi comunidad y proyectos» y la Carta Gantt.' };
           UI.toast('PEA aplicado.', kind === 'ok' ? 'ok' : 'warn');
@@ -496,13 +587,13 @@
     function paint() {
       U.clear(body);
       body.appendChild(uploadBox());
-      if (st.model) body.appendChild(summaryBox());
+      if (st.model) body.appendChild(h('div', { class: 'pea-split' }, visor(), h('div', { class: 'pea-form' }, summaryBox())));
       body.appendChild(actaBox());
     }
 
     paint();
     return h('div', { class: 'tool-page' }, h('h1', { class: 'tool-title' }, 'Subir el PEA'),
-      h('p', { class: 'lead' }, 'Sube el Word del PEA para que la app arme tu comunidad, tus proyectos, el presupuesto y la Carta Gantt. Revisas todo antes de aplicarlo.'),
+      h('p', { class: 'lead' }, 'Sube el Word del PEA para que la app arme tu comunidad, tus proyectos, el presupuesto y la Carta Gantt. Revisas y corriges todo antes de aplicarlo.'),
       body);
   } };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -723,3 +723,18 @@ body.menu-open{overflow:hidden}
 .xl-c{border:1px solid #e3e3e3;padding:2px 8px;min-width:90px;max-width:340px;white-space:pre-wrap;vertical-align:top;background:#fff}.xl-c.num{text-align:right;font-variant-numeric:tabular-nums}
 .xl-title{font-weight:800;font-size:15px}.xl-bold{font-weight:700}.xl-header{background:#d9e7e5!important;font-weight:700}.xl-note{color:#666;font-style:italic}.xl-moneyBold{font-weight:700;text-align:right}
 .xl-tabs{display:flex;gap:2px;flex-wrap:wrap;padding:4px 8px;background:#f3f3f3;border-top:1px solid #d4d4d4}.xl-tab{border:1px solid #d4d4d4;border-bottom:0;background:#e7e7e7;color:#333;padding:4px 12px;font:12.5px Calibri,Arial,sans-serif;cursor:pointer;border-radius:3px 3px 0 0}.xl-tab.on{background:#fff;font-weight:700;color:#1d6f42}
+
+/* Subir el PEA: los campos a la izquierda y el documento a la derecha; en pantallas angostas, los campos primero */
+.pea-split{display:grid;gap:18px;align-items:start}
+.pea-form{display:block;min-width:0;order:1}
+.pea-doc{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;max-height:60vh;overflow:auto;min-width:0;order:2}
+.pea-form h4{margin:20px 0 8px}
+@media (min-width:901px){.pea-form .edit-grid{min-width:760px}}
+.pea-doc figure{margin:0}
+.pea-doc img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:var(--radius);background:#fff}
+.pea-doc figcaption{font:600 12px var(--mono);color:var(--muted);margin-top:4px}
+@media (min-width:1000px){
+  .pea-split{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}
+  .pea-doc{order:2;position:sticky;top:12px;max-height:calc(100vh - 24px)}
+  .pea-form{order:1}
+}

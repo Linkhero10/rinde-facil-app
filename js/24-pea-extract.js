@@ -550,6 +550,7 @@
     compararTexto(community, projects, tx, warnings);
     community.presidente = tx.community.presidente;
     community.aia30 = tx.community.aia30;
+    if (!community.asambleaTexto) community.asambleaTexto = tx.community.asambleaTexto;
 
     return { community: community, projects: projects, warnings: warnings };
   };
@@ -718,6 +719,22 @@
     return n >= 2 && n <= 5 ? nombre : null;
   }
 
+  /* validación por la Asamblea: el PEA la afirma en una frase («Se encuentran validados por la Asamblea de la Comunidad de X.»).
+   * Se guarda la frase tal como está en el PEA; la fecha, si la trae, va aparte. Si el OCR partió la pregunta y la respuesta,
+   * se prefiere la frase con «Se» (la respuesta) y no la etiqueta de la pregunta. */
+  function asambleaTextoEn(f, t) {
+    var re = /(se\s+)?encuentran\s+validados\s+por\s+la\s+asamblea/g, m, hit = null;
+    while ((m = re.exec(f))) {
+      if (m[1]) { hit = m; break; }
+      if (!hit) hit = m;
+    }
+    if (!hit) return null;
+    var frase = t.slice(hit.index, hit.index + 240), fin = frase.indexOf('.');
+    if (fin >= 0) frase = frase.slice(0, fin + 1);
+    frase = clean(frase);
+    return frase === '' ? null : frase;
+  }
+
   /* fuentes de un proyecto: «con cargo al 30 % / 70 % del AIA = X» y «otras fuentes» con el monto en la misma línea o la siguiente */
   function fuentesEn(t, f, pfx, warnings) {
     var out = { aia30: null, aia70: null, otras: null }, m, raw, v, mp, resto, sig, primera;
@@ -848,6 +865,76 @@
     };
   }
 
+  /* ---------- filas «lo que dice el PEA» ----------
+   * Se arman desde los campos del modelo: el extractor de texto las escribe y la pantalla las rehace al corregir un campo. */
+  var NOMBRE_ADMIN = 'Gastos de administración';
+  function esAdministracion(p) { return norm(p && p.name) === norm(NOMBRE_ADMIN); }
+  function pesos(n) { return n === null || n === undefined ? null : '$' + fmt(n) + '.-'; }
+  function filasDeComunidad(c) {
+    var ct = c.contacto || {}, sec = ct.secretaria || null, out = [];
+    var fila = function (etiqueta, valor) { if (valor) out.push({ k: etiqueta, v: valor }); };
+    fila('Nombre de comunidad', c.name);
+    fila('Rut de la comunidad', c.rut);
+    fila('Nombre Encargado Convenio', [ct.encargado, sec && sec.rut ? 'Rut: ' + sec.rut : ''].filter(Boolean).join(' | '));
+    fila('Teléfono de contacto de Encargado Convenio', (ct.telefonos || []).filter(Boolean).join(' | '));
+    fila('Correo electrónico del Encargado Convenio', (ct.correos || []).filter(Boolean).join(' | '));
+    fila('Fecha de entrega del Proyecto a CORFO', c.fechaEntrega);
+    fila('Validados por la Asamblea', c.asambleaTexto || c.asambleaValidacion);
+    fila('Monto total recibido como primera cuota (30 % del AIA)', c.aia30 ? pesos(c.aia30.recibido) : null);
+    fila('Saldo del 30 % del AIA', c.aia30 ? pesos(c.aia30.saldo) : null);
+    fila('Dirección', c.address);
+    fila('Representante legal', c.legalRep);
+    fila('Organismo colaborador', c.oc);
+    fila('Apoyo para elaborar el PEA', c.apoyo);
+    return out;
+  }
+  function filasDeProyecto(p) {
+    var fu = p.fuentes || {}, out = [];
+    var fila = function (etiqueta, valor) { if (valor !== null && valor !== undefined && valor !== '') out.push({ k: etiqueta, v: valor }); };
+    fila('Nombre del proyecto', p.name);
+    fila('Fecha de inicio', p.start);
+    fila('Fecha de término', p.end);
+    fila('Presupuesto total del proyecto ($), impuestos incluidos', pesos(p.presupuestoTotal));
+    fila('Con cargo al 30 % del AIA', pesos(fu.aia30));
+    fila('Con cargo al 70 % del AIA', pesos(fu.aia70));
+    fila('Financiamiento con otras fuentes', pesos(fu.otras));
+    return out;
+  }
+  /* saldo del 30 %: debe ser lo recibido menos lo que el PEA asigna a los proyectos (sin contar la administración automática) */
+  function avisoSaldo(recibido, saldo, proyectos, warnings) {
+    if (recibido === null || saldo === null) return;
+    var del = proyectos.filter(function (p) { return !esAdministracion(p); });
+    if (!del.length || !del.every(function (p) { return p.fuentes && p.fuentes.aia30 !== null; })) return;
+    var asignado = del.reduce(function (s, p) { return s + p.fuentes.aia30; }, 0);
+    if (recibido - asignado !== saldo) warnings.push('El saldo del 30 % del AIA no cuadra: lo recibido ($' + fmt(recibido) + ') menos lo que el PEA asigna a los proyectos ($' + fmt(asignado) + ') da $' + fmt(recibido - asignado) + ', y el PEA dice $' + fmt(saldo) + '. Revisa cuál es el dato correcto.');
+  }
+  /* deja el modelo listo para aplicar: sin teléfonos ni correos vacíos y con los objetos que la pantalla edita */
+  P.normalizarModelo = function (model) {
+    var c = model.community = model.community || {};
+    var ct = c.contacto = c.contacto || { encargado: null, secretaria: null, telefonos: [], correos: [] };
+    ct.telefonos = (ct.telefonos || []).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+    ct.correos = (ct.correos || []).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+    c.aia30 = c.aia30 || { recibido: null, saldo: null };
+    (model.projects || []).forEach(function (p) {
+      p.budgetApproved = p.budgetApproved || { rrhh: null, operacion: null, inversion: null, administracion: null };
+      p.fuentes = p.fuentes || { aia30: null, aia70: null, otras: null };
+      /* las filas vacías que se dejaron en la pantalla no se aplican: ni líneas sin ítem ni monto, ni actividades sin nombre */
+      p.budgetLines = (p.budgetLines || []).filter(function (l) { return String(l.item || '').trim() !== '' || l.monto > 0; });
+      p.gantt = p.gantt && Array.isArray(p.gantt.stages) ? p.gantt : { stages: [] };
+      p.gantt.stages = p.gantt.stages.map(function (st) {
+        return Object.assign({}, st, { acts: (st.acts || []).filter(function (a) { return String(a.name || '').trim() !== ''; }) });
+      }).filter(function (st) { return String(st.name || '').trim() !== '' || st.acts.length > 0; });
+    });
+    return model;
+  };
+  /* rehace las filas «lo que dice el PEA» con los campos corregidos. Solo para el PEA escaneado: el Word trae sus filas de las tablas. */
+  P.refrescarDatos = function (model) {
+    if (!model || model.origen !== 'escaneado') return model;
+    model.community.peaDatos = filasDeComunidad(model.community);
+    (model.projects || []).forEach(function (p) { if (!esAdministracion(p)) p.peaDatos = filasDeProyecto(p); });
+    return model;
+  };
+
   /* texto del PEA -> mismo modelo que extractFromStructure (con presidente y aia30).
    * opts.origen: 'escaneado' (OCR de un PDF; es el valor por defecto) o 'word' (texto de las tablas del Word, para comparar). */
   P.extractFromText = function (text, opts) {
@@ -918,6 +1005,7 @@
     var fAsm = asm ? P.parseFecha(asm[1].replace(/\s+/g, '')) : null;
     var fechaEntrega = fEnt && fEnt.f ? fEnt.f.iso : null;
     var asambleaValidacion = fAsm ? fAsm.iso : null;
+    var asambleaTexto = asambleaTextoEn(F, T);
     /* monto total recibido como primera cuota (30 % del AIA) y saldo del 30 % (en el campo del saldo o como «Saldo = $X») */
     var mRec = /(por\s+un|corresponden\s+a\s+un)\s+total\s+de\s*:?\s*(\$\s*\d[\d.]*)/.exec(F);
     var recibido = mRec ? montoAl(mRec[2]) : null;
@@ -933,27 +1021,18 @@
     var comunidad = {
       name: nombre, rut: rut, address: null, legalRep: null, oc: null,
       contacto: { encargado: encargado, secretaria: secretaria, telefonos: telefonos, correos: correos },
-      fechaEntrega: fechaEntrega, asambleaValidacion: asambleaValidacion, apoyo: null,
+      fechaEntrega: fechaEntrega, asambleaValidacion: asambleaValidacion, asambleaTexto: asambleaTexto, apoyo: null,
       peaDatos: [], presidente: presidente ? { nombre: presidente } : null,
       aia30: { recibido: recibido, saldo: saldo }
     };
-    var filas = comunidad.peaDatos;
-    var fila = function (etiqueta, valor) { if (valor) filas.push({ k: etiqueta, v: valor }); };
-    fila('Nombre de comunidad', nombre);
-    fila('Rut de la comunidad', rut);
-    fila('Nombre Encargado Convenio', [encargado, secretaria ? 'Rut: ' + secretaria.rut : ''].filter(Boolean).join(' | '));
-    fila('Teléfono de contacto de Encargado Convenio', telefonos.join(' | '));
-    fila('Correo electrónico del Encargado Convenio', correos.join(' | '));
-    fila('Fecha de entrega del Proyecto a CORFO', fechaEntrega);
-    fila('Validados por la Asamblea', asambleaValidacion);
-    fila('Monto total recibido como primera cuota (30 % del AIA)', recibido === null ? '' : '$' + fmt(recibido) + '.-');
-    fila('Saldo del 30 % del AIA', saldo === null ? '' : '$' + fmt(saldo) + '.-');
+    comunidad.peaDatos = filasDeComunidad(comunidad);
 
     if (!nombre) warnings.push('No se encontró el nombre de la comunidad.');
     if (!rut) warnings.push('No se encontró el RUT de la comunidad.');
     if (!encargado) warnings.push('El encargado del convenio no aparece en el ' + (esW ? 'PEA.' : 'PEA escaneado.'));
     if (!fechaEntrega) warnings.push('La fecha de entrega del proyecto a CORFO no aparece o no es válida; queda vacía.');
     if (asm && !fAsm) warnings.push('La fecha de validación por la Asamblea no es válida ("' + asm[1] + '"); queda vacía.');
+    if (!asambleaTexto && !fAsm) warnings.push('La validación por la Asamblea no aparece en el PEA; queda vacía.');
     if (!esW) {
       warnings.push('La dirección y el representante legal no se leen del PEA escaneado: complétalos a mano.');
       warnings.push('La pregunta sobre apoyo para elaborar el PEA no se lee desde el texto (las casillas no se ven): revísala a mano.');
@@ -986,19 +1065,12 @@
       }
       var fuentes = fuentesEn(bl.t, bl.f, pfx, warnings);
       if (!esW) warnings.push(pfx + 'El presupuesto y la carta Gantt de este PEA escaneado no se leyeron: cárgalos a mano o sube el Word del PEA.' + (montos ? ' Los totales del consolidado sí se leyeron; las líneas de detalle (tablas 2 a 4) y la carta Gantt no.' : ''));
-      var pd = [];
-      var filaP = function (etiqueta, valor) { if (valor !== null && valor !== '') pd.push({ k: etiqueta, v: valor }); };
-      filaP('Nombre del proyecto', nombreP);
-      filaP('Fecha de inicio', inicio);
-      filaP('Fecha de término', termino);
-      filaP('Presupuesto total del proyecto ($), impuestos incluidos', total === null ? null : '$' + fmt(total) + '.-');
-      filaP('Con cargo al 30 % del AIA', fuentes.aia30 === null ? null : '$' + fmt(fuentes.aia30) + '.-');
-      filaP('Con cargo al 70 % del AIA', fuentes.aia70 === null ? null : '$' + fmt(fuentes.aia70) + '.-');
-      filaP('Financiamiento con otras fuentes', fuentes.otras === null ? null : '$' + fmt(fuentes.otras) + '.-');
-      proyectos.push({
-        name: nombreP, code: null, start: inicio, end: termino, budgetApproved: budget, budgetLines: [],
-        gantt: { stages: [] }, peaDatos: pd, fuentes: fuentes, source: base + 'proyecto ' + (j + 1)
-      });
+      var proy = {
+        name: nombreP, code: null, start: inicio, end: termino, budgetApproved: budget, presupuestoTotal: total, budgetLines: [],
+        gantt: { stages: [] }, peaDatos: [], fuentes: fuentes, source: base + 'proyecto ' + (j + 1)
+      };
+      proy.peaDatos = filasDeProyecto(proy);
+      proyectos.push(proy);
       items.push({ pfx: pfx, budget: budget, presentes: montos !== null });
     });
 
@@ -1006,7 +1078,8 @@
     var mAdm = /total\s+de\s+gastos\s+administrativos\s*:\s*(\$?\s*\d[\d.]*)/.exec(F);
     var autoAdm = cierreAdmin(items, mAdm ? montoAl(mAdm[1]) : null, base, warnings);
     if (autoAdm) proyectos.push(autoAdm);
-    return { community: comunidad, projects: proyectos, warnings: warnings };
+    avisoSaldo(recibido, saldo, proyectos, warnings);
+    return { community: comunidad, projects: proyectos, warnings: warnings, origen: esW ? 'word' : 'escaneado' };
   };
 
   /* Avisos con la página donde está lo que el texto no conserva: la carta Gantt y las tablas 2 a 4 del presupuesto.
