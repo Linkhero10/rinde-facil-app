@@ -350,7 +350,7 @@
       }
       PEA_EN_CURSO = trabajo;
       var corrida = {}, blobsPagina = [], total = 0, hechas = 0;
-      st.file = file; st.pdfRun = corrida; st.reading = true; st.fromPdf = true; st.stage = 'Preparando el PDF…'; st.trabajo = null; paint();
+      st.file = file; st.pdfRun = corrida; st.reading = true; st.fromPdf = true; st.stage = 'Preparando el PDF…'; st.trabajo = null; st.notice = ''; paint();
       /* el archivo se guarda antes de leer: si la página se cierra a mitad de camino, la lectura se puede reanudar */
       if (RF.blobs && RF.blobs.put) RF.blobs.put('pea-lectura', file).catch(function () { /* sin espacio */ });
       /* vigente: sigue siendo este archivo y esta misma corrida; si el usuario eligió otro, lo de aquí ya no se aplica */
@@ -395,7 +395,7 @@
         st.leido = copia(st.model);
         guardarLectura();
         borrarTrabajo(trabajo, total);
-        st.reading = false; st.stage = ''; paint();
+        st.reading = false; st.stage = ''; st.notice = ''; paint();
       }).catch(function (e) {
         terminar();
         if (!vigente()) return soltarLectura();
