@@ -1,4 +1,4 @@
-/* Comentarios de la versión de revisión (solo se carga con ?comentarios=1). Quien revisa puede dejar un comentario general,
+/* Comentarios de la versión de revisión (temporal; se carga en todas las pantallas). Quien revisa puede dejar un comentario general,
  * o elegir cualquier cosa de la pantalla (un bloque, un cuadro, una tabla) o un fragmento de texto seleccionado. Los comentarios
  * se guardan en el servicio de Felipe (comentarios/Comentarios.gs), así que vuelven a aparecer en su lugar al reabrir la página. */
 (function (root) {
@@ -180,6 +180,16 @@
     est.principal.appendChild(est.menu);
   }
 
+  /* arriba a la izquierda, sin tapar el botón del menú del celular ni el menú lateral del escritorio */
+  function posicionar() {
+    if (!est.principal) return;
+    var barra = doc.querySelector('.topbar'), lado = doc.getElementById('side');
+    var movil = !!barra && root.getComputedStyle(barra).display !== 'none';
+    var lateral = !movil && !!lado && root.getComputedStyle(lado).display !== 'none';
+    est.principal.style.top = movil ? (barra.getBoundingClientRect().bottom + 8) + 'px' : '10px';
+    est.principal.style.left = lateral ? (lado.getBoundingClientRect().right + 12) + 'px' : '10px';
+  }
+
   function construirBarra() {
     est.principal = el('div', 'rf-com-principal', '', { position: 'fixed', top: '10px', left: '10px', zIndex: '2147483000' });
     est.principal.id = 'rf-com-raiz';
@@ -217,14 +227,15 @@
     doc.addEventListener('click', function (e) {
       if (est.menu && !dentroDeLaInterfaz(e.target)) cerrarMenu();
     });
-    root.addEventListener('hashchange', function () { cerrarPanel(); refrescar(); });
+    root.addEventListener('hashchange', function () { cerrarPanel(); refrescar(); posicionar(); });
     root.addEventListener('scroll', function () { marcar(); }, true);
-    root.addEventListener('resize', function () { marcar(); });
-    root.setInterval(function () { marcar(); }, 1500);
+    root.addEventListener('resize', function () { marcar(); posicionar(); });
+    root.setInterval(function () { marcar(); posicionar(); }, 1500);
   }
 
   function iniciar() {
     construirBarra();
+    posicionar();
     eventosSeleccion();
     refrescar();
   }
