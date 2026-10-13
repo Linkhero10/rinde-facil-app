@@ -156,6 +156,7 @@
   function exportJSON() {
     var copy = JSON.parse(JSON.stringify(get()));
     copy.cloud = Object.assign({}, copy.cloud, { saves: [] });
+    if (copy.ui) delete copy.ui.borradores; /* los borradores son de este equipo: no viajan a las copias de Drive */
     delete copy.cloud.device; /* la credencial de equipo no viaja en copias ni respaldos */
     delete copy.cloud.base; delete copy.cloud.syncFp; /* la foto de sincronización es de cada equipo */
     delete copy.cloud.key; /* la clave compartida de las versiones anteriores ya no existe; por si quedara una copia vieja */
@@ -166,8 +167,9 @@
   function importJSON(text) {
     var parsed = U.safeParse(text);
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.projects)) throw new Error('El archivo no es una copia de Rinde Fácil.');
-    var mine = get().cloud;
+    var mine = get().cloud, miUi = get().ui || {};
     state = migrate(parsed);
+    state.ui = Object.assign({}, state.ui, { borradores: miUi.borradores || {} }); /* los borradores son de este equipo: una copia no los reemplaza */
     /* la conexión con el servicio es de este dispositivo: una copia no la reemplaza */
     if (mine && mine.apiUrl) state.cloud = Object.assign({}, state.cloud, { apiUrl: mine.apiUrl || state.cloud.apiUrl, saves: mine.saves || [] }); delete state.cloud.device; if (mine.device) state.cloud.device = mine.device;
     if (state.cloud) delete state.cloud.key;
@@ -184,7 +186,7 @@
         return;
       }
       if (e.key !== KEY || !e.newValue) return;
-      try { state = migrate(JSON.parse(e.newValue)); dirty = false; listeners.slice().forEach(function (l) { l(state); }); } catch (err) { /* copia dañada: se ignora */ }
+      try { var propios = state && state.ui && state.ui.borradores; state = migrate(JSON.parse(e.newValue)); if (propios) state.ui = Object.assign({}, state.ui, { borradores: propios }); dirty = false; listeners.slice().forEach(function (l) { l(state); }); } catch (err) { /* copia dañada: se ignora */ }
     });
   }
   /* Sin una base común no se puede decidir qué edición gana. Preparar todo en una copia;

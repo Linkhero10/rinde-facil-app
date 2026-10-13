@@ -86,18 +86,6 @@
     main.addEventListener('change', programar);
   });
 
-  /* memoria de datos de una herramienta (p. ej. la última lectura del PEA): state.ui.memoria[clave]. datos = null la borra */
-  B.memorizar = function (clave, datos) {
-    if (!RF.store) return;
-    escribirUi(function (ui) {
-      ui.memoria = ui.memoria || {};
-      if (datos === null || datos === undefined) delete ui.memoria[clave]; else ui.memoria[clave] = datos;
-    });
-  };
-  B.recordar = function (clave) {
-    var s = estado(), m = s && s.ui && s.ui.memoria;
-    return m && m[clave] ? m[clave] : null;
-  };
 
   /* al recargar o cerrar la pestaña: lo último escrito queda en disco antes de irse */
   if (root.addEventListener) root.addEventListener('pagehide', seguro(function () {

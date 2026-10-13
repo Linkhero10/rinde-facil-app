@@ -221,24 +221,36 @@
     var st = { file: null, model: null, leido: null, notice: '', reading: false, stage: '', ocrText: '', fromPdf: false, busy: false, result: null, lectura: null, lecturaUrl: null, paginas: [],
       acta: { file: null, date: '', projectId: '', busy: false, result: null } };
 
-    /* la última lectura se recuerda: sobrevive a cambiar de pestaña y a recargar (RF.borradores). El archivo vuelve desde RF.blobs */
+    /* la lectura se guarda en IndexedDB (RF.blobs), aparte del estado de la app: no se pierde al sincronizar y no viaja en las copias de Drive */
     function guardarLectura() {
-      if (!RF.borradores || !st.model) return;
-      RF.borradores.memorizar('pea', { model: st.model, leido: st.leido, ocrText: st.ocrText, fromPdf: st.fromPdf, fileName: st.file ? st.file.name : null });
-      if (st.file && RF.blobs && RF.blobs.put) RF.blobs.put('pea-lectura', st.file).catch(function () { /* sin espacio: la lectura igual queda */ });
+      if (!st.model || !RF.blobs || !RF.blobs.put) return;
+      var datos = { model: st.model, leido: st.leido, ocrText: st.ocrText, fromPdf: st.fromPdf, fileName: st.file ? st.file.name : null, guardado: new Date().toISOString() };
+      RF.blobs.put('pea-lectura-datos', new Blob([JSON.stringify(datos)], { type: 'application/json' })).catch(function () { /* sin espacio: la lectura queda solo en esta pestaña */ });
+      if (st.file) RF.blobs.put('pea-lectura', st.file).catch(function () { /* el archivo no se pudo guardar: se puede volver a elegir */ });
     }
-    var recordado = RF.borradores ? RF.borradores.recordar('pea') : null;
-    if (recordado && recordado.model) {
-      st.model = recordado.model; st.leido = recordado.leido || copia(recordado.model);
-      st.ocrText = recordado.ocrText || ''; st.fromPdf = !!recordado.fromPdf;
-      st.notice = 'Recuperamos la lectura de «' + (recordado.fileName || 'tu PEA') + '» que dejaste antes. Si quieres ver las páginas, vuelve a elegir el archivo.';
-      if (RF.blobs && RF.blobs.get) RF.blobs.get('pea-lectura').then(function (f) {
-        if (!f || st.model !== recordado.model) return;
+    /* al volver a la pantalla (o recargar) se recupera la última lectura y su archivo, si los hay */
+    function recuperarLectura() {
+      if (!RF.blobs || !RF.blobs.get) return;
+      var datos = null;
+      RF.blobs.get('pea-lectura-datos').then(function (b) {
+        if (!b || !b.text || st.model || st.reading) return null;
+        return b.text().then(function (t) { return JSON.parse(t); }).then(function (d) {
+          if (!d || !d.model || st.model || st.reading) return null;
+          datos = d;
+          st.model = d.model; st.leido = d.leido || copia(d.model);
+          st.ocrText = d.ocrText || ''; st.fromPdf = !!d.fromPdf;
+          st.notice = 'Recuperamos la lectura de «' + (d.fileName || 'tu PEA') + '» que dejaste antes. Si quieres ver las páginas, vuelve a elegir el archivo.';
+          paint();
+          return RF.blobs.get('pea-lectura');
+        });
+      }).then(function (f) {
+        if (!f || !datos || !st.model || st.file) return;
         /* con la bóveda abierta el archivo vuelve cifrado y sin nombre: se le pone el que tenía */
-        st.file = f.name ? f : new File([f], recordado.fileName || 'PEA.pdf', { type: f.type || '' });
+        st.file = f.name ? f : new File([f], datos.fileName || 'PEA.pdf', { type: f.type || '' });
         paint();
-      }, function () { /* sin archivo: se puede volver a elegir */ });
+      }).catch(function () { /* sin lectura guardada o con la bóveda cerrada: se puede volver a elegir el archivo */ });
     }
+    recuperarLectura();
     var body = h('div');
 
     /* libera el enlace de descarga de la lectura técnica (JSON) del PDF anterior */
@@ -251,7 +263,6 @@
     function onFile(file) {
       if (!file) return;
       st.file = null; st.model = null; st.leido = null; st.result = null; st.notice = ''; st.ocrText = ''; st.fromPdf = false; st.stage = ''; soltarDescarga();
-      if (RF.borradores) RF.borradores.memorizar('pea', null);
       if (/\.pdf$/i.test(file.name) || /pdf/i.test(file.type || '')) { onPdf(file); return; }
       if (!/\.docx$/i.test(file.name)) { st.notice = 'Ese archivo no es un Word (.docx) ni un PDF. Sube el Word del PEA o el PDF escaneado.'; paint(); return; }
       st.file = file; st.reading = true; paint();

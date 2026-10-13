@@ -91,15 +91,6 @@ test('guardar sin cambios no vuelve a escribir el estado', () => {
   assert.equal(RF.store.llamadas ? RF.store.llamadas.length : 1, 1);
 });
 
-test('la memoria de datos guarda, recuerda y borra por clave', () => {
-  const estado = { ui: {} };
-  const RF = cargar(estado);
-  RF.borradores.memorizar('pea', { fileName: 'lectura de prueba', model: { community: {} } });
-  assert.equal(RF.borradores.recordar('pea').fileName, 'lectura de prueba');
-  RF.borradores.memorizar('pea', null);
-  assert.equal(RF.borradores.recordar('pea'), null);
-});
-
 test('las pantallas con modo de edición (gastos, documentos, actas) no restauran ni guardan campos', () => {
   const estado = { ui: { borradores: { gastos: { 'monto|INPUT|text#1': '999' } } } };
   const RF = cargar(estado);
