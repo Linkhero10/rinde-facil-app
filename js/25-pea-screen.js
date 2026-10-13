@@ -316,6 +316,7 @@
     recuperarLectura();
     ofrecerContinuar();
     var body = h('div');
+    var cuotaBox = h('div', { class: 'pea-cuota' });
 
     /* si la lectura sigue en segundo plano al abrir esta pantalla, al terminar se pone al día sola (sin cambiar de página) */
     var conectada = false;
@@ -335,6 +336,7 @@
         st.trabajo = d.trabajo; st.notice = d.notice || '';
       }
       paint();
+      RF.ocr.tarjetaLimites(cuotaBox, {});
     }
     if (PEA_EN_CURSO) document.addEventListener('rf-pea-lectura-terminada', alTerminarLectura);
 
@@ -353,7 +355,9 @@
         paint(); return;
       }
       st.file = null; st.model = null; st.leido = null; st.result = null; st.notice = ''; st.ocrText = ''; st.fromPdf = false; st.stage = ''; soltarDescarga();
-      if (/\.pdf$/i.test(file.name) || /pdf/i.test(file.type || '')) { onPdf(file); return; }
+      var esPdf = /\.pdf$/i.test(file.name) || /pdf/i.test(file.type || '');
+      if (esPdf) { onPdf(file); return; }
+      RF.ocr.tarjetaLimites(cuotaBox, { word: true });
       if (!/\.docx$/i.test(file.name)) { st.notice = 'Ese archivo no es un Word (.docx) ni un PDF. Sube el Word del PEA o el PDF escaneado.'; paint(); return; }
       st.file = file; st.reading = true; paint();
       readBuffer(file).then(function (buf) { return P.extractFromDocxBytes(buf); }).then(function (model) {
@@ -396,6 +400,7 @@
         if (!bovedaAbierta()) throw sesionCerrada();
         guardarMeta(trabajo, total);
         return leerPaginasGuardadas(trabajo, total).then(function (guardadas) {
+          RF.ocr.tarjetaLimites(cuotaBox, { paginas: total, leidas: Object.keys(guardadas).length });
           var results = [], chain = Promise.resolve();
           rendered.pages.forEach(function (p) {
             chain = chain.then(function () {
@@ -432,6 +437,7 @@
         borrarTrabajo(trabajo, total);
         st.reading = false; st.stage = ''; st.notice = ''; paint();
         avisarLecturaTerminada({ ok: true, corrida: corrida, model: st.model, ocrText: st.ocrText, file: file, lectura: res, paginas: blobsPagina });
+        RF.ocr.tarjetaLimites(cuotaBox, {});
       }).catch(function (e) {
         terminar();
         if (!vigente()) return soltarLectura();
@@ -442,6 +448,7 @@
         st.notice = 'No se pudo leer el PDF: ' + motivo + '.' + (pendiente && hechas ? ' Lo que ya se leyó queda guardado cifrado: al reintentar no se cobra de nuevo.' : '');
         paint();
         avisarLecturaTerminada({ ok: false, corrida: corrida, trabajo: pendiente, notice: st.notice });
+        RF.ocr.tarjetaLimites(cuotaBox, {});
       });
     }
 
@@ -462,6 +469,7 @@
           UI.btn(st.file ? 'Cambiar archivo' : 'Elegir el PEA', { icon: 'file', cls: st.file ? 'ghost' : 'primary', onclick: function () { inp.click(); } }),
           st.file ? h('span', { class: 'file-name' }, st.file.name + ' · ' + Math.max(1, Math.round(st.file.size / 1024)) + ' KB') : h('span', { class: 'hint' }, 'Word (.docx) o PDF escaneado (se lee con el OCR del servicio).')),
         UI.fileDrop(inp, { kind: 'official', label: 'Arrastra aquí el PEA o pulsa para buscarlo', hint: 'Word (.docx) o PDF.', invalidText: 'Ese formato no se puede leer aquí. Sube el PEA en Word (.docx) o PDF.', onFiles: function (files) { onFile(files[0]); } }),
+        cuotaBox,
         st.notice ? UI.callout('warn', '', st.notice) : null,
         st.trabajo && !st.reading ? UI.callout('warn', 'Lectura a medias:', ' ' + st.trabajo.nombre + ': ' + st.trabajo.hechas + ' de ' + st.trabajo.total + ' páginas ya están leídas. Continuar no vuelve a cobrar esas páginas.') : null,
         st.trabajo && !st.reading ? UI.btn('Continuar la lectura', { icon: 'check', cls: 'primary', onclick: continuarTrabajo }) : null,
@@ -748,6 +756,7 @@
     }
 
     paint();
+    RF.ocr.tarjetaLimites(cuotaBox, {});
     return h('div', { class: 'tool-page' }, h('h1', { class: 'tool-title' }, 'Subir el PEA'),
       h('p', { class: 'lead' }, 'Sube el Word del PEA para que la app arme tu comunidad, tus proyectos, el presupuesto y la Carta Gantt. Revisas y corriges todo antes de aplicarlo.'),
       body);

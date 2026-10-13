@@ -738,3 +738,11 @@ body.menu-open{overflow:hidden}
   .pea-doc{order:2;position:sticky;top:12px;max-height:calc(100vh - 24px)}
   .pea-form{order:1}
 }
+/* límites de lectura con Google: lo leído hoy, esta semana y este mes, y lo que falta de un PDF */
+.limit-card{margin:12px 0;padding:14px 16px}
+.limit-card .card-title{margin:0 0 6px}
+.limit-row{display:flex;gap:4px 10px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--line);font-size:14px;color:var(--ink-2)}
+.limit-row strong{min-width:112px;color:var(--ink)}
+.limit-row.warn{color:var(--warn)}
+.limit-row.warn strong{color:var(--warn)}
+.pea-cuota:empty,.gastos-cuota:empty{display:none}

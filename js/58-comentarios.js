@@ -9,7 +9,7 @@
   /* servicio de comentarios (comentarios/Comentarios.gs, en la cuenta de quien administra la revisión). Cualquiera puede leer y comentar */
   var SERVICIO = root.RF_COMENTARIOS_URL || 'https://script.google.com/macros/s/AKfycbxGzAkr4fgzeIQbqPXdkkRAguUZEblncalVcpL0LMh8Ig8_8sJoNPj3yhQEUlYmOM5e0Q/exec';
   var MAX_TEXTO = 1500, MAX_NOMBRE = 60;
-  var est = { seleccionando: false, comentarios: [], pins: [], resaltado: null, etiqueta: null, panel: null, menu: null, principal: null, banner: null, aviso: null, objetivo: null };
+  var est = { seleccionando: false, comentarios: [], pins: [], resaltado: null, etiqueta: null, panel: null, menu: null, principal: null, banner: null, aviso: null, objetivo: null, marcas: [], activo: null, vista: null };
 
   function estilos() {
     if (doc.getElementById('rf-com-estilos')) return;
@@ -35,6 +35,16 @@
       '.rf-com-aviso{position:fixed;left:12px;bottom:12px;z-index:2147483001;max-width:360px;padding:10px 14px;border-radius:6px;background:var(--action);color:var(--action-ink);font-family:var(--body);font-size:14px;box-shadow:var(--shadow)}'
     ].join('\n');
     doc.head.appendChild(s);
+    var s2 = doc.createElement('style');
+    s2.id = 'rf-com-estilos-vista';
+    s2.textContent = [
+      '.rf-com-chip{display:inline-block;font:600 11px/1.4 var(--mono);text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;background:var(--action-soft);color:var(--ink-2);margin:0 0 6px}',
+      '.rf-com-marca{position:fixed;pointer-events:none;z-index:2147483000;border-radius:3px;background:color-mix(in srgb,var(--action) 30%,transparent);box-shadow:0 0 0 2px var(--action)}',
+      '.rf-com-caja{position:fixed;pointer-events:none;z-index:2147483000;border:3px solid var(--action);border-radius:6px;background:color-mix(in srgb,var(--action) 10%,transparent)}',
+      '.rf-com-area{position:fixed;pointer-events:none;z-index:2147483000;border:2px dashed var(--action);border-radius:8px}',
+      '.rf-com-vista{position:fixed;left:12px;bottom:12px;z-index:2147483002;width:min(420px,calc(100vw - 24px));max-height:46vh;overflow:auto;padding:14px;color:var(--ink);font-family:var(--body);box-shadow:var(--shadow)}'
+    ].join('\n');
+    doc.head.appendChild(s2);
   }
   function el(tag, cls, texto) {
     var n = doc.createElement(tag);
@@ -120,7 +130,7 @@
       pin.style.left = (r.left - 10) + 'px';
       pin.style.top = (r.top - 10) + 'px';
       pin.title = textoDe(c);
-      pin.addEventListener('click', function (e) { e.stopPropagation(); abrirLista(); });
+      pin.addEventListener('click', function (e) { e.stopPropagation(); mostrarComentario(c); });
       doc.body.appendChild(pin);
       est.pins.push(pin);
     });
@@ -170,19 +180,132 @@
     if (!propios.length) est.panel.appendChild(el('div', 'rf-com-cuerpo', 'Todavía no hay comentarios aquí. Usa "Dejar un comentario" para ser el primero.'));
     propios.forEach(function (c, i) {
       var item = el('div', 'rf-com-item');
+      item.appendChild(el('div', 'rf-com-chip', etiquetaTipo(c)));
       item.appendChild(el('div', 'rf-com-meta', (i + 1) + '. ' + (c.nombre || 'Sin nombre') + ' · ' + fechaLegible(c.fecha)));
-      if (c.cita) item.appendChild(el('blockquote', 'rf-com-cita', String(c.cita).slice(0, 160)));
+      if (c.cita) item.appendChild(el('blockquote', 'rf-com-cita', String(c.cita).slice(0, 300)));
       item.appendChild(el('div', 'rf-com-cuerpo', textoDe(c)));
-      if (c.selector && buscar(c.selector)) {
-        var ir = boton('Ver en la pantalla', function () { var d = buscar(c.selector); if (d) d.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 'ghost small');
-        item.appendChild(ir);
-      }
+      item.appendChild(boton('Mostrar lo comentado', function () { mostrarComentario(c); }, 'primary small'));
       est.panel.appendChild(item);
     });
     var acciones = el('div', 'rf-com-acciones');
     acciones.appendChild(boton('Cerrar', cerrarPanel, 'small'));
     est.panel.appendChild(acciones);
     doc.body.appendChild(est.panel);
+  }
+
+  /* ---- qué se comentó: el tipo, y el texto exacto, el cuadro o toda la pantalla, para volver a mostrarlo ---- */
+  function tipoDe(c) { return c.tipo === 'texto' || c.tipo === 'general' ? c.tipo : 'elemento'; }
+  function etiquetaTipo(c) {
+    var tipo = tipoDe(c);
+    if (tipo === 'texto') return 'Texto seleccionado';
+    if (tipo === 'general') return 'Comentario general';
+    var d = buscar(c.selector), tag = d ? d.tagName.toLowerCase() : etiquetaElemento(c.selector);
+    return 'Elemento' + (tag ? ' · ' + tag : '');
+  }
+  function etiquetaElemento(selector) {
+    var ultima = String(selector || '').split(' > ').pop() || '';
+    var m = /^([a-z][a-z0-9]*)/i.exec(ultima);
+    return m ? m[1].toLowerCase() : '';
+  }
+  /* el texto sin espacios repetidos y, para cada carácter, su posición en el texto original */
+  function normalizarTexto(crudo) {
+    var out = '', pos = [], espacio = true;
+    for (var i = 0; i < crudo.length; i++) {
+      var ch = crudo.charAt(i);
+      if (/\s/.test(ch)) { if (!espacio) { out += ' '; pos.push(i); espacio = true; } continue; }
+      out += ch; pos.push(i); espacio = false;
+    }
+    return { texto: out, pos: pos };
+  }
+  function posicionEnNodos(nodos, i) {
+    for (var k = nodos.length - 1; k >= 0; k--) {
+      if (i >= nodos[k].inicio) return { nodo: nodos[k].nodo, off: Math.min(i - nodos[k].inicio, nodos[k].nodo.nodeValue.length) };
+    }
+    return null;
+  }
+  /* el rango exacto de la cita dentro de «raiz» (sin distinguir espacios repetidos); null si no aparece */
+  function rangoDeTexto(raiz, cita) {
+    var q = String(cita || '').replace(/\s+/g, ' ').trim();
+    if (!raiz || !q) return null;
+    var nodos = [], crudo = '';
+    var recorrido = doc.createTreeWalker(raiz, root.NodeFilter.SHOW_TEXT, null);
+    for (var nodo = recorrido.nextNode(); nodo; nodo = recorrido.nextNode()) {
+      var padre = nodo.parentElement;
+      if (padre && /^(SCRIPT|STYLE|NOSCRIPT)$/.test(padre.tagName)) continue;
+      if (dentroDeLaInterfaz(padre)) continue;
+      nodos.push({ nodo: nodo, inicio: crudo.length });
+      crudo += nodo.nodeValue;
+    }
+    var n = normalizarTexto(crudo), largo = q.length, pos = n.texto.indexOf(q);
+    if (pos < 0 && q.length > 40) { largo = 40; pos = n.texto.indexOf(q.slice(0, 40)); }
+    if (pos < 0) return null;
+    var a = posicionEnNodos(nodos, n.pos[pos]), b = posicionEnNodos(nodos, n.pos[pos + largo - 1] + 1);
+    if (!a || !b) return null;
+    var rango = doc.createRange();
+    rango.setStart(a.nodo, a.off);
+    rango.setEnd(b.nodo, b.off);
+    return rango;
+  }
+  function dibujarCajas(rects, clase) {
+    Array.prototype.forEach.call(rects, function (r) {
+      if (!r || (r.width === 0 && r.height === 0)) return;
+      var m = el('div', clase);
+      m.style.left = r.left + 'px'; m.style.top = r.top + 'px';
+      m.style.width = r.width + 'px'; m.style.height = r.height + 'px';
+      doc.body.appendChild(m);
+      est.marcas.push(m);
+    });
+  }
+  function quitarMarcas() {
+    est.marcas.forEach(function (m) { m.remove(); });
+    est.marcas = [];
+    if (est.vista) { est.vista.remove(); est.vista = null; }
+    est.activo = null;
+  }
+  /* al mover la pantalla, la marca sigue el mismo lugar del comentario */
+  function repintarMarca() {
+    var a = est.activo;
+    if (!a) return;
+    est.marcas.forEach(function (m) { m.remove(); });
+    est.marcas = [];
+    if (a.rango) dibujarCajas(a.rango.getClientRects(), 'rf-com-marca');
+    else if (a.elemento && a.elemento.isConnected) dibujarCajas([a.elemento.getBoundingClientRect()], a.modo === 'general' ? 'rf-com-area' : 'rf-com-caja');
+  }
+  function mostrarVista(c, avisoLugar) {
+    if (est.vista) est.vista.remove();
+    est.vista = el('div', 'card rf-com-vista');
+    est.vista.appendChild(el('div', 'rf-com-chip', etiquetaTipo(c)));
+    est.vista.appendChild(el('div', 'rf-com-meta', (c.nombre || 'Sin nombre') + ' · ' + fechaLegible(c.fecha)));
+    if (c.cita) est.vista.appendChild(el('blockquote', 'rf-com-cita', String(c.cita)));
+    est.vista.appendChild(el('div', 'rf-com-cuerpo', textoDe(c)));
+    if (avisoLugar) est.vista.appendChild(el('div', 'rf-com-estado', avisoLugar));
+    var acciones = el('div', 'rf-com-acciones');
+    acciones.appendChild(boton('Ver lista', abrirLista, 'ghost small'));
+    acciones.appendChild(boton('Quitar resaltado', quitarMarcas, 'small'));
+    est.vista.appendChild(acciones);
+    doc.body.appendChild(est.vista);
+  }
+  /* muestra en la pantalla lo que se comentó: el texto exacto, el cuadro o toda la pantalla, con su comentario al lado */
+  function mostrarComentario(c) {
+    cerrarPanel();
+    cerrarMenu();
+    quitarMarcas();
+    var tipo = tipoDe(c), rango = null, elemento = null, aviso = '';
+    if (tipo === 'general') {
+      elemento = doc.getElementById('main') || doc.body;
+    } else {
+      elemento = buscar(c.selector);
+      if (tipo === 'texto') rango = rangoDeTexto(elemento || doc.body, c.cita) || (elemento ? rangoDeTexto(doc.body, c.cita) : null);
+      if (!rango && !elemento) { elemento = doc.getElementById('main') || doc.body; aviso = 'No encontré ese lugar en la pantalla de ahora; se marca toda la pantalla.'; }
+      else if (!rango && tipo === 'texto') aviso = 'No encontré el texto exacto; se marca el bloque donde se comentó.';
+    }
+    est.activo = { comentario: c, rango: rango, elemento: elemento, modo: tipo };
+    if (rango) dibujarCajas(rango.getClientRects(), 'rf-com-marca');
+    else dibujarCajas([elemento.getBoundingClientRect()], tipo === 'general' || aviso ? 'rf-com-area' : 'rf-com-caja');
+    var donde = rango ? rango.startContainer : elemento;
+    var visible = donde && donde.nodeType === 3 ? donde.parentElement : donde;
+    if (visible && visible.scrollIntoView) visible.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    mostrarVista(c, aviso);
   }
 
   /* ---- modo de selección: se ve qué parte de la pantalla se va a comentar ---- */
@@ -272,14 +395,14 @@
       abrirPanel('texto', sel.slice(0, 300), rutaCss(ancla));
     }, true);
     doc.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { salirDeSeleccion(); cerrarMenu(); cerrarPanel(); }
+      if (e.key === 'Escape') { salirDeSeleccion(); cerrarMenu(); cerrarPanel(); quitarMarcas(); }
     });
     doc.addEventListener('click', function (e) {
       if (est.menu && !dentroDeLaInterfaz(e.target)) cerrarMenu();
     });
-    root.addEventListener('hashchange', function () { cerrarPanel(); salirDeSeleccion(); refrescar(); posicionar(); });
-    root.addEventListener('scroll', function () { marcar(); }, true);
-    root.addEventListener('resize', function () { marcar(); posicionar(); });
+    root.addEventListener('hashchange', function () { cerrarPanel(); salirDeSeleccion(); quitarMarcas(); refrescar(); posicionar(); });
+    root.addEventListener('scroll', function () { marcar(); repintarMarca(); }, true);
+    root.addEventListener('resize', function () { marcar(); repintarMarca(); posicionar(); });
     root.setInterval(function () { marcar(); posicionar(); }, 1500);
   }
 

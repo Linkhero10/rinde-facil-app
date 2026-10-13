@@ -210,6 +210,78 @@
   }
   function ping() { return post('ping', {}, 20000); }
 
+  /* ---- límites de lectura: lo leído hoy, esta semana y este mes, y los límites vigentes (los informa el servicio) ---- */
+  var LIMITES = {
+    LIMITE_DIARIO: ['se alcanzó el límite diario de lecturas', 'se reinicia a medianoche (hora de Chile)'],
+    LIMITE_SEMANAL: ['se alcanzó el límite semanal de lecturas', 'se reinicia el lunes'],
+    LIMITE_MENSUAL: ['se alcanzó el límite mensual de lecturas', 'se reinicia el día 1 del mes']
+  };
+  /* el texto del límite alcanzado con el número permitido; null si el código no es de límite */
+  function mensajeLimite(codigo, limite) {
+    var t = LIMITES[String(codigo || '')];
+    if (!t) return null;
+    return t[0] + (limite ? ' (' + Number(limite).toLocaleString('es-CL') + ')' : '') + '; ' + t[1];
+  }
+  /* pide al servicio la cuota: lo leído y los límites. Si el servicio es una versión anterior, avisa qué hacer */
+  function cuota() {
+    return post('cuota', {}, 20000).then(function (r) {
+      if (r && r.ok === true && r.diario) return r;
+      if (r && r.error === 'ACCION_DESCONOCIDA') throw Object.assign(new Error('El servicio todavía no informa sus límites. Pega la versión nueva de backend/WebApi.gs en Apps Script y vuelve a implementar.'), { code: 'SIN_CUOTA' });
+      throw new Error(r && r.error ? humanError({ message: String(r.error) }) : 'El servicio no respondió.');
+    });
+  }
+  /* cuántas lecturas quedan y cuándo se reinician: la más restrictiva de los límites que existan */
+  function lecturasDisponibles(c) {
+    var opciones = [{ n: c.diario.restan, cuando: 'mañana (a medianoche)' }];
+    if (c.semanal.limite) opciones.push({ n: c.semanal.restan, cuando: 'el lunes' });
+    if (c.mensual.limite) opciones.push({ n: c.mensual.restan, cuando: 'el día 1 del mes' });
+    return opciones.reduce(function (a, b) { return b.n < a.n ? b : a; });
+  }
+  /* las líneas que se muestran: hoy, esta semana, este mes y, si se va a leer un PDF, cuántas páginas faltan */
+  function lineasLimites(c, opts) {
+    var n = function (x) { return Number(x || 0).toLocaleString('es-CL'); };
+    var d = c.diario, s = c.semanal, m = c.mensual, out = [];
+    opts = opts || {};
+    out.push({ titulo: 'Hoy', texto: n(d.usadas) + ' de ' + n(d.limite) + ' lecturas · quedan ' + n(d.restan) + ' · se reinicia a medianoche (hora de Chile)' });
+    out.push({ titulo: 'Esta semana', texto: s.limite ? n(s.usadas) + ' de ' + n(s.limite) + ' · quedan ' + n(s.restan) : n(s.usadas) + ' lecturas · sin límite semanal configurado' });
+    out.push({ titulo: 'Este mes', texto: m.limite ? n(m.usadas) + ' de ' + n(m.limite) + ' · quedan ' + n(m.restan) : n(m.usadas) + ' lecturas · sin límite mensual configurado' });
+    if (opts.word) out.push({ titulo: 'Este Word', texto: 'no gasta lecturas: el Word se lee sin Google.' });
+    if (opts.paginas) {
+      var faltan = Math.max(0, opts.paginas - (opts.leidas || 0)), disp = lecturasDisponibles(c);
+      if (faltan === 0) out.push({ titulo: 'Este PDF', texto: 'ya está leído completo: no gasta lecturas.' });
+      else if (faltan <= disp.n) out.push({ titulo: 'Este PDF', texto: 'faltan ' + n(faltan) + ' de ' + n(opts.paginas) + ' páginas; alcanzan con las lecturas que quedan (' + n(disp.n) + ').' });
+      else out.push({ titulo: 'Este PDF', texto: 'faltan ' + n(faltan) + ' páginas y quedan ' + n(disp.n) + ' lecturas: lo que no alcance se leerá ' + disp.cuando + '. Lo ya leído queda guardado.', aviso: true });
+    }
+    return out;
+  }
+  /* la tarjeta con los límites dentro de «contenedor». Se vuelve a pedir cada vez que se sube un archivo o termina una lectura */
+  function tarjetaLimites(contenedor, opts) {
+    var U2 = RF.util, UI2 = RF.ui;
+    U2.clear(contenedor);
+    if (!RF.cloud.configured()) {
+      contenedor.appendChild(UI2.callout('info', 'Lectura automática desactivada.', ' Conecta el servicio en la nube (Ajustes) para leer con Google y ver los límites.'));
+      return Promise.resolve(null);
+    }
+    contenedor.appendChild(U2.h('p', { class: 'hint' }, 'Revisando los límites de lectura…'));
+    return cuota().then(function (c) {
+      U2.clear(contenedor);
+      var filas = lineasLimites(c, opts).map(function (l) {
+        return U2.h('div', { class: 'limit-row' + (l.aviso ? ' warn' : '') }, U2.h('strong', null, l.titulo), U2.h('span', null, l.texto));
+      });
+      contenedor.appendChild(U2.h('section', { class: 'card limit-card', 'aria-label': 'Límites de lectura' },
+        U2.h('h3', { class: 'card-title' }, 'Límites de lectura con Google'),
+        filas,
+        U2.h('p', { class: 'hint' }, 'Cuenta cada página o foto que se envía a leer, también los reintentos y los intentos que fallan. Google Cloud Vision incluye ' +
+          Number(c.referenciaGratisMes || 1000).toLocaleString('es-CL') + ' unidades gratis al mes; cada página cuenta como una. ',
+          U2.h('a', { href: 'https://cloud.google.com/vision/pricing', target: '_blank', rel: 'noopener' }, 'Ver precios de Google'))));
+      return c;
+    }).catch(function (e) {
+      U2.clear(contenedor);
+      contenedor.appendChild(UI2.callout('warn', 'No se pudieron leer los límites.', ' ' + (e && e.message ? e.message : 'Revisa la conexión y vuelve a intentar.')));
+      return null;
+    });
+  }
+
   /* Lee un comprobante con Google Cloud Vision a través del servicio de la comunidad. */
   function recognize(file, onStage) {
     var say = function (id, label) { if (onStage) onStage(id, label); };
@@ -257,7 +329,7 @@
      No usa postRetry: ese reintenta una sola vez y no vuelve a validar la respuesta, y también lo usa el escaneo de recibos. */
   var PAGINA_REINTENTOS = 2;
   var PAGINA_MAX_BYTES = 20 * 1024 * 1024; /* mismo límite que el servicio (ocrMaxBytes, sobre los bytes ya decodificados) */
-  var FALLO_TODO = /^(NO_CONFIGURADO|OCR_NO_CONFIGURADO|SERVICIO_NO_APROBADO|CLAVE_DISTINTA|SIN_CUENTA|BLOQUEADO|BLOQUEADA|SESION_INVALIDA|LIMITE_DIARIO|TIPO_NO_PERMITIDO)$/;
+  var FALLO_TODO = /^(NO_CONFIGURADO|OCR_NO_CONFIGURADO|SERVICIO_NO_APROBADO|CLAVE_DISTINTA|SIN_CUENTA|BLOQUEADO|BLOQUEADA|SESION_INVALIDA|LIMITE_DIARIO|LIMITE_SEMANAL|LIMITE_MENSUAL|TIPO_NO_PERMITIDO)$/;
   var FALLO_PASAJERO = /^(TIMEOUT|RESPUESTA_INVALIDA|OCUPADO)$|Failed to fetch|NetworkError|Load failed|^Cloud Vision HTTP (408|429|5\d\d)$/;
   var SIN_TEXTO = /SIN_TEXTO|no devolvió texto/;
   /* 'todo' = no tiene sentido seguir con el PDF; 'pasajero' = se puede reintentar; 'pagina' = esta página no se pudo leer */
@@ -268,11 +340,13 @@
     return 'pagina';
   }
   function esperar(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
+  /* error del servicio con sus datos (límite y lecturas contadas): así se explica por qué se detuvo la lectura */
+  function errorDeServicio(r) { return Object.assign(new Error(String(r.error)), { code: String(r.error), limite: r.limit, usadas: r.used }); }
   /* una llamada a la acción 'ocr'. Una respuesta sin el formato esperado (p. ej. la de «ping») cuenta como fallo pasajero */
   function intentarPagina(datos, n, onRetry) {
     return post('ocr', datos, 120000).then(function (r) {
       if (!r || !(r.ok === false || (r.ok === true && typeof r.raw_text === 'string'))) throw new Error('RESPUESTA_INVALIDA');
-      if (r.ok === false && r.error && tipoFallo(new Error(String(r.error))) !== 'pagina') throw new Error(String(r.error));
+      if (r.ok === false && r.error && tipoFallo(new Error(String(r.error))) !== 'pagina') throw errorDeServicio(r);
       return r;
     }).catch(function (e) {
       if (tipoFallo(e) !== 'pasajero' || n >= PAGINA_REINTENTOS) throw e;
@@ -302,7 +376,11 @@
     }).then(function (res) {
       return paginaDesde(number, res);
     }, function (e) {
-      if (tipoFallo(e) === 'todo') throw (String(e.message) === 'LIMITE_DIARIO' ? new Error('se alcanzó el límite diario de lectura del servicio; intenta otro día') : e);
+      if (tipoFallo(e) === 'todo') {
+        var textoLimite = mensajeLimite(e.code || e.message, e.limite);
+        if (textoLimite) throw Object.assign(new Error(textoLimite), { code: e.code || e.message });
+        throw e;
+      }
       return paginaFallida(number, motivoPagina(e));
     });
   }
@@ -337,5 +415,6 @@
     return m || 'error desconocido';
   }
   RF.cloud = { approvedUrls: approvedUrls, humanError: humanError, configured: configured, validUrl: validUrl, trustedUrl: trustedUrl, post: post, postRaw: postRaw, postRawTo: postRawTo, postRetry: postRetry, ping: ping, downscale: downscale, blobToBase64: blobToBase64 };
-  RF.ocr = { recognize: recognize, recognizeDocument: recognizeDocument, recognizePage: recognizePage, toExpenseFields: toExpenseFields };
+  RF.ocr = { recognize: recognize, recognizeDocument: recognizeDocument, recognizePage: recognizePage, toExpenseFields: toExpenseFields,
+    cuota: cuota, lineasLimites: lineasLimites, lecturasDisponibles: lecturasDisponibles, tarjetaLimites: tarjetaLimites, mensajeLimite: mensajeLimite };
 })(typeof window !== 'undefined' ? window : globalThis);

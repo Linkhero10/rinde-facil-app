@@ -29,6 +29,8 @@
  *   - Salvo ping, challenge, setup, login y resetPassword, toda solicitud exige un token de sesión (vence a las 12 horas).
  *   - Bloqueo por intentos fallidos, registro de accesos, cierre de todas las sesiones al cambiar la contraseña.
  *   - Límite diario de lecturas OCR (RINDE_FACIL_OCR_DAILY_LIMIT, por defecto 200) para no gastar cuota por error.
+ *     Semanal y mensual solo existen si se configuran (RINDE_FACIL_OCR_WEEKLY_LIMIT y RINDE_FACIL_OCR_MONTHLY_LIMIT).
+ *     La acción «cuota» (con sesión) informa lo leído hoy, esta semana y este mes, y los límites vigentes.
  *
  * Propiedades de script necesarias (Configuración del proyecto > Propiedades de la secuencia de comandos):
  *   RINDE_FACIL_SETUP_CODE          código de instalación de UN solo uso: la persona que crea la cuenta lo escribe en la app; luego se borra solo.
@@ -37,12 +39,18 @@
  *   RINDE_FACIL_OCR_PROVIDER        cloud_vision
  *   RINDE_FACIL_ROOT_FOLDER_ID      (opcional) carpeta raíz en Drive; si falta, se busca o se crea «Rinde fácil»
  *   RINDE_FACIL_OCR_DAILY_LIMIT     (opcional) máximo de lecturas por día
+ *   RINDE_FACIL_OCR_WEEKLY_LIMIT    (opcional) máximo de lecturas por semana, desde el lunes
+ *   RINDE_FACIL_OCR_MONTHLY_LIMIT   (opcional) máximo de lecturas por mes calendario
  */
 
 const RF_WEB = {
   version: '3.0.0',
   rootProp: 'RINDE_FACIL_ROOT_FOLDER_ID',
   limitProp: 'RINDE_FACIL_OCR_DAILY_LIMIT',
+  weeklyLimitProp: 'RINDE_FACIL_OCR_WEEKLY_LIMIT',
+  monthlyLimitProp: 'RINDE_FACIL_OCR_MONTHLY_LIMIT',
+  counterPrefix: 'RINDE_FACIL_OCR_COUNT_',
+  googleFreeUnitsMonth: 1000, /* referencia de Google Cloud Vision: unidades gratis al mes (cada página cuenta una) */
   rootName: 'Rinde fácil',
   backupsName: 'Copias de seguridad',
   projectsName: 'Proyectos',
@@ -83,6 +91,7 @@ function doPost(e) {
       case 'logoutAll': return rfJson_(rfLogout_(p, true));
       case 'audit': return rfJson_(rfAuditList_());
       case 'ocr': return rfJson_(rfOcr_(p));
+      case 'cuota': return rfJson_(rfCuota_());
       case 'folders': return rfJson_(rfSetup_(p));
       case 'saveState': return rfJson_(rfSaveState_(p));
       case 'loadState': return rfJson_(rfLoadState_());
@@ -124,19 +133,75 @@ function rfCleanName_(s, fallback, max) {
 }
 function rfUrl_(item) { try { return item.getUrl ? item.getUrl() : ''; } catch (e) { return ''; } }
 
-/* límite diario de lecturas */
+/* ---- límites de lectura OCR: hoy, esta semana (desde el lunes) y este mes; fechas de calendario de Chile ---- */
+/* «aaaa-mm-dd» más o menos días, solo en calendario (sin zona horaria) */
+function rfAddDias_(fecha, dias) {
+  const p = fecha.split('-').map(Number);
+  const t = new Date(Date.UTC(p[0], p[1] - 1, p[2] + dias));
+  return t.getUTCFullYear() + '-' + String(t.getUTCMonth() + 1).padStart(2, '0') + '-' + String(t.getUTCDate()).padStart(2, '0');
+}
+/* 0 = lunes ... 6 = domingo */
+function rfDiaSemana_(fecha) {
+  const p = fecha.split('-').map(Number);
+  return (new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay() + 6) % 7;
+}
+/* suma las lecturas guardadas de cada día entre desde y hasta (ambos incluidos) */
+function rfSumaLecturas_(leer, desde, hasta) {
+  let total = 0;
+  for (let f = desde; f <= hasta; f = rfAddDias_(f, 1)) total += Number(leer(RF_WEB.counterPrefix + f) || 0);
+  return total;
+}
+/* un límite configurado en las propiedades del script; null si falta o no es un número positivo */
+function rfLimiteProp_(leer, nombre) {
+  const n = Math.floor(Number(leer(nombre)));
+  return n > 0 ? n : null;
+}
+/* lo leído hasta hoy y los límites vigentes (null = sin límite configurado) */
+function rfResumenLecturas_(leer, hoy) {
+  const diario = rfLimiteProp_(leer, RF_WEB.limitProp) || 200;
+  const lunes = rfAddDias_(hoy, -rfDiaSemana_(hoy));
+  const dia1 = hoy.slice(0, 8) + '01';
+  const usadasHoy = Number(leer(RF_WEB.counterPrefix + hoy) || 0);
+  const usadasSemana = rfSumaLecturas_(leer, lunes, hoy);
+  const usadasMes = rfSumaLecturas_(leer, dia1, hoy);
+  const semanal = rfLimiteProp_(leer, RF_WEB.weeklyLimitProp);
+  const mensual = rfLimiteProp_(leer, RF_WEB.monthlyLimitProp);
+  return {
+    zona: 'America/Santiago',
+    reinicio: 'medianoche',
+    diario: { usadas: usadasHoy, limite: diario, restan: Math.max(0, diario - usadasHoy) },
+    semanal: { desde: lunes, usadas: usadasSemana, limite: semanal, restan: semanal ? Math.max(0, semanal - usadasSemana) : null },
+    mensual: { desde: dia1, usadas: usadasMes, limite: mensual, restan: mensual ? Math.max(0, mensual - usadasMes) : null },
+    referenciaGratisMes: RF_WEB.googleFreeUnitsMonth
+  };
+}
+/* límite de lecturas: el diario siempre; el semanal y el mensual solo si están configurados */
 function rfCountOcr_() {
   const props = PropertiesService.getScriptProperties();
-  const key = 'RINDE_FACIL_OCR_COUNT_' + rfToday_();
-  const limit = Number(rfProp_(RF_WEB.limitProp)) || 200;
+  const hoy = rfToday_();
+  const key = RF_WEB.counterPrefix + hoy;
+  const leer = function (nombre) { return props.getProperty(nombre); };
+  const limit = rfLimiteProp_(leer, RF_WEB.limitProp) || 200;
+  const semanal = rfLimiteProp_(leer, RF_WEB.weeklyLimitProp);
+  const mensual = rfLimiteProp_(leer, RF_WEB.monthlyLimitProp);
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return { ok: false, error: 'OCUPADO' };
   try {
     const n = Number(props.getProperty(key) || 0);
-    if (n >= limit) return { ok: false, error: 'LIMITE_DIARIO', limit: limit };
+    if (n >= limit) return { ok: false, error: 'LIMITE_DIARIO', limit: limit, used: n };
+    if (semanal || mensual) {
+      const resumen = rfResumenLecturas_(leer, hoy);
+      if (semanal && resumen.semanal.usadas >= semanal) return { ok: false, error: 'LIMITE_SEMANAL', limit: semanal, used: resumen.semanal.usadas };
+      if (mensual && resumen.mensual.usadas >= mensual) return { ok: false, error: 'LIMITE_MENSUAL', limit: mensual, used: resumen.mensual.usadas };
+    }
     props.setProperty(key, String(n + 1));
     return { ok: true, used: n + 1, limit: limit };
   } finally { lock.releaseLock(); }
+}
+/* acción «cuota» (con sesión): lo leído hoy, esta semana y este mes, y los límites configurados */
+function rfCuota_() {
+  const props = PropertiesService.getScriptProperties();
+  return Object.assign({ ok: true }, rfResumenLecturas_(function (nombre) { return props.getProperty(nombre); }, rfToday_()));
 }
 
 /* suma al contador diario las páginas que el adaptador leyó además de la primera (rfCountOcr_ ya contó una) */

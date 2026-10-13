@@ -59,12 +59,14 @@
     var root = h('div');
     var fileInput = h('input', { type: 'file', accept: 'image/*,application/pdf', multiple: true, class: 'sr-only', 'aria-label': 'Elegir fotos o PDF de comprobantes' });
     var camInput = h('input', { type: 'file', accept: 'image/*', capture: 'environment', class: 'sr-only', 'aria-label': 'Sacar foto al comprobante' });
-    function paint() { U.clear(root); root.appendChild(fileInput); root.appendChild(camInput); if (st.editing) paintEditor(); else paintList(); }
+    var cuotaBox = h('div', { class: 'gastos-cuota' });
+    function paint() { U.clear(root); root.appendChild(fileInput); root.appendChild(camInput); root.appendChild(cuotaBox); if (st.editing) paintEditor(); else paintList(); }
 
     function refreshIfList() { if (!st.editing && root.isConnected !== false && document.body.contains(root)) paint(); }
     /* ---- procesar fotos ---- */
     function handleFiles(files) {
       files = Array.prototype.slice.call(files || []); if (!files.length) return;
+      RF.ocr.tarjetaLimites(cuotaBox, {});
       var made = [], i = 0, movedCount = 0;
       function next() {
         if (i >= files.length) {
@@ -94,6 +96,7 @@
         applyOcr(e, res);
         if (res && res.ok) b.done('Listo. Compara los datos con la foto.'); else b.fail('Google no pudo leer esta foto (' + ((res && res.error) || 'error') + '). Anota los datos a mano.');
         e._reading = false; refreshIfList();
+        RF.ocr.tarjetaLimites(cuotaBox, {});
         return res;
       }).catch(function (err) {
         e._ocrNote = 'No se pudo leer la foto automáticamente: ' + RF.cloud.humanError(err) + ' Anota los datos mirando la foto, o usa «Leer de nuevo» cuando vuelva la conexión.';
@@ -102,6 +105,8 @@
       });
     }
     function applyOcr(e, res) {
+      var limite = res && RF.ocr.mensajeLimite(res.error, res.limit);
+      if (limite) { e._ocrNote = 'No se pudo leer la foto: ' + limite + '. Anota los datos mirando la foto y vuelve a leer otro día.'; return; }
       if (!res || !res.ok) { e._ocrNote = (/no devolvi[oó] texto|SIN_TEXTO/i.test(String((res && res.error) || '')) ? 'No se pudo leer texto en la foto. Prueba con otra más clara, de frente y con buena luz, o anota los datos mirando la foto.' : 'No se pudo leer la foto (' + String((res && res.error) || 'error desconocido').replace(/\.+$/, '') + '). Anota los datos mirando la foto.'); return; }
       var out = RF.ocr.toExpenseFields(res.raw_text, 'cloud_vision', { communityRut: c.community && c.community.rut, communityName: c.community && c.community.name }), f = out.fields;
       Object.keys(f).forEach(function (k) { e[k] = f[k]; });
@@ -374,6 +379,7 @@
       paintPhoto(); refresh();
     }
     paint();
+    RF.ocr.tarjetaLimites(cuotaBox, {});
     return page('Gastos y rendición', 'Anota cada gasto con los datos exactos del documento. La app revisa las reglas del Manual y te dice qué falta.', root);
   } };
 
