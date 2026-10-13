@@ -209,19 +209,14 @@ test('el RUT del modelo queda prellenado en la pantalla (función pura P.rutInic
   assert.equal(P.rutInicial(null), '');
 });
 
-/* PEA escaneado (OCR) sintético: el modelo que sale de RF.pea.extractFromOcr se aplica sin duplicar nada */
+/* PEA escaneado (OCR) sintético: el modelo que sale de RF.pea.extractFromOcr (texto de Google) se aplica sin duplicar nada */
 test('OCR: el modelo de un PEA escaneado se aplica una sola vez y no duplica proyectos', () => {
-  const page = { number: 1, angle: 0, width: 1000, height: 1400, paragraphs: [
-    { text: 'Nombre del proyecto', angle: 0, box: { x0: 0.05, y0: 0.19, x1: 0.35, y1: 0.21 } },
-    { text: 'Proyecto OCR Sintético', angle: 0, box: { x0: 0.45, y0: 0.19, x1: 0.8, y1: 0.21 } },
-    { text: 'Fecha de inicio', angle: 0, box: { x0: 0.05, y0: 0.23, x1: 0.35, y1: 0.25 } },
-    { text: '01-03-2026', angle: 0, box: { x0: 0.45, y0: 0.23, x1: 0.6, y1: 0.25 } },
-  ] };
-  const m = P.extractFromOcr({ ok: true, raw_text: 'x', pages: [page] });
+  const texto = 'Nombre del proyecto\nPROYECTO OCR SINTÉTICO\nFecha de inicio: 1 de marzo de 2026';
+  const m = P.extractFromOcr({ ok: true, raw_text: texto, pages: [] });
   const once = P.applyToState({ community: {}, projects: [] }, m, { rut: '11.111.111-1', legalRep: null });
   const twice = P.applyToState(once, m, { rut: '11.111.111-1', legalRep: null });
   assert.equal(once.projects.length, 1);
-  assert.equal(once.projects[0].name, 'Proyecto OCR Sintético');
+  assert.equal(once.projects[0].name, 'PROYECTO OCR SINTÉTICO');
   assert.equal(once.projects[0].start, '2026-03-01');
   assert.equal(twice.projects.length, 1, 'aplicar otra vez no duplica el proyecto');
   assert.deepEqual(clone(twice.projects[0].budgetLines), []);

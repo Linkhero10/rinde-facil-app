@@ -228,36 +228,57 @@
       }).then(function () { st.reading = false; paint(); });
     }
 
-    /* PDF escaneado: se manda al OCR del servicio y se lee por posición (RF.pea.extractFromOcr) */
+    /* PDF escaneado: cada página se dibuja derecha, se manda al OCR del servicio y el texto se lee por posición (RF.pea.extractFromOcr).
+       Si el usuario elige otro archivo mientras esto corre, deja de mandar páginas y no toca la pantalla. */
     function onPdf(file) {
       if (!RF.ocr || !RF.ocr.recognizePage || !RF.pdfPages || !RF.pea.extractFromOcr) { st.notice = 'No está cargada la lectura de PDF en esta versión.'; paint(); return; }
       if (!RF.cloud || !RF.cloud.configured()) { st.notice = 'Para leer un PDF escaneado conecta primero el servicio en la nube (en Ajustes). Mientras tanto puedes subir el Word del PEA.'; paint(); return; }
-      st.file = file; st.reading = true; st.fromPdf = true; st.stage = 'Leyendo el PDF con Google…'; paint();
-      var say = function (label) { st.stage = label; if (st.file === file) paint(); };
+      var corrida = {};
+      st.file = file; st.pdfRun = corrida; st.reading = true; st.fromPdf = true; st.stage = 'Preparando el PDF…'; paint();
+      /* vigente: sigue siendo este archivo y esta misma corrida; si el usuario eligió otro, lo de aquí ya no se aplica */
+      var vigente = function () { return st.file === file && st.pdfRun === corrida; };
+      var say = function (label) { if (vigente()) { st.stage = label; paint(); } };
+      /* si la corrida quedó abandonada sin que otra lectura tomara la pantalla (p. ej. se eligió un archivo que no es PDF), solo apaga su indicador */
+      var soltarLectura = function () { if (st.file === null && st.pdfRun === corrida) { st.reading = false; st.stage = ''; paint(); } };
       readBuffer(file).then(function (buf) {
-        return RF.pdfPages.renderPages(buf, function (num, total) { say('Preparando la página ' + num + ' de ' + total + '…'); });
+        return RF.pdfPages.renderPages(buf, function (num, total) { say('Preparando la página ' + num + ' de ' + total + '…'); }, vigente);
       }).then(function (rendered) {
         var results = [], chain = Promise.resolve();
         rendered.pages.forEach(function (p) {
           chain = chain.then(function () {
+            if (!vigente()) return null;
             say('Leyendo la página ' + p.number + ' de ' + rendered.total + ' con Google…');
-            return RF.ocr.recognizePage(p.blob, p.number).then(function (r) { results.push(r); });
+            return RF.ocr.recognizePage(p.blob, p.number, function (intento) {
+              say('Google no respondió bien con la página ' + p.number + '. Reintentando (intento ' + intento + ' de 3)…');
+            }).then(function (r) { results.push(r); });
           });
         });
         return chain.then(function () { return RF.pdfPages.aggregate(results, rendered.total); });
       }).then(function (res) {
-        if (st.file !== file) return;
-        if (!res || !res.ok) {
-          var det = String((res && res.error) || 'OCR_SIN_TEXTO');
-          throw new Error(/SIN_TEXTO/.test(det) ? 'el OCR no encontró texto legible en el PDF' : 'el servicio respondió con «' + det + '»');
-        }
-        st.ocrText = res.raw_text || '';
+        if (!vigente()) return soltarLectura();
+        if (!res || !res.ok) throw new Error(motivoPdf(res));
+        st.ocrText = RF.pdfPages.reviewText(res);
         st.model = RF.pea.extractFromOcr(res);
         st.rut = P.rutInicial(st.model);
         st.legalRep = clean(st.model.community && st.model.community.legalRep) || '';
+        st.reading = false; st.stage = ''; paint();
       }).catch(function (e) {
-        if (st.file === file) { st.file = null; st.model = null; st.fromPdf = false; st.notice = 'No se pudo leer el PDF: ' + msgOf(e) + '.'; }
-      }).then(function () { st.reading = false; st.stage = ''; paint(); });
+        if (!vigente()) return soltarLectura();
+        st.file = null; st.model = null; st.fromPdf = false; st.ocrText = '';
+        st.reading = false; st.stage = '';
+        st.notice = 'No se pudo leer el PDF: ' + msgOf(e).replace(/\.$/, '') + '.';
+        paint();
+      });
+    }
+
+    /* por qué no se aplicó el PDF: las páginas que fallaron, cada una con su motivo */
+    function motivoPdf(res) {
+      var fallidas = (res && res.failedPages) || [];
+      if (fallidas.length) {
+        return (fallidas.length === 1 ? 'falta la página ' : 'faltan las páginas ') + fallidas.map(function (f) { return f.number + ' (' + String(f.error).replace(/\.$/, '') + ')'; }).join(', ') + '; vuelve a intentarlo, no se aplicó nada';
+      }
+      var det = String((res && res.error) || 'OCR_SIN_TEXTO');
+      return /SIN_TEXTO/.test(det) ? 'el OCR no encontró texto legible en el PDF' : det;
     }
 
     function uploadBox() {

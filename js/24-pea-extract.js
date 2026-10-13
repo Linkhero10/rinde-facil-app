@@ -135,7 +135,7 @@
    * Fechas inexistentes (31 de abril) o no reconocidas -> null. */
   P.parseFecha = function (text) {
     var t = norm(text);
-    var m = /^(\d{1,2}) DE ([A-Z]+) DE (\d{4})$/.exec(t);
+    var m = /^(\d{1,2}) DE ([A-Z]+)(?: DE)? (\d{4})$/.exec(t);
     var iso;
     if (m && MESES[m[2]]) {
       iso = isoOf(+m[3], MESES[m[2]], +m[1]);
@@ -453,7 +453,7 @@
     });
 
     var projects = [];
-    var adminAnyRow = false, adminSum = 0, adminNull = false;
+    var adm = [];
 
     infos.forEach(function (ti, k) {
       var rows = tableRows(tables[ti]);
@@ -524,16 +524,8 @@
       if (b.gantt.length) gantt.stages = parseGantt(b.gantt[0], pfx, warnings);
       else warnings.push(pfx + 'no tiene carta Gantt en el PEA.');
 
-      /* administración: no se reparte entre proyectos, va al proyecto automático */
-      if (presentes.administracion) {
-        adminAnyRow = true;
-        if (budget.administracion === null) adminNull = true;
-        else adminSum += budget.administracion;
-        if (budget.administracion) {
-          warnings.push(pfx + 'los gastos de administración ($' + fmt(budget.administracion) + ') no se reparten entre proyectos; van a "Gastos de administración".');
-        }
-        budget.administracion = budget.administracion === null ? null : 0;
-      }
+      /* administración: no se reparte entre proyectos; cierreAdmin la lleva al proyecto automático */
+      adm.push({ pfx: pfx, budget: budget, presentes: !!presentes.administracion });
 
       projects.push({
         name: name,
@@ -550,28 +542,14 @@
     });
 
     var antTotal = adminFromAntecedentes(tables);
-    if (adminAnyRow || antTotal !== null) {
-      var monto = adminAnyRow ? (adminNull ? null : adminSum) : antTotal;
-      if (!adminAnyRow) {
-        warnings.push('Los consolidados no separan gastos de administración; el proyecto "Gastos de administración" toma el total de la tabla de antecedentes ($' + fmt(antTotal) + '). Verificar.');
-      } else if (antTotal !== null && monto !== null && antTotal !== monto) {
-        warnings.push('La tabla de antecedentes indica gastos administrativos totales por $' + fmt(antTotal) + ', pero los consolidados suman $' + fmt(monto) + '; se usó el consolidado. Verificar cuál corresponde.');
-      }
-      projects.push({
-        name: 'Gastos de administración',
-        code: null,
-        start: null,
-        end: null,
-        budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: monto },
-        budgetLines: [],
-        gantt: { stages: [] },
-        peaDatos: [],
-        fuentes: { aia30: null, aia70: null, otras: null },
-        source: adminAnyRow ? 'PEA: consolidados de costos' : 'PEA: tabla de antecedentes'
-      });
-    } else {
-      warnings.push('El documento no separa gastos de administración (ni en los consolidados ni en la tabla de antecedentes).');
-    }
+    var autoAdm = cierreAdmin(adm, antTotal, 'PEA: ', warnings);
+    if (autoAdm) projects.push(autoAdm);
+
+    /* el texto del mismo Word se lee con las mismas reglas: sólo avisa de discrepancias y aporta lo que las tablas no traen */
+    var tx = P.extractFromText(textoDeTablas(tables), { origen: 'word' });
+    compararTexto(community, projects, tx, warnings);
+    community.presidente = tx.community.presidente;
+    community.aia30 = tx.community.aia30;
 
     return { community: community, projects: projects, warnings: warnings };
   };
@@ -594,31 +572,6 @@
     return f.iso;
   }
 
-  /* ---------- PEA escaneado (PDF leído por OCR): renglones por posición, etiquetas y valores ----------
-   * Mismo modelo de salida que extractFromStructure. Lo que no se lee con certeza queda vacío y se anota en warnings.
-   * Esta versión NO lee presupuestos ni carta Gantt del escaneado: quedan a mano (se avisa por proyecto). */
-
-  /* etiquetas del formulario: «f» es la forma comparable (sin tildes ni mayúsculas) */
-  var OCR_LABELS = [
-    { key: 'comunidad', name: 'Nombre de comunidad', f: 'nombre de comunidad' },
-    { key: 'rutComunidad', name: 'Rut de la comunidad', f: 'rut de la comunidad' },
-    { key: 'encargado', name: 'Nombre Encargado Convenio', f: 'nombre encargado convenio' },
-    { key: 'telefono', name: 'Teléfono de contacto', f: 'telefono de contacto' },
-    { key: 'correo', name: 'Correo electrónico del Encargado Convenio', f: 'correo electronico del encargado convenio' },
-    { key: 'fechaEntrega', name: 'Fecha de entrega del Proyecto', f: 'fecha de entrega del proyecto' },
-    { key: 'apoyo', name: 'Indicar si recibió apoyo', f: 'indicar si recibio apoyo' },
-    { key: 'asamblea', name: 'Validados por la Asamblea', f: 'validados por la asamblea' },
-    { key: 'nombreProyecto', name: 'Nombre del proyecto', f: 'nombre del proyecto' },
-    { key: 'objGeneral', name: 'Objetivo general', f: 'objetivo general' },
-    { key: 'objEspecificos', name: 'Objetivos específicos', f: 'objetivos especificos' },
-    { key: 'inicio', name: 'Fecha de inicio', f: 'fecha de inicio' },
-    { key: 'termino', name: 'Fecha de término', f: 'fecha de termino' },
-    { key: 'presupuesto', name: 'Presupuesto total del Proyecto', f: 'presupuesto total' },
-    { key: 'financiamiento', name: 'Tipo de financiamiento', f: 'tipo de financiamiento' },
-    { key: 'beneficiarios', name: 'Beneficiarios', f: 'beneficiarios' },
-    { key: 'otros', name: 'Otros antecedentes', f: 'otros antecedentes' }
-  ];
-  var OCR_TOL_ROW = 0.012, OCR_TOL_COL = 0.05;
 
   /* minúsculas y sin tildes, carácter a carácter: el largo no cambia, así que los índices sirven en el texto original */
   function foldKeep(s) {
@@ -631,290 +584,434 @@
     }
     return out;
   }
-  function normAngle(a) {
-    var n = Math.round((Number(a) || 0) / 90) * 90;
-    return ((n % 360) + 360) % 360;
-  }
-  /* coordenadas normalizadas de la página tal como está escrita -> coordenadas de lectura (página derecha) */
-  function uprightPoint(x, y, angle) {
-    if (angle === 90) return [y, 1 - x];
-    if (angle === 180) return [1 - x, 1 - y];
-    if (angle === 270) return [1 - y, x];
-    return [x, y];
-  }
-  function uprightBox(b, angle) {
-    var pts = [[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]].map(function (p) { return uprightPoint(p[0], p[1], angle); });
-    var xs = pts.map(function (p) { return p[0]; }), ys = pts.map(function (p) { return p[1]; });
-    return { x0: Math.min.apply(null, xs), y0: Math.min.apply(null, ys), x1: Math.max.apply(null, xs), y1: Math.max.apply(null, ys) };
-  }
-  function makeLine(items, page, y) {
-    var text = '';
-    items.forEach(function (it, k) { if (k) text += ' '; it.start = text.length; text += it.text; it.end = text.length; });
-    return { page: page, y: y, items: items, text: text, x0: items.length ? Math.min.apply(null, items.map(function (it) { return it.x0; })) : 0 };
-  }
-  /* párrafos -> renglones: se agrupan por el centro vertical (tolerancia OCR_TOL_ROW) y van de izquierda a derecha */
-  function ocrLines(pages) {
-    var out = [];
-    pages.forEach(function (pg, pi) {
-      var angle = normAngle(pg && pg.angle), items = [];
-      ((pg && pg.paragraphs) || []).forEach(function (p) {
-        var t = clean(p && p.text);
-        if (!t) return;
-        var b = p.box ? uprightBox(p.box, angle) : { x0: 0, y0: 0, x1: 0, y1: 0 };
-        items.push({ text: t, x0: b.x0, x1: b.x1, cy: (b.y0 + b.y1) / 2 });
-      });
-      items.sort(function (a, b) { return a.cy - b.cy || a.x0 - b.x0; });
-      var rows = [];
-      items.forEach(function (it) {
-        var row = rows[rows.length - 1];
-        if (row && Math.abs(it.cy - row.cy) <= OCR_TOL_ROW) row.items.push(it);
-        else rows.push({ cy: it.cy, items: [it] });
-      });
-      rows.forEach(function (row) {
-        out.push(makeLine(row.items.sort(function (a, b) { return a.x0 - b.x0; }), pi + 1, row.cy));
-      });
-    });
-    return out;
-  }
-  function itemAt(line, idx) {
-    var its = line.items, i;
-    for (i = 0; i < its.length; i++) if (idx >= its[i].start && idx < its[i].end) return its[i];
-    for (i = 0; i < its.length; i++) if (its[i].start >= idx) return its[i];
-    return its[its.length - 1] || null;
-  }
-  /* etiquetas que empiezan un párrafo, el renglón o una frase («1. Nombre de comunidad») */
-  function labelHits(line) {
-    var f = foldKeep(line.text), hits = [];
-    OCR_LABELS.forEach(function (def) {
-      var from = 0, idx;
-      while ((idx = f.indexOf(def.f, from)) >= 0) {
-        var inicioOk = idx === 0 || /[\d.):;|*\-–—•]\s*$/.test(f.slice(0, idx)) || line.items.some(function (it) { return it.start === idx; });
-        if (inicioOk) hits.push({ def: def, start: idx, end: idx + def.f.length });
-        from = idx + def.f.length;
-      }
-    });
-    return hits.sort(function (a, b) { return a.start - b.start; });
-  }
-  /* pares etiqueta-valor: el valor es el texto a la derecha en el mismo renglón, más los renglones siguientes
-   * que no empiecen por otra etiqueta y caigan en la misma columna (la x de la etiqueta o del valor). Se corta al primer renglón que no cumple. */
-  function collectPairs(lines, conPosiciones) {
-    var pairs = [];
-    lines.forEach(function (line, i) {
-      var hits = labelHits(line);
-      hits.forEach(function (h, hi) {
-        var segEnd = hi + 1 < hits.length ? hits[hi + 1].start : line.text.length;
-        /* lo que sigue a la etiqueta dentro de su misma celda («($), impuestos incluidos.») es parte de la etiqueta
-         * cuando el valor viene en otra celda; sólo es valor si va con «:» o si no hay otra celda a la derecha */
-        var itEnd = itemAt(line, h.end - 1), cutAt = h.end;
-        if (itEnd) {
-          var finCelda = Math.min(itEnd.end, segEnd);
-          var restoCelda = line.text.slice(h.end, finCelda);
-          if (restoCelda.trim() !== '' && !/^\s*:/.test(restoCelda) && line.text.slice(finCelda, segEnd).trim() !== '') cutAt = finCelda;
-        }
-        var seg = line.text.slice(cutAt, segEnd);
-        var lead = seg.length - seg.replace(/^[\s:.\-–—|()$]+/, '').length;
-        var same = seg.slice(lead).replace(/\s+$/, '');
-        var itVal = same ? itemAt(line, cutAt + lead) : null;
-        var colX = itVal ? itVal.x0 : (itemAt(line, h.start) || { x0: 0 }).x0;
-        var vals = same ? [same] : [];
-        if (conPosiciones && hi === hits.length - 1) {
-          var j = i + 1;
-          while (j < lines.length && labelHits(lines[j]).length === 0 && Math.abs(lines[j].x0 - colX) <= OCR_TOL_COL) { vals.push(lines[j].text); j++; }
-        }
-        pairs.push({ key: h.def.key, name: h.def.name, vals: vals, line: i });
-      });
-    });
-    return pairs;
-  }
-  function valsOf(list, key) {
-    for (var i = 0; i < list.length; i++) if (list[i].key === key && list[i].vals.join('').trim()) return list[i].vals;
-    return [];
-  }
-  function valOf(list, key) { return valsOf(list, key).join(' ').replace(/\s+/g, ' ').trim(); }
-  function rowsOf(list) { return list.map(function (p) { return { k: p.name, v: p.vals.join(' ').replace(/\s+/g, ' ').trim() }; }); }
-  function avisosVacios(list, pfx, warnings) {
-    list.forEach(function (p) { if (!p.vals.join('').trim()) warnings.push(pfx + 'la etiqueta «' + p.name + '» no tiene valor; queda vacía.'); });
-  }
-  function ocrRut(raw, warnings) {
-    var t = clean(raw).replace(/^N\s*[°º.o]?\s*(?=\d)/i, '');
-    if (!t) return null;
-    var m = /(\d{1,3}(?:[.\s]\d{3})+|\d{5,9})\s*-\s*([\dkK])/.exec(t);
-    if (m) return m[1].replace(/\s+/g, '.') + '-' + m[2].toUpperCase();
-    warnings.push('El RUT de la comunidad no tiene la forma número-dígito ("' + t + '"); revísalo.');
-    return t;
-  }
-  /* fecha dd-mm-aaaa (también dd-m-aaaa) o escrita; se convierte a AAAA-MM-DD */
-  function fechaOcr(raw, what, warnings) {
-    var t = clean(raw);
-    if (!t) { warnings.push(what + ' no aparece en el PEA escaneado; queda vacía.'); return null; }
-    var m = /(\d{1,2})\s*[-\/.]\s*(\d{1,2})\s*[-\/.]\s*(\d{4})/.exec(t);
-    var f = m ? P.parseFecha(m[1] + '-' + m[2] + '-' + m[3]) : P.parseFecha(t);
-    if (!f) { warnings.push(what + ' no es una fecha válida ("' + t + '"); queda vacía.'); return null; }
-    if (f.precision === 'mes') warnings.push(what + ' sólo tiene mes y año ("' + t + '"); se usó el día 1.');
-    return f.iso;
-  }
-  /* «Sra. Ana Pérez», «Secretaria Juana Díaz Rut: 9.999.999-9» (en la misma línea o en la anterior) */
-  function contactoOcr(vals, warnings) {
-    var ls = vals.map(clean).filter(function (l) { return l !== ''; });
-    var esSec = function (l) { return /secretar/i.test(foldKeep(l)); };
-    var esRut = function (l) { return /^RUT\b/i.test(l); };
-    var sinTitulo = function (l) { return clean(l.replace(/^(Sr\.?|Sra\.?|Srta\.?)\s+/i, '')); };
-    var secIdx = -1, usado = -1, sec = null;
-    ls.forEach(function (l, i) { if (secIdx < 0 && esSec(l)) secIdx = i; });
-    var rutM = /RUT\s*:?\s*([\d.\s]+-\s*[\dkK])/i.exec(ls.join(' '));
-    if (secIdx >= 0 && rutM) {
-      var nombre = sinTitulo(ls[secIdx].replace(/secretar[ií]a/i, '').replace(/RUT\s*:?.*$/i, '').replace(/^[\s,:;.\-–—]+|[\s,:;.\-–—]+$/g, ''));
-      if (!nombre && secIdx > 0 && !esRut(ls[secIdx - 1])) { nombre = sinTitulo(ls[secIdx - 1]); usado = secIdx - 1; }
-      sec = { nombre: nombre || null, rut: rutM[1].replace(/\s+/g, '') };
-      if (!sec.nombre) warnings.push('La secretaria aparece en el PEA escaneado con RUT, pero sin nombre claro; queda sin nombre.');
-    }
-    var cands = [];
-    ls.forEach(function (l, i) {
-      if (i === secIdx || i === usado || esRut(l)) return;
-      var b = sinTitulo(l.replace(/RUT\s*:?.*$/i, ''));
-      if (b) cands.push(b);
-    });
-    return { encargado: cands[0] || null, secretaria: sec };
-  }
-  /* teléfonos: los números de 8 a 11 dígitos que aparezcan (los RUT se quitan antes) */
-  function telefonosOcr(partes) {
-    var out = [];
-    (Array.isArray(partes) ? partes : [partes]).forEach(function (parte) {
-      String(parte || '').replace(/RUT\s*:?\s*[\d.\s]+-\s*[\dkK]/gi, ' ').split(/[\/;,|]+/).forEach(function (t) {
-        (t.match(/\+?\d[\d\s.()\-]{6,}\d/g) || []).forEach(function (c) {
-          var d = c.replace(/\D/g, '');
-          if (d.length < 8 || d.length > 11) return;
-          var v = clean(c);
-          if (out.indexOf(v) < 0) out.push(v);
+
+
+
+  /* ---------- lectura por TEXTO: PEA escaneado (OCR) y texto del Word ----------
+   * Un solo conjunto de reglas para los dos formatos: cada etiqueta del formulario se busca en el texto (aunque el OCR haya
+   * partido la línea) y su valor es lo que sigue. Lo que no se lee con certeza queda vacío y se anota en warnings.
+   * No usa posiciones ni tablas. No lee el detalle del presupuesto (tablas 2 a 4) ni la carta Gantt. */
+
+  /* texto de las tablas del Word, en orden: una línea por celda (las celdas combinadas se repiten en la rejilla: se cuentan una vez) */
+  function textoDeTablas(tables) {
+    return (tables || []).map(function (t) {
+      return tableRows(t).map(function (row) {
+        var out = [];
+        (row || []).forEach(function (c) {
+          var s = String(c == null ? '' : c).trim();
+          if (s && out[out.length - 1] !== s) out.push(s);
         });
-      });
-    });
+        return out.join('\n');
+      }).filter(function (x) { return x !== ''; }).join('\n');
+    }).join('\n\n');
+  }
+
+  /* primera coincidencia de «re» en el texto plegado «f» a partir de «desde»; los índices valen también en el texto original */
+  function buscar(f, re, desde) {
+    var m = re.exec(f.slice(desde));
+    return m ? { i: desde + m.index, e: desde + m.index + m[0].length } : null;
+  }
+  /* montos con «$» en un texto: "$56.068.943.-" -> 56068943; "$0" -> 0 */
+  function montosEn(s) {
+    var out = [], re = /\$\s*(\d[\d.]*)/g, m;
+    while ((m = re.exec(String(s || '')))) {
+      var d = m[1].replace(/\.+$/, '').replace(/\./g, '');
+      if (d !== '') out.push(parseInt(d, 10));
+    }
     return out;
   }
-  function correosOcr(text) {
-    var out = [];
-    (String(text || '').match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g) || []).forEach(function (c) {
-      if (out.indexOf(c) < 0) out.push(c);
-    });
-    return out;
-  }
-  /* monto tras «=», «:» o «$» en el mismo renglón; si no lo hay, un «$» al inicio del renglón siguiente */
-  function montoTras(rest, next) {
-    var m = /[=:]\s*\$?\s*(\d{1,3}(?:\.\d{3})+|\d+)(?!\d)/.exec(rest) || /\$\s*(\d{1,3}(?:\.\d{3})+|\d+)(?!\d)/.exec(rest);
-    if (!m && next) m = /^\s*\$\s*(\d{1,3}(?:\.\d{3})+|\d+)(?!\d)/.exec(next);
+  /* monto al inicio del texto, con o sin «$»: "147.419.606.-" -> 147419606; "por definir" -> null */
+  function montoAl(s) {
+    var m = /^\s*\$?\s*(\d{1,3}(?:\.\d{3})+|\d+)(?!\d|[.,]\d)/.exec(String(s || ''));
     return m ? parseInt(m[1].replace(/\./g, ''), 10) : null;
   }
-  /* fuentes de financiamiento de un proyecto: «con cargo al 30% del AIA = X», «70%», «otras fuentes» */
-  function fuentesOcr(texts, pfx, warnings) {
-    var out = { aia30: null, aia70: null, otras: null };
-    texts.forEach(function (t, k) {
-      var f = foldKeep(t), m = /(30|70)\s*%\s*del\s*aia/.exec(f);
-      if (m) {
-        var clave = m[1] === '30' ? 'aia30' : 'aia70';
-        var monto = montoTras(t.slice(m.index + m[0].length), texts[k + 1]);
-        if (monto === null) warnings.push(pfx + 'no se pudo leer el monto con cargo al ' + m[1] + '% del AIA ("' + clean(t) + '"); queda vacío.');
-        else if (out[clave] === null) out[clave] = monto;
-        return;
-      }
-      var mo = /otras\s+fuentes/.exec(f);
-      if (mo) {
-        var rest = t.slice(mo.index + mo[0].length);
-        if (/N\/A|NO APLICA/i.test(rest)) return;
-        var v = montoTras(rest, texts[k + 1]);
-        if (v === null) warnings.push(pfx + 'no se pudo leer el monto de otras fuentes ("' + clean(t) + '"); queda vacío.');
-        else if (out.otras === null) out.otras = v;
-      }
-    });
+  /* primera fecha a partir de «desde» (plegado «f», original «t»): { txt, f } con f = P.parseFecha (null si la fecha no existe).
+   * saltarDeFecha: no toma las numéricas que van tras «de fecha» (p. ej. la fecha de la Asamblea). */
+  function fechaEn(t, f, desde, hasta, saltarDeFecha) {
+    var sub = f.slice(desde, hasta === undefined ? f.length : hasta);
+    var re = /(\d{1,2})\s+de\s+([a-z]+)\s+(?:de\s+)?(\d{4})|(\d{1,2})\s*[-\/.]\s*(\d{1,2})\s*[-\/.]\s*(\d{4})/g, m;
+    while ((m = re.exec(sub))) {
+      if (m[4] && saltarDeFecha && /fecha\s*$/.test(sub.slice(Math.max(0, m.index - 10), m.index))) continue;
+      var txt = m[1] ? m[1] + ' de ' + m[2] + ' de ' + m[3] : m[4] + '-' + m[5] + '-' + m[6];
+      return { txt: t.substr(desde + m.index, m[0].length), f: P.parseFecha(txt) };
+    }
+    return null;
+  }
+  /* fecha de un rótulo («Fecha de inicio: 1 de julio de 2022»): el valor va en su línea o en la siguiente */
+  function fechaDeRotulo(t, f, re, what, warnings) {
+    var r = buscar(f, re, 0);
+    if (!r) { warnings.push(what + ' no aparece en el PEA; queda vacía.'); return null; }
+    var fin = f.indexOf('\n', r.e);
+    if (fin < 0) fin = f.length;
+    var c = fechaEn(t, f, r.e, fin, false);
+    if (!c) {
+      var fin2 = f.indexOf('\n', fin + 1);
+      c = fechaEn(t, f, fin + 1, fin2 < 0 ? f.length : fin2, false);
+    }
+    if (!c) { warnings.push(what + ' no aparece en el PEA; queda vacía.'); return null; }
+    if (!c.f) { warnings.push(what + ' no es una fecha válida ("' + clean(c.txt) + '"); queda vacía.'); return null; }
+    return c.f.iso;
+  }
+
+  /* RUT con formato dd.ddd.ddd-d que no es parte de un número más largo: [{ rut, i }] */
+  function rutsEn(s) {
+    var out = [], re = /\d{1,2}\.\d{3}\.\d{3}-[\dkK]/g, m;
+    while ((m = re.exec(s))) {
+      var ant = m.index > 0 ? s.charAt(m.index - 1) : '';
+      if (!/[\d.]/.test(ant)) out.push({ rut: m[0], i: m.index });
+    }
     return out;
   }
+  /* RUT de la comunidad: el primero que no va tras «Rut:» (ese es el de una persona, p. ej. la secretaria) */
+  function rutComunidadDe(a) {
+    var rs = rutsEn(a);
+    for (var k = 0; k < rs.length; k++) {
+      if (!/RUT\s*:\s*(N\s*[°º.o]?\s*)?$/i.test(a.slice(Math.max(0, rs[k].i - 14), rs[k].i))) return rs[k].rut;
+    }
+    return null;
+  }
+  /* «COMUNIDAD ...» en mayúsculas, sin el RUT pegado */
+  function nombreComunidadDe(a) {
+    var ls = a.split('\n');
+    for (var k = 0; k < ls.length; k++) {
+      var t = clean(ls[k]), rs = rutsEn(t);
+      if (rs.length) t = clean(t.slice(0, rs[0].i).replace(/\sN\s*[°º.]?\s*$/, ''));
+      if (t.length > 9 && /^COMUNIDAD\b/.test(t) && t === t.toUpperCase()) return t;
+    }
+    return null;
+  }
+
+  var PARTICULAS_NOMBRE = /^(de|del|la|las|los|y|e|da|do|dos|das)$/;
+  function esPalabraNombre(w) { return /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+$/.test(w); }
+  /* nombre de persona: dos o más palabras con mayúscula inicial (las partículas van en minúscula); no todo en mayúsculas */
+  function pareceNombre(s) {
+    var t = clean(s);
+    if (t.length < 3 || t.length > 60 || /[\d@:;()=$]/.test(t) || t === t.toUpperCase()) return false;
+    var ws = t.split(' ');
+    return ws.length >= 2 && ws.every(function (w) {
+      return PARTICULAS_NOMBRE.test(w) || /^[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ'.\-]*$/.test(w);
+    });
+  }
+  /* «Sra. Ana Pérez», «Secretaria Juana Díaz», «Ana Pérez (presidenta)» -> nombre limpio; si no es un nombre, null */
+  function nombrePersona(l) {
+    var t = clean(String(l || '').replace(/^(Sr\.?|Sra\.?|Srta\.?)\s+/i, '').replace(/\(.*$/, '').replace(/\bRUT\b\s*:?.*$/i, '')
+      .replace(/\b(secretar[ií]a|presidenta?|tesorer[oa])\b(\s+de\s+la\s+comunidad)?/gi, ' '));
+    return pareceNombre(t) ? t : null;
+  }
+  /* «Ana Ejemplo Prueba (presidente de la comunidad)»: el nombre va en la misma línea o en las anteriores */
+  function presidenteEn(f, t) {
+    var m = /\(\s*presidente\b/.exec(f);
+    if (!m) return null;
+    var antes = t.slice(0, m.index).split('\n');
+    var nombre = clean(antes[antes.length - 1]);
+    if (!pareceNombre(nombre)) {
+      var acum = [];
+      for (var k = antes.length - 2; k >= 0 && k >= antes.length - 10; k--) {
+        var l = clean(antes[k]);
+        if (!l || /^[-–—•]/.test(l)) continue;
+        if (esPalabraNombre(l) || pareceNombre(l)) { acum.unshift(l); if (acum.length === 4) break; }
+        else if (acum.length) break;
+      }
+      nombre = acum.join(' ');
+    }
+    var n = nombre ? nombre.split(' ').length : 0;
+    return n >= 2 && n <= 5 ? nombre : null;
+  }
+
+  /* fuentes de un proyecto: «con cargo al 30 % / 70 % del AIA = X» y «otras fuentes» con el monto en la misma línea o la siguiente */
+  function fuentesEn(t, f, pfx, warnings) {
+    var out = { aia30: null, aia70: null, otras: null }, m, raw, v, mp, resto, sig, primera;
+    m = /30\s*%\s*del\s*aia\s*=\s*([^\n]*)/.exec(f);
+    if (m) {
+      raw = t.substr(m.index + m[0].length - m[1].length, m[1].length);
+      out.aia30 = montoAl(raw);
+      if (out.aia30 === null) warnings.push(pfx + 'no se pudo leer el monto con cargo al 30% del AIA ("' + clean(raw) + '"); queda vacío.');
+    } else if ((v = /30\s*%\s*del\s*aia/.exec(f))) {
+      /* PEA escaneado: el monto va como «Proyecto <nombre> $X» junto a la etiqueta del 30 % */
+      mp = /proyecto\s+[^\n$]{0,60}\$\s*(\d[\d.]*)/.exec(f.slice(v.index, v.index + 400));
+      if (mp) out.aia30 = montoAl(mp[1]);
+    }
+    m = /70\s*%\s*del\s*aia\s*=\s*([^\n]*)/.exec(f);
+    if (m) {
+      raw = t.substr(m.index + m[0].length - m[1].length, m[1].length);
+      out.aia70 = montoAl(raw);
+      if (out.aia70 === null) warnings.push(pfx + 'no se pudo leer el monto con cargo al 70% del AIA ("' + clean(raw) + '"); queda vacío.');
+    }
+    m = /otras\s+fuentes/.exec(f);
+    if (m) {
+      var desde = m.index + m[0].length, fin1 = f.indexOf('\n', desde);
+      if (fin1 < 0) fin1 = f.length;
+      resto = clean(t.slice(desde, fin1)).replace(/^[:\s]+/, '');
+      sig = fin1 < t.length ? clean(t.slice(fin1 + 1).split('\n')[0]) : '';
+      /* el monto va en la misma línea tras «otras fuentes» o en la siguiente; «N/A» deja el campo vacío */
+      for (var c = 0; c < 2; c++) {
+        primera = c === 0 ? resto : sig;
+        if (/^(N\/A|NO APLICA)/i.test(primera)) break;
+        if (/^(\$\s*\d|\d{1,3}(\.\d{3})+)/.test(primera)) { out.otras = montoAl(primera); break; }
+      }
+    }
+    return out;
+  }
+  /* nombre del proyecto: la primera línea en mayúsculas tras «Nombre del proyecto» (se salta el rótulo «RESPUESTA») */
+  function nombreProyectoEn(t, f) {
+    var r = buscar(f, /nombre\s+del\s+proyecto/, 0);
+    if (!r) return null;
+    var ls = t.slice(r.e).split('\n').map(clean).filter(function (l) { return l !== ''; }).slice(0, 6);
+    for (var k = 0; k < ls.length; k++) {
+      var l = ls[k];
+      if (l === l.toUpperCase() && /[A-ZÁÉÍÓÚÑ]{3}/.test(l) && !/^(RESPUESTA|INFORMACION SOLICITADA)$/.test(norm(l))) return l;
+    }
+    return null;
+  }
+
+  /* administración: no se reparte entre proyectos; va a un proyecto automático «Gastos de administración».
+   * items: [{ pfx, budget, presentes }]. En cada proyecto budget.administracion queda en 0 (o null si no se pudo leer). */
+  function cierreAdmin(items, antTotal, base, warnings) {
+    var hay = false, suma = 0, nulo = false;
+    items.forEach(function (it) {
+      if (!it.presentes) return;
+      hay = true;
+      if (it.budget.administracion === null) nulo = true;
+      else suma += it.budget.administracion;
+      if (it.budget.administracion) warnings.push(it.pfx + 'los gastos de administración ($' + fmt(it.budget.administracion) + ') no se reparten entre proyectos; van a "Gastos de administración".');
+      it.budget.administracion = it.budget.administracion === null ? null : 0;
+    });
+    if (!hay && antTotal === null) {
+      warnings.push('El documento no separa gastos de administración (ni en los consolidados ni en la tabla de antecedentes).');
+      return null;
+    }
+    var monto = hay ? (nulo ? null : suma) : antTotal;
+    if (!hay) {
+      warnings.push('Los consolidados no separan gastos de administración; el proyecto "Gastos de administración" toma el total de la tabla de antecedentes ($' + fmt(antTotal) + '). Verificar.');
+    } else if (antTotal !== null && monto !== null && antTotal !== monto) {
+      warnings.push('La tabla de antecedentes indica gastos administrativos totales por $' + fmt(antTotal) + ', pero los consolidados suman $' + fmt(monto) + '; se usó el consolidado. Verificar cuál corresponde.');
+    }
+    return {
+      name: 'Gastos de administración', code: null, start: null, end: null,
+      budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: monto },
+      budgetLines: [], gantt: { stages: [] }, peaDatos: [],
+      fuentes: { aia30: null, aia70: null, otras: null },
+      source: hay ? base + 'consolidados de costos' : base + 'tabla de antecedentes'
+    };
+  }
+
+  /* lo que leen las tablas del Word frente a lo que lee su texto: sólo avisa cuando ambos traen valor y no coinciden */
+  function compararTexto(com, projects, tx, warnings) {
+    var tc = tx.community, ce = com.contacto || {}, te = tc.contacto || {};
+    var msg = function (campo, a, b) {
+      warnings.push('Word: el texto y las tablas difieren en ' + campo + ' («' + a + '» en las tablas, «' + b + '» en el texto); se usó lo de las tablas.');
+    };
+    var clave = function (s) { return norm(s).replace(/[^A-Z0-9]/g, ''); };
+    var telKey = function (arr) { return (arr || []).map(function (x) { return String(x).replace(/\D/g, ''); }).sort().join('|'); };
+    var mailKey = function (arr) { return (arr || []).map(function (x) { return String(x).toLowerCase(); }).sort().join('|'); };
+    if (com.name && tc.name && clave(com.name) !== clave(tc.name)) msg('el nombre de la comunidad', com.name, tc.name);
+    if (com.rut && tc.rut && clave(com.rut) !== clave(tc.rut)) msg('el RUT de la comunidad', com.rut, tc.rut);
+    if (ce.encargado && te.encargado && clave(ce.encargado) !== clave(te.encargado)) msg('el encargado del convenio', ce.encargado, te.encargado);
+    if (ce.secretaria && te.secretaria && ce.secretaria.rut && te.secretaria.rut && clave(ce.secretaria.rut) !== clave(te.secretaria.rut)) msg('el RUT de la secretaria', ce.secretaria.rut, te.secretaria.rut);
+    if (telKey(ce.telefonos) && telKey(te.telefonos) && telKey(ce.telefonos) !== telKey(te.telefonos)) msg('los teléfonos de contacto', (ce.telefonos || []).join(' | '), (te.telefonos || []).join(' | '));
+    if (mailKey(ce.correos) && mailKey(te.correos) && mailKey(ce.correos) !== mailKey(te.correos)) msg('los correos de contacto', (ce.correos || []).join(' | '), (te.correos || []).join(' | '));
+    if (com.fechaEntrega && tc.fechaEntrega && com.fechaEntrega !== tc.fechaEntrega) msg('la fecha de entrega a CORFO', com.fechaEntrega, tc.fechaEntrega);
+    if (com.asambleaValidacion && tc.asambleaValidacion && com.asambleaValidacion !== tc.asambleaValidacion) msg('la fecha de validación por la Asamblea', com.asambleaValidacion, tc.asambleaValidacion);
+    var esAdm = function (p) { return p.name === 'Gastos de administración'; };
+    var mias = projects.filter(function (p) { return !esAdm(p); }), suyos = tx.projects.filter(function (p) { return !esAdm(p); });
+    if (mias.length !== suyos.length) {
+      warnings.push('Word: las tablas traen ' + mias.length + ' proyecto(s) y el texto ' + suyos.length + '; no se comparan los proyectos.');
+    } else {
+      mias.forEach(function (p, i) {
+        var q = suyos[i], pf = 'proyecto ' + (i + 1) + ': ';
+        if (p.name && q.name && clave(p.name) !== clave(q.name)) msg(pf + 'el nombre', p.name, q.name);
+        if (p.start && q.start && p.start !== q.start) msg(pf + 'la fecha de inicio', p.start, q.start);
+        if (p.end && q.end && p.end !== q.end) msg(pf + 'la fecha de término', p.end, q.end);
+        ['rrhh', 'operacion', 'inversion'].forEach(function (c) {
+          var a = p.budgetApproved[c], b = q.budgetApproved[c];
+          if (a !== null && b !== null && a !== b) msg(pf + 'el consolidado (' + c + ')', fmt(a), fmt(b));
+        });
+        [['aia30', 'el 30 % del AIA'], ['aia70', 'el 70 % del AIA'], ['otras', 'la fuente "otras"']].forEach(function (par) {
+          var a = p.fuentes[par[0]], b = q.fuentes[par[0]];
+          if (a !== null && b !== null && a !== b) msg(pf + par[1], fmt(a), fmt(b));
+        });
+      });
+    }
+    var adA = projects.filter(esAdm)[0], adB = tx.projects.filter(esAdm)[0];
+    if (adA && adB && adA.budgetApproved.administracion !== null && adB.budgetApproved.administracion !== null && adA.budgetApproved.administracion !== adB.budgetApproved.administracion) {
+      msg('los gastos de administración', fmt(adA.budgetApproved.administracion), fmt(adB.budgetApproved.administracion));
+    }
+  }
+
   function modeloVacio(msg) {
     return {
       community: { name: null, rut: null, address: null, legalRep: null, oc: null,
         contacto: { encargado: null, secretaria: null, telefonos: [], correos: [] },
-        fechaEntrega: null, asambleaValidacion: null, apoyo: null, peaDatos: [] },
+        fechaEntrega: null, asambleaValidacion: null, apoyo: null, peaDatos: [],
+        presidente: null, aia30: { recibido: null, saldo: null } },
       projects: [], warnings: [msg]
     };
   }
 
-  /* res = { raw_text, pages_layout (o pages), ... } de la acción 'ocr' del servicio */
-  P.extractFromOcr = function (res) {
-    var warnings = [];
-    var pagesIn = res && Array.isArray(res.pages_layout) && res.pages_layout.length ? res.pages_layout : (res && res.pages) || [];
-    var rawText = String((res && res.raw_text) || '');
-    var lines = Array.isArray(pagesIn) ? ocrLines(pagesIn) : [];
-    var conPosiciones = true;
-    if (!lines.length && clean(rawText)) {
-      lines = rawText.split(/\n+/).map(clean).filter(function (t) { return t !== ''; })
-        .map(function (t, i) { return makeLine([{ text: t, x0: 0, x1: 0, cy: i }], 1, i); });
-      conPosiciones = false;
-      warnings.push('El OCR no devolvió posiciones de texto; se leyó renglón por renglón y los valores de varias líneas pueden quedar incompletos.');
+  /* texto del PEA -> mismo modelo que extractFromStructure (con presidente y aia30).
+   * opts.origen: 'escaneado' (OCR de un PDF; es el valor por defecto) o 'word' (texto de las tablas del Word, para comparar). */
+  P.extractFromText = function (text, opts) {
+    var esW = !!(opts && opts.origen === 'word');
+    var base = esW ? 'PEA: ' : 'PEA escaneado: ';
+    var T = String(text == null ? '' : text).replace(/\r\n?/g, '\n').replace(/[ \t]/g, ' ').replace(/ {2,}/g, ' ');
+    if (!T.trim()) return modeloVacio(esW ? 'El texto del PEA está vacío.' : 'El OCR no devolvió texto legible: revisa que el PDF sea de buena calidad.');
+    var F = foldKeep(T), warnings = [];
+
+    /* antecedentes: hasta «2. Antecedentes del Plan de Vida»; si no está, hasta el primer proyecto */
+    var iPlan = buscar(F, /antecedentes\s+del\s+plan\s+de\s+vida/, 0);
+    var desde = iPlan ? iPlan.i : 0;
+
+    /* un proyecto por cada «Proyecto N°n» al inicio de línea; si no hay, por cada «INFORMACIÓN SOLICITADA» (tablas del Word)
+     * o, sin encabezado, por cada «Nombre del proyecto» (su tabla trae el plazo, el consolidado y las fuentes) */
+    var inicios = [], re = /(^|\n)\s*proyecto\s*n[º°o]\s*\d+/g, m;
+    while ((m = re.exec(F))) {
+      var st = F.indexOf('proyecto', m.index);
+      if (st >= desde) inicios.push(st);
     }
-    if (!lines.length) return modeloVacio('El OCR no devolvió texto legible: revisa que el PDF sea de buena calidad.');
-
-    var pairs = collectPairs(lines, conPosiciones);
-    var projIdx = [];
-    pairs.forEach(function (p, i) { if (p.key === 'nombreProyecto') projIdx.push(i); });
-    var comPairs = projIdx.length ? pairs.slice(0, projIdx[0]) : pairs;
-    if (!projIdx.length) warnings.push('El PEA escaneado no trae proyectos reconocibles («Nombre del proyecto»).');
-
-    /* comunidad */
-    var nombre = valOf(comPairs, 'comunidad');
-    var enc = contactoOcr(valsOf(comPairs, 'encargado'), warnings);
-    var community = {
-      name: nombre || null,
-      rut: ocrRut(valOf(comPairs, 'rutComunidad'), warnings),
-      address: null, legalRep: null, oc: null,
-      contacto: {
-        encargado: enc.encargado,
-        secretaria: enc.secretaria,
-        telefonos: telefonosOcr(valsOf(comPairs, 'telefono')),
-        correos: correosOcr(valOf(comPairs, 'correo'))
-      },
-      fechaEntrega: fechaOcr(valOf(comPairs, 'fechaEntrega'), 'La fecha de entrega del proyecto a CORFO', warnings),
-      asambleaValidacion: fechaOcr(valOf(comPairs, 'asamblea'), 'La fecha de validación por la Asamblea', warnings),
-      apoyo: valOf(comPairs, 'apoyo') || null,
-      peaDatos: rowsOf(comPairs)
-    };
-    avisosVacios(comPairs, '', warnings);
-    if (!community.name) warnings.push('No se encontró el nombre de la comunidad.');
-    if (!community.rut) warnings.push('No se encontró el RUT de la comunidad.');
-    if (!enc.encargado) warnings.push('El encargado del convenio no aparece en el PEA escaneado.');
-    if (!community.apoyo) warnings.push('La pregunta sobre apoyo para elaborar el PEA no tiene respuesta en el PEA.');
-    warnings.push('La dirección y el representante legal no se leen del PEA escaneado: complétalos a mano.');
-    warnings.push('El organismo colaborador no aparece con nombre en el PEA (sólo se marcan opciones); queda vacío.');
-
-    /* proyectos: cada «Nombre del proyecto» abre uno; sus pares forman peaDatos */
-    var projects = projIdx.map(function (pi, k) {
-      var fin = k + 1 < projIdx.length ? projIdx[k + 1] : pairs.length;
-      var sec = pairs.slice(pi, fin);
-      var lineTo = k + 1 < projIdx.length ? pairs[projIdx[k + 1]].line : lines.length;
-      var texts = lines.slice(pairs[pi].line, lineTo).map(function (l) { return l.text; });
-      var pfx = 'Proyecto ' + (k + 1) + ': ';
-      var nombreP = valOf(sec, 'nombreProyecto');
-      if (!nombreP) warnings.push(pfx + 'sin nombre de proyecto.');
-      var start = fechaOcr(valOf(sec, 'inicio'), pfx + 'fecha de inicio', warnings);
-      var end = fechaOcr(valOf(sec, 'termino'), pfx + 'fecha de término', warnings);
-      avisosVacios(sec, pfx, warnings);
-      warnings.push(pfx + 'El presupuesto y la carta Gantt de este PEA escaneado no se leyeron: cárgalos a mano o sube el Word del PEA.');
-      return {
-        name: nombreP || null,
-        code: null,
-        start: start,
-        end: end,
-        budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: 0 },
-        budgetLines: [],
-        gantt: { stages: [] },
-        peaDatos: rowsOf(sec),
-        fuentes: fuentesOcr(texts, pfx, warnings),
-        source: 'PEA escaneado: proyecto ' + (k + 1)
-      };
+    if (!inicios.length) {
+      re = /informaci\s*on\s+solicitada/g;
+      while ((m = re.exec(F))) if (m.index >= desde) inicios.push(m.index);
+    }
+    if (!inicios.length) {
+      re = /nombre\s+del\s+proyecto/g;
+      while ((m = re.exec(F))) if (m.index >= desde) inicios.push(m.index);
+    }
+    var finAnt = iPlan ? iPlan.i : F.length;
+    if (inicios.length && inicios[0] < finAnt) finAnt = inicios[0];
+    var A = T.slice(0, finAnt), FA = F.slice(0, finAnt);
+    var bloques = inicios.map(function (st0, j) {
+      var en = j + 1 < inicios.length ? inicios[j + 1] : F.length;
+      return { t: T.slice(st0, en), f: F.slice(st0, en) };
     });
 
-    /* gastos de administración: no se toman solos; se avisa como en el Word */
-    if (/gastos de administracion/.test(foldKeep(lines.map(function (l) { return l.text; }).join(' ')))) {
-      warnings.push('El PEA escaneado menciona gastos de administración; no se toman automáticamente: revísalos a mano.');
+    /* comunidad: nombre, RUT, encargado, secretaria, teléfonos, correos y fechas (sección de antecedentes) */
+    var nombre = nombreComunidadDe(A), rut = rutComunidadDe(A);
+    var iEnc = buscar(FA, /nombre\s+encargado\s+convenio/, 0);
+    var lsZ = (iEnc ? A.slice(iEnc.e) : A).split('\n').map(clean).filter(function (l) { return l !== ''; });
+    var encargado = null, k, mr;
+    for (k = 0; k < lsZ.length && !encargado; k++) if (/^(Sr|Sra|Srta)\.?\s+/i.test(lsZ[k])) encargado = nombrePersona(lsZ[k]);
+    for (k = 0; k < Math.min(3, lsZ.length) && !encargado; k++) encargado = nombrePersona(lsZ[k]);
+    /* secretaria: el «Rut:» de la celda del encargado; si la línea dice «Secretaria», el nombre sale de la línea de antes */
+    var iR = -1, rutSec = null, secretaria = null;
+    for (k = 0; k < lsZ.length && iR < 0; k++) {
+      mr = /RUT\s*:\s*(\d{1,2}\.\d{3}\.\d{3}-[\dkK])/i.exec(lsZ[k]);
+      if (mr) { iR = k; rutSec = mr[1]; }
     }
-    return { community: community, projects: projects, warnings: warnings };
+    if (iR >= 0) {
+      var linea = lsZ[iR], nomSec = nombrePersona(linea.slice(0, linea.search(/RUT\s*:/i)));
+      if (!nomSec && iR > 0) nomSec = /secretar/i.test(lsZ[iR - 1]) ? (iR > 1 ? nombrePersona(lsZ[iR - 2]) : null) : nombrePersona(lsZ[iR - 1]);
+      secretaria = { nombre: nomSec || encargado, rut: rutSec };
+    }
+    /* teléfonos (+56 y 9 dígitos) y correos de la sección de antecedentes */
+    var telefonos = [], correos = [], mt, mc, dg;
+    var reTel = /\+\s*56[ .\-()]*(?:\d[ .\-()]*){9}/g;
+    while ((mt = reTel.exec(A))) {
+      dg = mt[0].replace(/\D/g, '');
+      if (dg.length === 11 && dg.slice(0, 2) === '56' && telefonos.indexOf('+56' + dg.slice(2)) < 0) telefonos.push('+56' + dg.slice(2));
+    }
+    var reMail = /[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g;
+    while ((mc = reMail.exec(A))) if (correos.indexOf(mc[0]) < 0) correos.push(mc[0]);
+    /* fechas: entrega a CORFO (la primera después del rótulo, salvo las de «de fecha») y validación por la Asamblea */
+    var iEnt = buscar(FA, /fecha\s+de\s+entrega\s+del\s+proyecto/, 0);
+    var fEnt = iEnt ? fechaEn(A, FA, iEnt.e, undefined, true) : null;
+    var asm = /de\s+fecha\s+(\d{1,2}\s*[-\/.]\s*\d{1,2}\s*[-\/.]\s*\d{4})/.exec(FA);
+    var fAsm = asm ? P.parseFecha(asm[1].replace(/\s+/g, '')) : null;
+    var fechaEntrega = fEnt && fEnt.f ? fEnt.f.iso : null;
+    var asambleaValidacion = fAsm ? fAsm.iso : null;
+    /* monto total recibido como primera cuota (30 % del AIA) y saldo del 30 % (en el campo del saldo o como «Saldo = $X») */
+    var mRec = /(por\s+un|corresponden\s+a\s+un)\s+total\s+de\s*:?\s*(\$\s*\d[\d.]*)/.exec(F);
+    var recibido = mRec ? montoAl(mRec[2]) : null;
+    var iSal = buscar(F, /del\s+saldo\s+que/, 0), finS = inicios.length ? inicios[0] : F.length;
+    var mSal = iSal ? /=\s*(\$?\s*\d[\d.]*)/.exec(F.slice(iSal.e, finS)) : null;
+    var saldo = mSal ? montoAl(mSal[1]) : null;
+    if (saldo === null) {
+      var mSal2 = /saldo\s*=\s*(\$?\s*\d[\d.]*)/.exec(F);
+      if (mSal2) saldo = montoAl(mSal2[1]);
+    }
+    var presidente = presidenteEn(F, T);
+
+    var comunidad = {
+      name: nombre, rut: rut, address: null, legalRep: null, oc: null,
+      contacto: { encargado: encargado, secretaria: secretaria, telefonos: telefonos, correos: correos },
+      fechaEntrega: fechaEntrega, asambleaValidacion: asambleaValidacion, apoyo: null,
+      peaDatos: [], presidente: presidente ? { nombre: presidente } : null,
+      aia30: { recibido: recibido, saldo: saldo }
+    };
+    var filas = comunidad.peaDatos;
+    var fila = function (etiqueta, valor) { if (valor) filas.push({ k: etiqueta, v: valor }); };
+    fila('Nombre de comunidad', nombre);
+    fila('Rut de la comunidad', rut);
+    fila('Nombre Encargado Convenio', [encargado, secretaria ? 'Rut: ' + secretaria.rut : ''].filter(Boolean).join(' | '));
+    fila('Teléfono de contacto de Encargado Convenio', telefonos.join(' | '));
+    fila('Correo electrónico del Encargado Convenio', correos.join(' | '));
+    fila('Fecha de entrega del Proyecto a CORFO', fechaEntrega);
+    fila('Validados por la Asamblea', asambleaValidacion);
+    fila('Monto total recibido como primera cuota (30 % del AIA)', recibido === null ? '' : '$' + fmt(recibido) + '.-');
+    fila('Saldo del 30 % del AIA', saldo === null ? '' : '$' + fmt(saldo) + '.-');
+
+    if (!nombre) warnings.push('No se encontró el nombre de la comunidad.');
+    if (!rut) warnings.push('No se encontró el RUT de la comunidad.');
+    if (!encargado) warnings.push('El encargado del convenio no aparece en el ' + (esW ? 'PEA.' : 'PEA escaneado.'));
+    if (!fechaEntrega) warnings.push('La fecha de entrega del proyecto a CORFO no aparece o no es válida; queda vacía.');
+    if (asm && !fAsm) warnings.push('La fecha de validación por la Asamblea no es válida ("' + asm[1] + '"); queda vacía.');
+    if (!esW) {
+      warnings.push('La dirección y el representante legal no se leen del PEA escaneado: complétalos a mano.');
+      warnings.push('La pregunta sobre apoyo para elaborar el PEA no se lee desde el texto (las casillas no se ven): revísala a mano.');
+      warnings.push('El organismo colaborador no aparece con nombre en el PEA (sólo se marcan opciones); queda vacío.');
+    }
+
+    /* proyectos: presupuesto del consolidado (5 montos en orden), fuentes y plazo */
+    var proyectos = [], items = [];
+    bloques.forEach(function (bl, j) {
+      var pfx = 'Proyecto ' + (j + 1) + ': ';
+      var nombreP = nombreProyectoEn(bl.t, bl.f);
+      if (!nombreP) warnings.push(pfx + 'sin nombre de proyecto.');
+      var inicio = fechaDeRotulo(bl.t, bl.f, /fecha\s+de\s+inicio/, pfx + 'fecha de inicio', warnings);
+      var termino = fechaDeRotulo(bl.t, bl.f, /fecha\s+de\s+termino/, pfx + 'fecha de término', warnings);
+      var budget = { rrhh: null, operacion: null, inversion: null, administracion: null }, total = null, montos = null;
+      var iCons = buscar(bl.f, /consolidado\s+de\s+costos/, 0);
+      if (!iCons) {
+        warnings.push(pfx + 'no tiene consolidado de costos; presupuesto vacío.');
+      } else {
+        var fCons = buscar(bl.f, /tabla\s*\d|a\s+continuacion|personal\s+o\s+servicio/, iCons.e);
+        montos = montosEn(bl.t.slice(iCons.e, fCons ? fCons.i : bl.t.length));
+        if (montos.length !== 5) {
+          warnings.push(pfx + 'el consolidado de costos no trae los 5 montos en orden (RRHH, inversión, operacional, administración y total); se encontraron ' + montos.length + '. Queda vacío.');
+          montos = null;
+        } else {
+          budget.rrhh = montos[0]; budget.inversion = montos[1]; budget.operacion = montos[2]; budget.administracion = montos[3]; total = montos[4];
+          var suma = montos[0] + montos[1] + montos[2] + montos[3];
+          if (suma !== total) warnings.push(pfx + 'el consolidado no cuadra: la suma de cuentas es $' + fmt(suma) + ' y el total declarado $' + fmt(total) + '.');
+        }
+      }
+      var fuentes = fuentesEn(bl.t, bl.f, pfx, warnings);
+      if (!esW) warnings.push(pfx + 'El presupuesto y la carta Gantt de este PEA escaneado no se leyeron: cárgalos a mano o sube el Word del PEA.' + (montos ? ' Los totales del consolidado sí se leyeron; las líneas de detalle (tablas 2 a 4) y la carta Gantt no.' : ''));
+      var pd = [];
+      var filaP = function (etiqueta, valor) { if (valor !== null && valor !== '') pd.push({ k: etiqueta, v: valor }); };
+      filaP('Nombre del proyecto', nombreP);
+      filaP('Fecha de inicio', inicio);
+      filaP('Fecha de término', termino);
+      filaP('Presupuesto total del proyecto ($), impuestos incluidos', total === null ? null : '$' + fmt(total) + '.-');
+      filaP('Con cargo al 30 % del AIA', fuentes.aia30 === null ? null : '$' + fmt(fuentes.aia30) + '.-');
+      filaP('Con cargo al 70 % del AIA', fuentes.aia70 === null ? null : '$' + fmt(fuentes.aia70) + '.-');
+      filaP('Financiamiento con otras fuentes', fuentes.otras === null ? null : '$' + fmt(fuentes.otras) + '.-');
+      proyectos.push({
+        name: nombreP, code: null, start: inicio, end: termino, budgetApproved: budget, budgetLines: [],
+        gantt: { stages: [] }, peaDatos: pd, fuentes: fuentes, source: base + 'proyecto ' + (j + 1)
+      });
+      items.push({ pfx: pfx, budget: budget, presentes: montos !== null });
+    });
+
+    /* administración: el monto de los consolidados va al proyecto automático; la tabla de antecedentes sólo es respaldo */
+    var mAdm = /total\s+de\s+gastos\s+administrativos\s*:\s*(\$?\s*\d[\d.]*)/.exec(F);
+    var autoAdm = cierreAdmin(items, mAdm ? montoAl(mAdm[1]) : null, base, warnings);
+    if (autoAdm) proyectos.push(autoAdm);
+    return { community: comunidad, projects: proyectos, warnings: warnings };
+  };
+
+  /* res = { raw_text, ... } de la acción 'ocr' del servicio: se lee el TEXTO; las posiciones (pages_layout) no se usan */
+  P.extractFromOcr = function (res) {
+    return P.extractFromText(String((res && res.raw_text) || ''), { origen: 'escaneado' });
   };
 
   /* lee un .docx (ArrayBuffer o Uint8Array) y devuelve el modelo del PEA */

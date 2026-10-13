@@ -61,3 +61,58 @@ test('ningún texto en ninguna página: error claro', () => {
   assert.equal(r.ok, false);
   assert.equal(r.error, 'OCR_SIN_TEXTO');
 });
+
+test('el texto para revisar separa cada página con «— página N —» y no cambia raw_text', () => {
+  const r = plain(PP.aggregate([pagina(2, 'segunda'), pagina(1, 'primera')], 2));
+  assert.equal(r.raw_text, 'primera\n\fsegunda');
+  assert.equal(PP.reviewText(r), '— página 1 —\nprimera\n\n— página 2 —\nsegunda');
+});
+
+test('una hoja en blanco aparece marcada para revisar, pero fuera de raw_text', () => {
+  const blanca = { number: 2, ok: false, raw_text: '', pages: [], error: 'Cloud Vision no devolvió texto.' };
+  const r = plain(PP.aggregate([pagina(1, 'uno'), blanca], 2));
+  assert.equal(r.ok, true);
+  assert.equal(r.raw_text, 'uno');
+  assert.equal(r.page_count, 2);
+  assert.equal(PP.reviewText(r), '— página 1 —\nuno\n\n— página 2 —\n(sin texto: hoja en blanco)');
+});
+
+test('las páginas salen en orden de número aunque lleguen desordenadas', () => {
+  const r = plain(PP.aggregate([pagina(3, 'c'), pagina(1, 'a'), pagina(2, 'b')], 3));
+  assert.deepEqual(r.pageTexts.map(p => p.number), [1, 2, 3]);
+  assert.deepEqual(r.pages.map(p => p.number), [1, 2, 3]);
+  assert.equal(r.raw_text, 'a\n\fb\n\fc');
+});
+
+test('una página repetida se reporta y el resultado no queda completo', () => {
+  const r = plain(PP.aggregate([pagina(1, 'uno'), pagina(2, 'dos'), pagina(2, 'dos otra vez')], 2));
+  assert.equal(r.ok, false);
+  assert.equal(r.document_coverage, 'PARTIAL_PAGE_SELECTION');
+  assert.deepEqual(r.duplicatePages, [2]);
+  assert.match(r.error, /páginas repetidas en la lectura: 2/);
+});
+
+test('un resultado de una página que no existe en el PDF se reporta', () => {
+  const r = plain(PP.aggregate([pagina(1, 'uno'), pagina(4, 'cuatro')], 2));
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.missingPages, [2]);
+  assert.match(r.error, /resultados de páginas fuera del PDF: 4/);
+});
+
+test('failedPages lista cada página fallida con su motivo y el resto sigue en el texto', () => {
+  const malla = { number: 2, ok: false, raw_text: '', pages: [], error: 'Cloud Vision HTTP 500' };
+  const grande = { number: 4, ok: false, raw_text: '', pages: [], error: 'ARCHIVO_MUY_GRANDE' };
+  const r = plain(PP.aggregate([pagina(1, 'uno'), malla, pagina(3, 'tres'), grande], 4));
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.failedPages, [{ number: 2, error: 'Cloud Vision HTTP 500' }, { number: 4, error: 'ARCHIVO_MUY_GRANDE' }]);
+  assert.equal(r.error, 'página 2: Cloud Vision HTTP 500; página 4: ARCHIVO_MUY_GRANDE');
+  assert.equal(r.page_count, 2);
+  assert.deepEqual(r.pageTexts.map(p => p.number), [1, 3]);
+});
+
+test('un PDF sin páginas da un error claro', () => {
+  const r = plain(PP.aggregate([], 0));
+  assert.equal(r.ok, false);
+  assert.equal(r.error, 'el PDF no tiene páginas');
+  assert.equal(PP.reviewText(r), '');
+});

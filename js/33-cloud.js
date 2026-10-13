@@ -249,16 +249,61 @@
     });
   }
 
-  /* Una página ya dibujada derecha (imagen JPEG): así se lee un PDF escaneado aunque la imagen esté girada dentro del archivo. */
-  function recognizePage(blob, number) {
+  /* Una página ya dibujada derecha (JPEG): así se lee un PDF escaneado aunque la imagen esté girada dentro del archivo.
+     Devuelve { number, ok, raw_text, pages, error } y no rechaza por un fallo de la página: queda con ok:false y su motivo
+     (RF.pdfPages.aggregate la pone en failedPages). Solo rechaza si el fallo es de todo el servicio (cuota, clave, no configurado).
+     Un fallo pasajero (red, HTTP, tiempo, respuesta ilegible, servicio ocupado, Vision 408/429/5xx) se reintenta hasta 2 veces;
+     onRetry(intento) avisa cada reintento (intento 2 o 3). Una hoja sin texto cuenta como leída (en blanco).
+     No usa postRetry: ese reintenta una sola vez y no vuelve a validar la respuesta, y también lo usa el escaneo de recibos. */
+  var PAGINA_REINTENTOS = 2;
+  var PAGINA_MAX_BYTES = 20 * 1024 * 1024; /* mismo límite que el servicio (ocrMaxBytes, sobre los bytes ya decodificados) */
+  var FALLO_TODO = /^(NO_CONFIGURADO|OCR_NO_CONFIGURADO|SERVICIO_NO_APROBADO|CLAVE_DISTINTA|SIN_CUENTA|BLOQUEADO|BLOQUEADA|SESION_INVALIDA|LIMITE_DIARIO|TIPO_NO_PERMITIDO)$/;
+  var FALLO_PASAJERO = /^(TIMEOUT|RESPUESTA_INVALIDA|OCUPADO)$|Failed to fetch|NetworkError|Load failed|^Cloud Vision HTTP (408|429|5\d\d)$/;
+  var SIN_TEXTO = /SIN_TEXTO|no devolvió texto/;
+  /* 'todo' = no tiene sentido seguir con el PDF; 'pasajero' = se puede reintentar; 'pagina' = esta página no se pudo leer */
+  function tipoFallo(e) {
+    var cod = String((e && (e.code || e.message)) || '');
+    if (FALLO_TODO.test(cod)) return 'todo';
+    if ((e && (e.httpStatus === 404 || e.httpStatus === 429 || e.httpStatus >= 500)) || FALLO_PASAJERO.test(cod)) return 'pasajero';
+    return 'pagina';
+  }
+  function esperar(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
+  /* una llamada a la acción 'ocr'. Una respuesta sin el formato esperado (p. ej. la de «ping») cuenta como fallo pasajero */
+  function intentarPagina(datos, n, onRetry) {
+    return post('ocr', datos, 120000).then(function (r) {
+      if (!r || !(r.ok === false || (r.ok === true && typeof r.raw_text === 'string'))) throw new Error('RESPUESTA_INVALIDA');
+      if (r.ok === false && r.error && tipoFallo(new Error(String(r.error))) !== 'pagina') throw new Error(String(r.error));
+      return r;
+    }).catch(function (e) {
+      if (tipoFallo(e) !== 'pasajero' || n >= PAGINA_REINTENTOS) throw e;
+      if (onRetry) onRetry(n + 2);
+      return esperar(1500 * (n + 1)).then(function () { return intentarPagina(datos, n + 1, onRetry); });
+    });
+  }
+  function paginaFallida(number, error) { return { number: number, ok: false, raw_text: '', pages: [], error: error }; }
+  function paginaDesde(number, res) {
+    var error = String(res.error || '');
+    if (res.ok === true && res.raw_text) return { number: number, ok: true, raw_text: String(res.raw_text), pages: res.pages_layout || res.pages || [], error: null };
+    /* una hoja sin texto (en blanco) no es un fallo: el servicio responde «no devolvió texto» */
+    if (res.ok === true || SIN_TEXTO.test(error)) return { number: number, ok: true, raw_text: '', pages: [], error: null };
+    return paginaFallida(number, error || 'el servicio respondió con un error sin detalle');
+  }
+  function motivoPagina(e) {
+    var m = String((e && (e.code || e.message)) || '');
+    if (m === 'RESPUESTA_INVALIDA') return 'el servicio respondió algo que no se pudo leer';
+    if (m === 'OCUPADO') return 'el servicio estaba ocupado';
+    return humanError(e);
+  }
+  function recognizePage(blob, number, onRetry) {
+    if (!blob) return Promise.resolve(paginaFallida(number, 'no se pudo convertir la página en imagen'));
+    if (blob.size > PAGINA_MAX_BYTES) return Promise.resolve(paginaFallida(number, 'la imagen pasa de 20 MB'));
     return blobToBase64(blob).then(function (b64) {
-      return postRetry('ocr', { fileName: 'pagina-' + number + '.jpg', mimeType: 'image/jpeg', base64: b64 }, 120000, function (r) { return !!(r && (r.ok === false || r.engine || r.pages || r.pages_layout)); }, function () {});
+      return intentarPagina({ fileName: 'pagina-' + number + '.jpg', mimeType: 'image/jpeg', base64: b64 }, 0, onRetry);
     }).then(function (res) {
-      res = res || {};
-      var ok = res.ok === true && !!res.raw_text;
-      /* una hoja sin texto (en blanco) no es un fallo: el servicio responde «no devolvió texto» */
-      var enBlanco = /SIN_TEXTO|no devolvió texto/.test(String(res.error || ''));
-      return { number: number, ok: ok || enBlanco, raw_text: ok ? String(res.raw_text) : '', pages: ok ? (res.pages_layout || res.pages || []) : [], error: ok || enBlanco ? null : (res.error || 'OCR_SIN_TEXTO') };
+      return paginaDesde(number, res);
+    }, function (e) {
+      if (tipoFallo(e) === 'todo') throw (String(e.message) === 'LIMITE_DIARIO' ? new Error('se alcanzó el límite diario de lectura del servicio; intenta otro día') : e);
+      return paginaFallida(number, motivoPagina(e));
     });
   }
 

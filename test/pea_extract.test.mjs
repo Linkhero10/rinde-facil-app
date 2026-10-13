@@ -264,82 +264,45 @@ test('fuentes sin fila quedan null sin advertencia; un monto ilegible queda null
   assert.match(m2.warnings.join(' | '), /no se pudo leer el monto con cargo al 30% del AIA/);
 });
 
-/* ---------- PEA escaneado (OCR): páginas SINTÉTICAS con renglones de celdas ---------- */
+/* ---------- PEA escaneado (OCR): se lee el TEXTO (raw_text); las posiciones de la página no se usan ---------- */
 
-/* rows: [[y, [[x, texto], ...]], ...] en coordenadas de lectura (0 a 1). angle: giro de la página tal como la entrega el OCR. */
-function ocrPage(rows, angle = 0) {
-  const paragraphs = [];
-  rows.forEach(([y, cells]) => cells.forEach(([x, text]) => {
-    const u0 = x, u1 = x + 0.3, v0 = y - 0.008, v1 = y + 0.008;
-    /* inversa de la lectura: la página «escrita» girada trae las cajas como las trae el OCR */
-    const corners = [[u0, v0], [u1, v0], [u0, v1], [u1, v1]].map(([u, v]) =>
-      angle === 90 ? [1 - v, u] : angle === 180 ? [1 - u, 1 - v] : angle === 270 ? [v, 1 - u] : [u, v]);
-    const xs = corners.map(c => c[0]), ys = corners.map(c => c[1]);
-    paragraphs.push({ text, angle: 0, box: { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) } });
-  }));
-  return { number: 1, angle, width: 1000, height: 1400, paragraphs };
-}
-/* formulario sintético: etiqueta a la izquierda (x 0,05), valor a la derecha (x 0,45) */
-const FORM_ROWS = [
-  [0.10, [[0.05, 'Nombre de comunidad'], [0.45, 'Comunidad Sintética Alfa']]],
-  [0.14, [[0.05, 'Rut de la comunidad'], [0.45, 'N° 11.111.111-1']]],
-  [0.18, [[0.05, 'Nombre Encargado Convenio'], [0.45, 'Sra. Ana Prueba']]],
-  [0.22, [[0.45, 'Secretaria Juana Prueba Rut: 22.222.222-2']]],
-  [0.26, [[0.05, 'Teléfono de contacto'], [0.45, '+56 9 1234 5678']]],
-  [0.30, [[0.45, '22 333 4444']]],
-  [0.34, [[0.05, 'Correo electrónico del Encargado Convenio'], [0.45, 'ana.prueba@ejemplo.cl']]],
-  [0.38, [[0.05, 'Fecha de entrega del Proyecto'], [0.45, '15-02-2024']]],
-  [0.42, [[0.05, 'Validados por la Asamblea'], [0.45, 'FECHA 3-5-2024']]],
-  [0.46, [[0.05, 'Indicar si recibió apoyo'], [0.45, 'Sí, la Municipalidad apoyó la redacción']]],
-  [0.52, [[0.05, 'Nombre del proyecto'], [0.45, 'Proyecto Sintético Uno']]],
-  [0.56, [[0.05, 'Fecha de inicio'], [0.45, '01-03-2026']]],
-  [0.60, [[0.05, 'Fecha de término'], [0.45, '31-12-2026']]],
-  [0.64, [[0.05, 'Presupuesto total del Proyecto ($)'], [0.45, '1.234.567']]],
-  [0.68, [[0.05, 'Con cargo al 30% del AIA'], [0.45, '= 1.234.567']]],
-];
-const ocrRes = (rows, angle) => ({ ok: true, raw_text: 'texto', pages: [ocrPage(rows, angle)], page_count: 1, total_pages: 1 });
+/* texto con la forma que entrega el OCR: rótulos y valores en renglones separados (los datos son inventados) */
+const OCR_TEXTO = [
+  'Nombre de comunidad', 'Rut de la comunidad', 'Nombre Encargado Convenio',
+  'COMUNIDAD SINTÉTICA ALFA', 'N°11.111.111-1', 'Sra. Ana Prueba', 'Rut: 22.222.222-2',
+  'Teléfono de contacto de +56 9 1234 5678', 'Correo electrónico del Encargado Convenio', 'ana.prueba@ejemplo.cl',
+  'Fecha de entrega del Proyecto a CORFO', '15-02-2024',
+  '2. Antecedentes del Plan de Vida de la Comunidad o similar (opcional)',
+  'Nombre del proyecto', 'PROYECTO SINTÉTICO UNO',
+  'Fecha de inicio: 1 de marzo de 2026', 'Fecha de término: 31 de diciembre de 2026',
+  'CONSOLIDADO DE COSTOS DEL PROYECTO',
+  '$1.000.000.-', '$0.-', '$2.000.000.-', '$500.000.-', '$3.500.000.-',
+  'A continuación, se presentan tres tablas.'
+].join('\n');
 
-test('OCR sin giro: etiquetas y valores por posición (comunidad, contacto, fechas, proyecto, fuentes)', () => {
-  const m = plain(P.extractFromOcr(ocrRes(FORM_ROWS, 0)));
-  assert.equal(m.community.name, 'Comunidad Sintética Alfa');
-  assert.equal(m.community.rut, '11.111.111-1');
-  assert.equal(m.community.contacto.encargado, 'Ana Prueba');
-  assert.deepEqual(m.community.contacto.secretaria, { nombre: 'Juana Prueba', rut: '22.222.222-2' });
-  assert.deepEqual(m.community.contacto.telefonos, ['+56 9 1234 5678', '22 333 4444']);
-  assert.deepEqual(m.community.contacto.correos, ['ana.prueba@ejemplo.cl']);
-  assert.equal(m.community.fechaEntrega, '2024-02-15');
-  assert.equal(m.community.asambleaValidacion, '2024-05-03');
-  assert.equal(m.community.apoyo, 'Sí, la Municipalidad apoyó la redacción');
-  assert.equal(m.projects.length, 1);
-  const p = m.projects[0];
-  assert.equal(p.name, 'Proyecto Sintético Uno');
-  assert.equal(p.start, '2026-03-01');
-  assert.equal(p.end, '2026-12-31');
-  assert.deepEqual(p.fuentes, { aia30: 1234567, aia70: null, otras: null });
-  assert.deepEqual(p.budgetLines, []);
-  assert.deepEqual(p.gantt, { stages: [] });
-  assert.deepEqual(p.budgetApproved, { rrhh: 0, operacion: 0, inversion: 0, administracion: 0 });
-  assert.ok(p.peaDatos.some(r => r.k === 'Presupuesto total del Proyecto' && r.v === '1.234.567'), 'el presupuesto queda como dato del PEA');
-  assert.ok(m.warnings.some(w => w.includes('El presupuesto y la carta Gantt de este PEA escaneado no se leyeron: cárgalos a mano o sube el Word del PEA.')));
+test('OCR: se lee el texto (raw_text) y las posiciones de la página no cambian el resultado', () => {
+  const base = plain(P.extractFromOcr({ ok: true, raw_text: OCR_TEXTO }));
+  assert.equal(base.community.name, 'COMUNIDAD SINTÉTICA ALFA');
+  assert.equal(base.community.rut, '11.111.111-1');
+  assert.equal(base.community.contacto.encargado, 'Ana Prueba');
+  assert.deepEqual(base.community.contacto.secretaria, { nombre: 'Ana Prueba', rut: '22.222.222-2' });
+  assert.deepEqual(base.community.contacto.telefonos, ['+56912345678']);
+  assert.deepEqual(base.community.contacto.correos, ['ana.prueba@ejemplo.cl']);
+  assert.equal(base.community.fechaEntrega, '2024-02-15');
+  assert.equal(base.projects[0].name, 'PROYECTO SINTÉTICO UNO');
+  assert.equal(base.projects[0].start, '2026-03-01');
+  assert.equal(base.projects[0].end, '2026-12-31');
+  assert.deepEqual(base.projects[0].budgetApproved, { rrhh: 1000000, operacion: 2000000, inversion: 0, administracion: 0 });
+  assert.equal(base.projects[1].name, 'Gastos de administración');
+  assert.equal(base.projects[1].budgetApproved.administracion, 500000);
+  const conPosiciones = { ok: true, raw_text: OCR_TEXTO, pages_layout: [{ number: 1, angle: 90, paragraphs: [{ text: 'otra cosa', box: { x0: 0.9, y0: 0.9, x1: 0.1, y1: 0.1 } }] }] };
+  assert.deepEqual(plain(P.extractFromOcr(conPosiciones)), base);
 });
 
-test('OCR girado 180°, 90° y 270°: mismo resultado que la página recta', () => {
-  const base = plain(P.extractFromOcr(ocrRes(FORM_ROWS, 0)));
-  for (const angle of [180, 90, 270]) {
-    assert.deepEqual(plain(P.extractFromOcr(ocrRes(FORM_ROWS, angle))), base, 'ángulo ' + angle);
-  }
-});
-
-test('OCR: un valor de dos renglones (continuación en la misma columna) se une', () => {
-  const rows = [
-    [0.10, [[0.05, 'Nombre del proyecto'], [0.45, 'Proyecto Sintético Dos']]],
-    [0.14, [[0.05, 'Objetivo general'], [0.45, 'Mejorar el sistema de']]],
-    [0.18, [[0.45, 'riego comunitario']]],
-    [0.22, [[0.05, 'Fecha de inicio'], [0.45, '01-04-2026']]],
-  ];
-  const p = plain(P.extractFromOcr(ocrRes(rows, 0))).projects[0];
-  assert.ok(p.peaDatos.some(r => r.k === 'Objetivo general' && r.v === 'Mejorar el sistema de riego comunitario'));
-  assert.equal(p.start, '2026-04-01');
+test('OCR: la carta Gantt queda vacía y el aviso de presupuesto y Gantt sale por proyecto', () => {
+  const m = plain(P.extractFromOcr({ ok: true, raw_text: OCR_TEXTO }));
+  assert.deepEqual(m.projects[0].gantt, { stages: [] });
+  assert.ok(m.warnings.some(w => w.startsWith('Proyecto 1: El presupuesto y la carta Gantt de este PEA escaneado no se leyeron: cárgalos a mano o sube el Word del PEA.')));
 });
 
 test('OCR: texto vacío devuelve un modelo vacío con el aviso de calidad', () => {
@@ -351,16 +314,9 @@ test('OCR: texto vacío devuelve un modelo vacío con el aviso de calidad', () =
   assert.deepEqual(m2.warnings, m.warnings);
 });
 
-test('OCR sin posiciones: se lee el texto renglón por renglón con aviso', () => {
-  const m = plain(P.extractFromOcr({ ok: true, raw_text: 'Nombre de comunidad: Comunidad Sintética Alfa\nRut de la comunidad: 11.111.111-1' }));
-  assert.equal(m.community.name, 'Comunidad Sintética Alfa');
-  assert.equal(m.community.rut, '11.111.111-1');
-  assert.match(m.warnings.join(' | '), /no devolvió posiciones/);
-});
-
-test('OCR: una etiqueta sin valor queda vacía con aviso', () => {
-  const rows = [[0.10, [[0.05, 'Nombre de comunidad']]], [0.14, [[0.05, 'Rut de la comunidad'], [0.45, '11.111.111-1']]]];
-  const m = plain(P.extractFromOcr(ocrRes(rows, 0)));
+test('OCR: una etiqueta sin valor queda vacía; el RUT con «Rut de la comunidad:» en la misma línea se lee', () => {
+  const m = plain(P.extractFromOcr({ ok: true, raw_text: 'Nombre de comunidad\nRut de la comunidad: 11.111.111-1' }));
   assert.equal(m.community.name, null);
-  assert.match(m.warnings.join(' | '), /«Nombre de comunidad» no tiene valor; queda vacía/);
+  assert.equal(m.community.rut, '11.111.111-1');
+  assert.match(m.warnings.join(' | '), /No se encontró el nombre de la comunidad/);
 });
