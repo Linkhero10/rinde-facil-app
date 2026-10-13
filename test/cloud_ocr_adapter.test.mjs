@@ -99,6 +99,15 @@ test('error de la API: no devuelve texto ni disposición de páginas', () => {
   assert.equal(out.raw_text, '');
 });
 
+test('si UrlFetchApp lanza una excepción (p. ej. cuota diaria), devuelve ERROR con el motivo y no un ReferenceError', () => {
+  const { ctx } = env([]);
+  ctx.UrlFetchApp.fetch = () => { throw new Error('Service invoked too many times for one day: urlfetch.'); };
+  const out = JSON.parse(JSON.stringify(ctx.callCloudVision_(pdfBlob(), { page_count: 2 })));
+  assert.equal(out.status, 'ERROR');
+  assert.match(out.error, /Service invoked too many times/);
+  assert.ok(Array.isArray(out.pages_requested));
+});
+
 test('sin proyecto de Google configurado: error controlado sin llamar a la API', () => {
   const { ctx, calls } = env([]);
   ctx.PropertiesService.getScriptProperties = () => ({ getProperty: () => '' });

@@ -285,8 +285,8 @@ function callCloudVision_(blob, metadata = {}) {
     : '';
   const fileRequest = isCloudVisionFileMime_(mimeType);
   const started = Date.now();
+  let requestedPages = [];
   try {
-    let requestedPages = [];
     let results = [];
     let expectedPageCount = null;
     if (!fileRequest) {
