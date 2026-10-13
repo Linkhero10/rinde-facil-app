@@ -204,7 +204,7 @@
 
   TOOLS.subirpea = { title: 'Subir el PEA', icon: 'file', desc: 'Sube el Word del PEA: la app lee tu comunidad, tus proyectos, el presupuesto y la Carta Gantt, y los aplica sin borrar nada.', render: function () {
     var U = RF.util, UI = RF.ui, h = U.h;
-    var st = { file: null, model: null, notice: '', reading: false, stage: '', ocrText: '', fromPdf: false, busy: false, rut: RUT_ACUERDO, legalRep: '', result: null,
+    var st = { file: null, model: null, notice: '', reading: false, stage: '', ocrText: '', fromPdf: false, busy: false, rut: RUT_ACUERDO, legalRep: '', result: null, lectura: null, lecturaUrl: null,
       acta: { file: null, date: '', projectId: '', busy: false, result: null } };
     var body = h('div');
 
@@ -212,9 +212,15 @@
     function fechaTxt(iso) { return iso ? U.fmtDate(iso) : null; }
     function money(v) { return v == null ? '—' : U.fmtCLP(v); }
 
+    /* libera el enlace de descarga de la lectura técnica (JSON) del PDF anterior */
+    function soltarDescarga() {
+      if (st.lecturaUrl) URL.revokeObjectURL(st.lecturaUrl);
+      st.lectura = null; st.lecturaUrl = null;
+    }
+
     function onFile(file) {
       if (!file) return;
-      st.file = null; st.model = null; st.result = null; st.notice = ''; st.ocrText = ''; st.fromPdf = false; st.stage = '';
+      st.file = null; st.model = null; st.result = null; st.notice = ''; st.ocrText = ''; st.fromPdf = false; st.stage = ''; soltarDescarga();
       if (/\.pdf$/i.test(file.name) || /pdf/i.test(file.type || '')) { onPdf(file); return; }
       if (!/\.docx$/i.test(file.name)) { st.notice = 'Ese archivo no es un Word (.docx) ni un PDF. Sube el Word del PEA o el PDF escaneado.'; paint(); return; }
       st.file = file; st.reading = true; paint();
@@ -258,13 +264,16 @@
         if (!vigente()) return soltarLectura();
         if (!res || !res.ok) throw new Error(motivoPdf(res));
         st.ocrText = RF.pdfPages.reviewText(res);
+        soltarDescarga();
+        st.lectura = res;
+        st.lecturaUrl = URL.createObjectURL(new Blob([JSON.stringify(res)], { type: 'application/json' }));
         st.model = RF.pea.extractFromOcr(res);
         st.rut = P.rutInicial(st.model);
         st.legalRep = clean(st.model.community && st.model.community.legalRep) || '';
         st.reading = false; st.stage = ''; paint();
       }).catch(function (e) {
         if (!vigente()) return soltarLectura();
-        st.file = null; st.model = null; st.fromPdf = false; st.ocrText = '';
+        st.file = null; st.model = null; st.fromPdf = false; st.ocrText = ''; soltarDescarga();
         st.reading = false; st.stage = '';
         st.notice = 'No se pudo leer el PDF: ' + msgOf(e).replace(/\.$/, '') + '.';
         paint();
@@ -338,7 +347,9 @@
 
       if (st.fromPdf) {
         kids.push(UI.callout('warn', 'PDF escaneado:', ' ' + OCR_AVISO));
-        kids.push(h('details', { class: 'ocr-raw' }, h('summary', null, 'Texto que leyó el OCR'), h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, st.ocrText || '(sin texto)')));
+        var lecturaKids = [h('summary', null, 'Texto que leyó el OCR'), h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, st.ocrText || '(sin texto)')];
+        if (st.lecturaUrl) lecturaKids.push(h('p', { class: 'hint' }, h('a', { href: st.lecturaUrl, download: 'lectura-pea-tecnica.json' }, 'Descargar lectura técnica (JSON)')));
+        kids.push(h.apply(null, ['details', { class: 'ocr-raw' }].concat(lecturaKids)));
       }
 
       var w = m.warnings || [];

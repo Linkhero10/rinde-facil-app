@@ -1009,9 +1009,35 @@
     return { community: comunidad, projects: proyectos, warnings: warnings };
   };
 
-  /* res = { raw_text, ... } de la acción 'ocr' del servicio: se lee el TEXTO; las posiciones (pages_layout) no se usan */
+  /* Avisos con la página donde está lo que el texto no conserva: la carta Gantt y las tablas 2 a 4 del presupuesto.
+   * pageTexts = [{ number, text }] de la lectura por página. Solo señala páginas: no inventa valores. */
+  function paginasPorRevisar(pageTexts) {
+    var paginas = (pageTexts || []).filter(function (p) { return p && p.text; })
+      .sort(function (a, b) { return a.number - b.number; });
+    var avisos = [];
+    var rango = function (a, b) { return a === b ? 'página ' + a : 'páginas ' + a + ' a ' + b; };
+    var gantt = paginas.filter(function (p) { return /CARTA\s+GANTT/i.test(p.text); });
+    if (gantt.length) {
+      var inicio = gantt[0].number;
+      var cierre = paginas.filter(function (p) { return p.number > inicio && /CONSOLIDADO\s+DE\s+COSTOS/i.test(p.text); });
+      if (cierre.length) avisos.push('Carta Gantt: ' + rango(inicio, cierre[0].number - 1) + ' del PDF. Es una tabla de actividades por mes con marcas (X): el texto del OCR no conserva las celdas, así que no se leyó. Revísala en el PDF o cárgala a mano.');
+      else avisos.push('Carta Gantt: empieza en la página ' + inicio + ' del PDF y puede seguir en las páginas siguientes. El texto del OCR no conserva las celdas, así que no se leyó. Revísala en el PDF o cárgala a mano.');
+    }
+    var tablas = [];
+    [2, 3, 4].forEach(function (n) {
+      var re = new RegExp('^\\s*TABLA\\s*' + n + '\\b', 'im');
+      var hit = paginas.filter(function (p) { return re.test(p.text); });
+      if (hit.length) tablas.push('tabla ' + n + ' en la página ' + hit[0].number);
+    });
+    if (tablas.length) avisos.push('Detalle del presupuesto: ' + tablas.join('; ') + ' del PDF. El OCR devuelve las celdas sueltas, así que las líneas no se leyeron. Revisa esas páginas y las siguientes o cárgalas a mano.');
+    return avisos;
+  }
+
+  /* res = { raw_text, pageTexts, ... } de la acción 'ocr' del servicio: se lee el TEXTO; las posiciones (pages_layout) no se usan */
   P.extractFromOcr = function (res) {
-    return P.extractFromText(String((res && res.raw_text) || ''), { origen: 'escaneado' });
+    var model = P.extractFromText(String((res && res.raw_text) || ''), { origen: 'escaneado' });
+    model.warnings = (model.warnings || []).concat(paginasPorRevisar(res && res.pageTexts));
+    return model;
   };
 
   /* lee un .docx (ArrayBuffer o Uint8Array) y devuelve el modelo del PEA */
