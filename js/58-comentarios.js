@@ -5,7 +5,8 @@
   'use strict';
   var doc = root.document;
   if (!doc || doc.getElementById('rf-com-raiz')) return;
-  var SERVICIO = root.RF_COMENTARIOS_URL || ''; /* URL del servicio que termina en /exec: se pone al desplegar comentarios/Comentarios.gs */
+  /* servicio de comentarios (comentarios/Comentarios.gs, en la cuenta de quien administra la revisión). Cualquiera puede leer y comentar */
+  var SERVICIO = root.RF_COMENTARIOS_URL || 'https://script.google.com/macros/s/AKfycbxGzAkr4fgzeIQbqPXdkkRAguUZEblncalVcpL0LMh8Ig8_8sJoNPj3yhQEUlYmOM5e0Q/exec';
   var MAX_TEXTO = 1500, MAX_NOMBRE = 60;
   var est = { seleccionando: false, comentarios: [], pins: [], resaltado: null, panel: null, menu: null, principal: null, banner: null, aviso: null };
 
