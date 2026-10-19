@@ -63,8 +63,14 @@ test('omite fixtures privados y cachés generadas en lugar de copiarlos o bloque
 });
 
 test('la publicación invalida la caché anterior y precarga el módulo de confianza', () => {
-  assert.match(swSource, /var VERSION\s*=\s*['"]rf-v3-58['"]/);
+  assert.match(swSource, /var VERSION\s*=\s*['"]rf-v3-59['"]/);
   assert.match(swSource, /CORE\s*=\s*\[[^\]]*['"]js\/00-service-trust\.js['"]/s);
+});
+
+test('la versión que se ve al pie de la lista de comentarios es la de la publicación', async () => {
+  const comentariosSource = await readFile(new URL('../js/58-comentarios.js', import.meta.url), 'utf8');
+  const version = swSource.match(/var VERSION\s*=\s*['"]([^'"]+)['"]/)[1];
+  assert.match(comentariosSource, new RegExp("var VERSION_REVISION\\s*=\\s*['\"]" + version + "['\"]"));
 });
 
 test('commit y push usan funciones protegidas y un refspec explícito, sin force', () => {

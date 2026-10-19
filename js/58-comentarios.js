@@ -9,6 +9,8 @@
   /* servicio de comentarios (comentarios/Comentarios.gs, en la cuenta de quien administra la revisión). Cualquiera puede leer y comentar */
   var SERVICIO = root.RF_COMENTARIOS_URL || 'https://script.google.com/macros/s/AKfycbxGzAkr4fgzeIQbqPXdkkRAguUZEblncalVcpL0LMh8Ig8_8sJoNPj3yhQEUlYmOM5e0Q/exec';
   var MAX_TEXTO = 1500, MAX_NOMBRE = 60;
+  /* la misma versión que sw.js (lo comprueba test/publicar-safety.test.mjs): quien revisa la ve al pie de la lista, para saber qué copia usa */
+  var VERSION_REVISION = 'rf-v3-59';
   var est = { seleccionando: false, comentarios: [], conDatos: false, cargando: false, fallo: false, panelTipo: null, botonContador: null, pinesPorClave: {}, resaltado: null, etiqueta: null, panel: null, menu: null, principal: null, banner: null, aviso: null, objetivo: null, marcas: [], activo: null, vista: null };
 
   function estilos() {
@@ -128,9 +130,13 @@
   function cargar(intento) {
     var n = intento || 0;
     if (!SERVICIO) return Promise.resolve({ ok: false, lista: [] });
-    return root.fetch(SERVICIO, { cache: 'no-store' })
+    /* si el servicio no responde en 12 segundos, se corta el intento: una descarga colgada no debe dejar «cargando…» para siempre */
+    var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var corte = root.setTimeout(function () { if (ctl) ctl.abort(); }, 12000);
+    var pedido = root.fetch(SERVICIO, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function (j) { if (!j || !Array.isArray(j.comentarios)) throw new Error('RESPUESTA'); return { ok: true, lista: j.comentarios }; })
+      .then(function (j) { if (!j || !Array.isArray(j.comentarios)) throw new Error('RESPUESTA'); return { ok: true, lista: j.comentarios }; });
+    return pedido.then(function (res) { root.clearTimeout(corte); return res; }, function (e) { root.clearTimeout(corte); throw e; })
       .catch(function () {
         if (n >= 2) return { ok: false, lista: [] };
         return new Promise(function (res) { root.setTimeout(res, 1500 * (n + 1)); }).then(function () { return cargar(n + 1); });
@@ -270,6 +276,7 @@
       item.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target === item) mostrarComentario(c); });
       est.panel.appendChild(item);
     });
+    est.panel.appendChild(el('div', 'rf-com-meta', 'Recibidos del servicio: ' + (est.conDatos ? est.comentarios.length : 'ninguno todavía') + ' · versión de revisión ' + VERSION_REVISION));
     var acciones = el('div', 'rf-com-acciones');
     acciones.appendChild(boton('Cerrar', cerrarPanel, 'small'));
     est.panel.appendChild(acciones);
