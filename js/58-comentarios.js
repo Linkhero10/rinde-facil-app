@@ -9,7 +9,7 @@
   /* servicio de comentarios (comentarios/Comentarios.gs, en la cuenta de quien administra la revisión). Cualquiera puede leer y comentar */
   var SERVICIO = root.RF_COMENTARIOS_URL || 'https://script.google.com/macros/s/AKfycbxGzAkr4fgzeIQbqPXdkkRAguUZEblncalVcpL0LMh8Ig8_8sJoNPj3yhQEUlYmOM5e0Q/exec';
   var MAX_TEXTO = 1500, MAX_NOMBRE = 60;
-  var est = { seleccionando: false, comentarios: [], pinesPorClave: {}, resaltado: null, etiqueta: null, panel: null, menu: null, principal: null, banner: null, aviso: null, objetivo: null, marcas: [], activo: null, vista: null };
+  var est = { seleccionando: false, comentarios: [], conDatos: false, cargando: false, fallo: false, panelTipo: null, botonContador: null, pinesPorClave: {}, resaltado: null, etiqueta: null, panel: null, menu: null, principal: null, banner: null, aviso: null, objetivo: null, marcas: [], activo: null, vista: null };
 
   function estilos() {
     if (doc.getElementById('rf-com-estilos')) return;
@@ -110,11 +110,8 @@
     return dir;
   }
   /* la pestaña en la que está quien revisa: su nombre («Mi ruta», «Subir el PEA»…) */
-  function pantallaActual() {
-    var R = root.RF || {};
-    if (R.auth && R.auth.phase && R.auth.phase() !== 'open') return 'Entrada a Rinde Fácil';
-    return nombrePestana(root.location.hash || '#/');
-  }
+  /* la pestaña es la del hash, esté o no abierta la sesión: con la pantalla de entrada también se ven los comentarios de esa pestaña */
+  function pantallaActual() { return nombrePestana(root.location.hash || '#/'); }
 
   /* el comentario general no hace referencia a ninguna pestaña: se guarda y se ve en la pantalla donde se escribió, como antes */
   function direccionActual() { return root.location.hash || '#/'; }
@@ -127,12 +124,17 @@
   }
 
   /* ---- red: nunca lanza; si algo falla, se avisa y no se pierde el texto escrito ---- */
-  function cargar() {
-    if (!SERVICIO) return Promise.resolve([]);
-    /* trae todos: el servicio filtra por texto exacto y los generales se guardan con la dirección; el filtro de cada pantalla está en esDeAqui */
+  /* trae todos (el filtro de cada pantalla está en esDeAqui). Si falla, reintenta dos veces antes de dar el error */
+  function cargar(intento) {
+    var n = intento || 0;
+    if (!SERVICIO) return Promise.resolve({ ok: false, lista: [] });
     return root.fetch(SERVICIO, { cache: 'no-store' })
-      .then(function (r) { return r.json(); }).then(function (j) { return (j && j.comentarios) || []; })
-      .catch(function () { return []; });
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (j) { if (!j || !Array.isArray(j.comentarios)) throw new Error('RESPUESTA'); return { ok: true, lista: j.comentarios }; })
+      .catch(function () {
+        if (n >= 2) return { ok: false, lista: [] };
+        return new Promise(function (res) { root.setTimeout(res, 1500 * (n + 1)); }).then(function () { return cargar(n + 1); });
+      });
   }
   function enviar(datos) {
     if (!SERVICIO) return Promise.resolve({ ok: false, error: 'SIN_SERVICIO' });
@@ -178,10 +180,29 @@
       delete est.pinesPorClave[k];
     });
   }
-  function refrescar() { cargar().then(function (lista) { est.comentarios = lista; marcar(); }); }
+  /* pide la lista (al empezar, al cambiar de pantalla y al abrir el menú o la lista). Si falla, se conserva lo último que llegó */
+  function refrescar() {
+    est.cargando = true;
+    actualizarMenu();
+    return cargar(0).then(function (r) {
+      est.cargando = false;
+      est.fallo = !r.ok;
+      if (r.ok) { est.comentarios = r.lista; est.conDatos = true; }
+      marcar();
+      actualizarMenu();
+      if (est.panelTipo === 'lista') pintarLista();
+      return r;
+    });
+  }
+  /* el texto de «Ver comentarios»: nunca un 0 mientras no se sabe si llegaron */
+  function textoContador() {
+    if (!est.conDatos) return 'Ver comentarios (' + (est.fallo ? 'sin conexión' : 'cargando…') + ')';
+    return 'Ver comentarios (' + est.comentarios.filter(esDeAqui).length + ')';
+  }
+  function actualizarMenu() { if (est.botonContador) est.botonContador.textContent = textoContador(); }
 
   /* ---- paneles ---- */
-  function cerrarPanel() { if (est.panel) { est.panel.remove(); est.panel = null; } }
+  function cerrarPanel() { if (est.panel) { est.panel.remove(); est.panel = null; } est.panelTipo = null; }
   function abrirPanel(tipo, cita, selector) {
     cerrarPanel();
     var nombreGuardado = ''; try { nombreGuardado = root.localStorage.getItem('rf-com-nombre') || ''; } catch (e) { /* sin almacenamiento */ }
@@ -214,13 +235,27 @@
     doc.body.appendChild(est.panel);
     texto.focus();
   }
+  /* la lista de esta pantalla: se pinta con lo que hay y se vuelve a pintar cuando llega la descarga */
   function abrirLista() {
     cerrarPanel();
+    est.panelTipo = 'lista';
+    pintarLista();
+    refrescar();
+  }
+  function pintarLista() {
+    if (est.panel) est.panel.remove();
     var propios = est.comentarios.filter(esDeAqui);
     est.panel = el('div', 'card rf-com-panel');
-    est.panel.appendChild(el('div', 'rf-com-titulo', 'Comentarios de esta pantalla (' + propios.length + ')'));
-    if (!SERVICIO) est.panel.appendChild(el('div', 'rf-com-estado', 'El servicio de comentarios todavía no está conectado.'));
-    if (!propios.length) est.panel.appendChild(el('div', 'rf-com-cuerpo', 'Todavía no hay comentarios aquí. Usa "Dejar un comentario" para ser el primero.'));
+    est.panel.appendChild(el('div', 'rf-com-titulo', est.conDatos ? 'Comentarios de esta pantalla (' + propios.length + ')' : 'Comentarios de esta pantalla'));
+    if (!est.conDatos && est.fallo) {
+      est.panel.appendChild(el('div', 'rf-com-estado', 'No se pudieron cargar los comentarios. Revisa la conexión e inténtalo de nuevo.'));
+      est.panel.appendChild(boton('Reintentar', function () { refrescar(); }, 'primary small'));
+    } else if (!est.conDatos) {
+      est.panel.appendChild(el('div', 'rf-com-cuerpo', 'Cargando comentarios…'));
+    } else if (est.fallo) {
+      est.panel.appendChild(el('div', 'rf-com-estado', 'No se pudo actualizar; se muestran los últimos comentarios cargados.'));
+    }
+    if (est.conDatos && !propios.length) est.panel.appendChild(el('div', 'rf-com-cuerpo', 'Todavía no hay comentarios aquí. Usa "Dejar un comentario" para ser el primero.'));
     propios.forEach(function (c, i) {
       /* toda la tarjeta muestra lo comentado al tocarla (o con Enter), no solo el botón */
       var item = el('div', 'rf-com-item');
@@ -399,16 +434,17 @@
   }
 
   /* ---- menú del botón principal ---- */
-  function cerrarMenu() { if (est.menu) { est.menu.remove(); est.menu = null; } }
+  function cerrarMenu() { if (est.menu) { est.menu.remove(); est.menu = null; } est.botonContador = null; }
   function abrirMenu() {
     if (est.menu) { cerrarMenu(); return; }
-    var propios = est.comentarios.filter(esDeAqui).length;
     est.menu = el('div', 'card rf-com-menu');
     est.menu.appendChild(boton('Comentario general', function () { cerrarMenu(); abrirPanel('general', '', ''); }, 'ghost small rf-com-op'));
     est.menu.appendChild(boton('Comentario de esta pestaña', function () { cerrarMenu(); abrirPanel('pestana', '', ''); }, 'ghost small rf-com-op'));
     est.menu.appendChild(boton('Seleccionar algo de la pantalla', entrarEnSeleccion, 'ghost small rf-com-op'));
-    est.menu.appendChild(boton('Ver comentarios (' + propios + ')', function () { cerrarMenu(); abrirLista(); }, 'ghost small rf-com-op'));
+    est.botonContador = boton(textoContador(), function () { cerrarMenu(); abrirLista(); }, 'ghost small rf-com-op');
+    est.menu.appendChild(est.botonContador);
     est.principal.appendChild(est.menu);
+    refrescar();
   }
 
   /* arriba a la izquierda, sin tapar el botón del menú del celular ni el menú lateral del escritorio */
@@ -474,5 +510,5 @@
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', iniciar); else iniciar();
 
   /* para pruebas y para quien administra la revisión: lo que quedó en pantalla */
-  root.RF_COMENTARIOS = { cargar: cargar, enviar: enviar, rutaCss: rutaCss, textoDe: textoDe, comentarios: function () { return est.comentarios.slice(); } };
+  root.RF_COMENTARIOS = { cargar: function () { return cargar(0).then(function (r) { return r.lista; }); }, enviar: enviar, rutaCss: rutaCss, textoDe: textoDe, comentarios: function () { return est.comentarios.slice(); } };
 })(typeof window !== 'undefined' ? window : globalThis);
