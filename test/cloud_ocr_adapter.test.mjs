@@ -116,3 +116,38 @@ test('sin proyecto de Google configurado: error controlado sin llamar a la API',
   assert.equal(out.configuration_required, true);
   assert.equal(calls.length, 0);
 });
+
+/* el catch de callCloudVision_ usa requestedPages: debe estar en alcance en cada rama (páginas indicadas, PDF sin número y lotes siguientes) */
+test('si falla la llamada con páginas indicadas, el error sale controlado con esas páginas', () => {
+  const { ctx } = env([]);
+  ctx.UrlFetchApp.fetch = () => { throw new Error('cuota diaria agotada'); };
+  const out = JSON.parse(JSON.stringify(ctx.callCloudVision_(pdfBlob(), { pages: [2, 3], page_count: 4 })));
+  assert.equal(out.status, 'ERROR');
+  assert.match(out.error, /cuota diaria agotada/);
+  assert.deepEqual(out.pages_requested, [2, 3]);
+});
+
+test('si falla la primera llamada de un PDF sin número de páginas, no inventa páginas pedidas', () => {
+  const { ctx } = env([]);
+  ctx.UrlFetchApp.fetch = () => { throw new Error('servicio no disponible'); };
+  const out = JSON.parse(JSON.stringify(ctx.callCloudVision_(pdfBlob(), {})));
+  assert.equal(out.status, 'ERROR');
+  assert.match(out.error, /servicio no disponible/);
+  assert.deepEqual(out.pages_requested, []);
+});
+
+test('si falla el lote con las páginas que faltan, el error lista las 7 páginas pedidas', () => {
+  const first = { responses: [{ totalPages: 7, responses: [1, 2, 3, 4, 5].map(n => pageResponse(n, ['Proyecto ' + n])) }] };
+  const { ctx } = env([{ body: first }]);
+  const primera = ctx.UrlFetchApp.fetch;
+  let llamadas = 0;
+  ctx.UrlFetchApp.fetch = (url, opts) => {
+    llamadas++;
+    if (llamadas > 1) throw new Error('lote siguiente rechazado');
+    return primera(url, opts);
+  };
+  const out = JSON.parse(JSON.stringify(ctx.callCloudVision_(pdfBlob(), {})));
+  assert.equal(out.status, 'ERROR');
+  assert.match(out.error, /lote siguiente rechazado/);
+  assert.deepEqual(out.pages_requested, [1, 2, 3, 4, 5, 6, 7]);
+});
