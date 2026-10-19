@@ -100,21 +100,31 @@
     if (!selector) return null;
     try { return doc.querySelector(selector); } catch (e) { return null; }
   }
-  /* la pestaña se guarda con el nombre que ve quien revisa («Mi ruta», «Subir el PEA»…), para leerla en la hoja de cálculo */
-  function pantallaActual() {
-    var R = root.RF || {}, r = R.app && R.app.route ? R.app.route() : { name: 'home' };
-    if (R.auth && R.auth.phase && R.auth.phase() !== 'open') return 'Entrada a Rinde Fácil';
+  /* el nombre con el que se ve una pestaña (lo que guarda la hoja), leído con la misma ruta que la app (RF.app.route) */
+  function nombrePestana(dir) {
+    var R = root.RF || {}, r = R.app && R.app.route ? R.app.route(dir) : { name: 'home' };
     if (r.name === 'home') return 'Mi ruta';
     if (r.name === 'tool') { var tl = R.tools && R.tools[r.id]; return tl && tl.title ? tl.title : r.id; }
     if (r.name === 'fase') { var fa = ((R.data && R.data.FASES) || []).filter(function (x) { return x.id === r.id; })[0]; return fa ? 'Fase ' + fa.n + ': ' + fa.name : r.id; }
     if (r.name === 'tramite') { var tr = R.tramites && R.tramites.byId ? R.tramites.byId[r.id] : null; return tr && tr.title ? tr.title : r.id; }
-    return root.location.hash || '#/';
+    return dir;
+  }
+  /* la pestaña en la que está quien revisa: su nombre («Mi ruta», «Subir el PEA»…) */
+  function pantallaActual() {
+    var R = root.RF || {};
+    if (R.auth && R.auth.phase && R.auth.phase() !== 'open') return 'Entrada a Rinde Fácil';
+    return nombrePestana(root.location.hash || '#/');
   }
 
   /* el comentario general no hace referencia a ninguna pestaña: se guarda y se ve en la pantalla donde se escribió, como antes */
   function direccionActual() { return root.location.hash || '#/'; }
-  /* qué comentarios se ven en esta pestaña: los generales por su dirección; pestaña, texto y caja por el nombre de la pestaña */
-  function esDeAqui(c) { return c.tipo === 'general' ? c.pantalla === direccionActual() : c.pantalla === pantallaActual(); }
+  /* en la hoja, pantalla es el nombre de la pestaña; los comentarios guardados antes llevan la dirección (#/…) y se leen como la misma pestaña */
+  function pestanaDeComentario(c) { var p = String(c.pantalla || ''); return p.charAt(0) === '#' ? nombrePestana(p) : p; }
+  /* qué comentarios se ven en esta pestaña: los generales por su dirección exacta; pestaña, texto y caja por el nombre de la pestaña */
+  function esDeAqui(c) {
+    if (c.tipo === 'general') return c.pantalla === direccionActual() || (String(c.pantalla || '').charAt(0) !== '#' && c.pantalla === pantallaActual());
+    return pestanaDeComentario(c) === pantallaActual();
+  }
 
   /* ---- red: nunca lanza; si algo falla, se avisa y no se pierde el texto escrito ---- */
   function cargar() {

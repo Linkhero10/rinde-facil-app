@@ -24,8 +24,9 @@
     lastStorageOk = ok;
   }
 
-  function route() {
-    var hash = (location.hash || '#/').replace(/^#\/?/, ''), parts = hash.split('?')[0].split('/'), from = null;
+  /* sin argumento, la pantalla actual; con una dirección (#/…), la pestaña a la que apunta (la usan los comentarios para leer lo guardado antes) */
+  function route(dir) {
+    var hash = ((dir === undefined ? location.hash : dir) || '#/').replace(/^#\/?/, ''), parts = hash.split('?')[0].split('/'), from = null;
     try { from = new URLSearchParams(hash.split('?')[1] || '').get('from'); } catch (e) { from = null; }
     if (parts[0] === 't' && parts[1]) return { name: 'tramite', id: decodeURIComponent(parts[1]) };
     if (parts[0] === 'f' && parts[1]) return { name: 'fase', id: decodeURIComponent(parts[1]) };
