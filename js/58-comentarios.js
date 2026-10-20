@@ -10,7 +10,7 @@
   var SERVICIO = root.RF_COMENTARIOS_URL || 'https://script.google.com/macros/s/AKfycbxGzAkr4fgzeIQbqPXdkkRAguUZEblncalVcpL0LMh8Ig8_8sJoNPj3yhQEUlYmOM5e0Q/exec';
   var MAX_TEXTO = 1500, MAX_NOMBRE = 60;
   /* la misma versión que sw.js (lo comprueba test/publicar-safety.test.mjs): quien revisa la ve al pie de la lista, para saber qué copia usa */
-  var VERSION_REVISION = 'rf-v3-59';
+  var VERSION_REVISION = 'rf-v3-61';
   var est = { seleccionando: false, comentarios: [], conDatos: false, cargando: false, fallo: false, panelTipo: null, botonContador: null, pinesPorClave: {}, resaltado: null, etiqueta: null, panel: null, menu: null, principal: null, banner: null, aviso: null, objetivo: null, marcas: [], activo: null, vista: null, peticion: 0 };
 
   function estilos() {
@@ -143,8 +143,11 @@
   function direccionActual() { return root.location.hash || '#/'; }
   /* en la hoja, pantalla es el nombre de la pestaña; los comentarios guardados antes llevan la dirección (#/…) y se leen como la misma pestaña */
   function pestanaDeComentario(c) { var p = String(c.pantalla || ''); return p.charAt(0) === '#' ? nombrePestana(p) : p; }
+  /* el formato anterior no guardaba pantalla ni tipo (ni siquiera espacios en blanco): se muestra como general en todas las pantallas */
+  function esLegado(c) { return !String(c.pantalla || '').trim() && !String(c.tipo || '').trim(); }
   /* qué comentarios se ven en esta pestaña: los generales por su dirección exacta; pestaña, texto y caja por el nombre de la pestaña */
   function esDeAqui(c) {
+    if (esLegado(c)) return true;
     if (c.tipo === 'general') return c.pantalla === direccionActual() || (String(c.pantalla || '').charAt(0) !== '#' && c.pantalla === pantallaActual());
     return pestanaDeComentario(c) === pantallaActual();
   }
@@ -330,7 +333,7 @@
   }
 
   /* ---- qué se comentó: el tipo, y el texto exacto, el cuadro o toda la pantalla, para volver a mostrarlo ---- */
-  function tipoDe(c) { return c.tipo === 'texto' || c.tipo === 'general' || c.tipo === 'pestana' ? c.tipo : 'elemento'; }
+  function tipoDe(c) { return esLegado(c) ? 'general' : (c.tipo === 'texto' || c.tipo === 'general' || c.tipo === 'pestana' ? c.tipo : 'elemento'); }
   /* lo que se comentó, en palabras de quien revisa: un texto, una caja, toda la pantalla o la pestaña entera */
   function etiquetaTipo(c) {
     var tipo = tipoDe(c);
