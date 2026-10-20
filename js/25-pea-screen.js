@@ -67,6 +67,13 @@
 
   /* RUT que se prellena en la pantalla: el del PEA (vacío si el PEA no lo trae) */
   P.rutInicial = function (model) { return clean(model && model.community && model.community.rut) || ''; };
+  /* RUT del borrador del PEA que no cuadran (comunidad y encargado): «Aplicar» no se permite con ellos */
+  P.rutsInvalidos = function (model) {
+    var mc = (model && model.community) || {}, sec = (mc.contacto && mc.contacto.secretaria) || {}, out = [];
+    if (String(mc.rut || '').trim() && !RF.util.rutValid(mc.rut)) out.push('El RUT de la comunidad no es válido.');
+    if (String(sec.rut || '').trim() && !RF.util.rutValid(sec.rut)) out.push('El RUT del encargado no es válido.');
+    return out;
+  };
 
   /* Devuelve un estado NUEVO (no toca el de entrada). Reglas:
    * - nunca borra comunidades, proyectos, líneas ni actividades existentes;
@@ -685,6 +692,8 @@
     }
 
     function apply() {
+      var malos = P.rutsInvalidos(st.model);
+      if (malos.length) { UI.toast('No se puede aplicar. ' + malos.join(' '), 'bad'); return; }
       var n = aplicables(P.normalizarModelo(st.model)).length;
       if (!st.model || !st.file) return;
       UI.confirmBox('Se actualizará tu comunidad y se aplicarán ' + n + ' proyecto(s) del PEA, incluido «' + ADMIN + '» si trae monto. No se borra nada de lo que ya tienes. ¿Aplicar?', 'Aplicar').then(function (ok) {

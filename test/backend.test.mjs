@@ -295,7 +295,7 @@ test('copia de datos: guarda, conserva respaldos, trae la última y rechaza basu
   assert.equal(e.call({ action: 'saveState', t: e.t, state: 'no json' }).error, 'ESTADO_INVALIDO');
   const s1 = JSON.stringify({ v: 2, projects: [{ name: 'A' }] }), s2 = JSON.stringify({ v: 2, projects: [{ name: 'B' }] });
   assert.equal(e.call({ action: 'saveState', t: e.t, state: s1 }).ok, true);
-  assert.equal(e.call({ action: 'saveState', t: e.t, state: s2 }).ok, true);
+  assert.equal(e.call({ action: 'saveState', t: e.t, state: s2, baseRev: 1 }).ok, true);
   assert.equal(JSON.parse(e.call({ action: 'loadState', t: e.t }).state).projects[0].name, 'B');
   const copias = e.rootHolder.folders[0].folders.find(f => f.name === 'Copias de seguridad');
   assert.ok(copias.files.some(f => /^estado-\d{8}-\d{6}\.json$/.test(f.getName())), 'queda un respaldo de la versión anterior');

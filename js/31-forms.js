@@ -8,6 +8,8 @@
 
   function foot(anexo) { return 'Formato basado en ' + anexo + ' del Manual de presentación de informes y rendición del aporte (CORFO). Revísalo y fírmalo antes de entregarlo. Generado con Rinde Fácil.'; }
   function v(x, dflt) { return x === undefined || x === null || x === '' ? (dflt === undefined ? '' : dflt) : x; }
+  /* un RUT escrito que no cuadra (no vacío) es error de revisión: el documento no se da por listo. Un campo vacío no cambia */
+  function rutError(valor, quien) { return valor && !U.rutValid(valor) ? [{ level: 'error', msg: 'El RUT ' + quien + ' no es válido. Revísalo: el dígito verificador debe cuadrar.' }] : []; }
   function actOptions(ctx) {
     var out = [{ id: '', name: 'Sin actividad asociada' }];
     RF.logic.allActivities(ctx.project).forEach(function (x) { out.push({ id: x.act.id, name: (x.act.name || 'Actividad sin nombre') }); });
@@ -69,7 +71,7 @@
       { k: 'ciudad', l: 'Ciudad donde firmas', t: 'text', ph: 'Ej: San Pedro de Atacama' }, { k: 'fecha', l: 'Fecha de la declaración', t: 'date' }
     ],
     onChange: function (k, d) { projectFill(k, d); },
-    check: function (d) { var o = []; if (!d.periodoInicio || !d.periodoFin) o.push({ level: 'warn', msg: 'Falta el período de la rendición.' }); if (!d.repNombre) o.push({ level: 'warn', msg: 'Falta quien representa a la comunidad.' }); return o; },
+    check: function (d) { var o = []; if (!d.periodoInicio || !d.periodoFin) o.push({ level: 'warn', msg: 'Falta el período de la rendición.' }); if (!d.repNombre) o.push({ level: 'warn', msg: 'Falta quien representa a la comunidad.' }); return o.concat(rutError(d.comunidadRut, 'de la comunidad'), rutError(d.repRut, 'de quien firma')); },
     doc: function (d) {
       var f = U.fmtDate;
       return { title: 'Declaración jurada por no utilización de IVA CF', sheet: 'Anexo 1', footer: foot('el Anexo N° 1'), blocks: [
@@ -128,7 +130,7 @@
       d.documentos = ((RF.data.DOC_BY_ID[e.docType] || {}).name || 'documento') + ' N° ' + (e.folio || '');
       if (e.fechaPago || e.fecha) d.fecha = e.fechaPago || e.fecha; /* la declaración lleva la fecha en que se pagó */
     },
-    check: function (d) { var o = []; if (!(num(d.monto) > 0)) o.push({ level: 'error', msg: 'Falta el monto.' }); if (!d.proveedorNombre) o.push({ level: 'error', msg: 'Falta el nombre de quien recibió.' }); if (d.proveedorRut && !U.rutValid(d.proveedorRut)) o.push({ level: 'warn', msg: 'El RUT no parece válido.' }); return o; },
+    check: function (d) { var o = []; if (!(num(d.monto) > 0)) o.push({ level: 'error', msg: 'Falta el monto.' }); if (!d.proveedorNombre) o.push({ level: 'error', msg: 'Falta el nombre de quien recibió.' }); return o.concat(rutError(d.proveedorRut, 'de quien recibió el pago')); },
     doc: function (d) {
       return { title: 'Declaración jurada simple', sheet: 'Anexo 3', footer: foot('el Anexo N° 3'), blocks: [
         { t: 'p', text: v(d.ciudad, '[Ciudad]') + ', ' + (d.fecha ? U.fmtDate(d.fecha) : '[fecha]') },
@@ -148,7 +150,7 @@
       { k: 'destino', l: 'A dónde viajan', t: 'text', ph: 'Ej: Calama' }, { k: 'desde', l: 'Sale el', t: 'date' }, { k: 'hasta', l: 'Vuelve el', t: 'date' },
       { k: 'motivo', l: 'Por qué el viaje es esencial para la actividad', t: 'textarea', rows: 3, ph: 'Ej: Reunión con el proveedor para firmar el contrato de la maquinaria.' },
       { k: 'asistentes', l: 'Quiénes viajan', t: 'table', add: 'Agregar persona', cols: [
-        { k: 'nombre', l: 'Nombre completo', t: 'text' }, { k: 'rut', l: 'RUT', t: 'text' }, { k: 'rol', l: 'Rol', t: 'select', options: ROLES_VIAJE.map(function (r) { return { id: r, name: r }; }) }, { k: 'porque', l: 'Por qué es necesaria su presencia', t: 'text' }] },
+        { k: 'nombre', l: 'Nombre completo', t: 'text' }, { k: 'rut', l: 'RUT', t: 'rut' }, { k: 'rol', l: 'Rol', t: 'select', options: ROLES_VIAJE.map(function (r) { return { id: r, name: r }; }) }, { k: 'porque', l: 'Por qué es necesaria su presencia', t: 'text' }] },
       { k: 'anticipacion', l: 'Los pasajes se compraron con 15 días de anticipación y en clase económica', t: 'check' }
     ],
     check: function (d) {
@@ -156,6 +158,7 @@
       (d.asistentes || []).forEach(function (a, i) { if (!a.nombre) o.push({ level: 'warn', msg: 'Persona ' + (i + 1) + ': falta el nombre.' }); else if (!a.rol || !a.porque) o.push({ level: 'warn', msg: a.nombre + ': falta su rol o por qué es necesaria su presencia.' }); });
       if (d.desde && d.hasta && d.hasta < d.desde) o.push({ level: 'error', msg: 'La vuelta es anterior a la salida.' });
       if (!d.anticipacion) o.push({ level: 'info', msg: 'El Manual pide comprar pasajes con 15 días de anticipación, en clase económica. Si no fue así, explícalo en el motivo.' });
+      (d.asistentes || []).forEach(function (a, i) { rutError(a.rut, 'de ' + (a.nombre || 'la persona ' + (i + 1))).forEach(function (x) { o.push(x); }); });
       return o;
     },
     doc: function (d, ctx) {
@@ -297,7 +300,7 @@
       wrap.appendChild(UI.btn('Usar como borrador del resumen', { cls: 'ghost small', onclick: function () { if (d.resumen && d.resumen.trim()) { UI.toast('Ya hay un resumen escrito: no lo reemplacé.', 'bad'); return; } d.resumen = 'En el período se trabajó en: ' + acts.map(function (x) { return x.act.name; }).join('; ') + '.'; RF.store.update(function () { }, { silent: true }); var ta = document.querySelector('textarea[data-key="resumen"]'); if (ta) ta.value = d.resumen; } }));
       return wrap;
     } },
-    check: function (d) { var o = []; if (!d.objetivoGeneral) o.push({ level: 'warn', msg: 'Falta el objetivo general.' }); if (!d.resumen) o.push({ level: 'warn', msg: 'Falta el resumen de actividades del período.' }); return o; },
+    check: function (d) { var o = []; if (!d.objetivoGeneral) o.push({ level: 'warn', msg: 'Falta el objetivo general.' }); if (!d.resumen) o.push({ level: 'warn', msg: 'Falta el resumen de actividades del período.' }); return o.concat(rutError(d.comunidadRut, 'de la comunidad')); },
     doc: function (d, ctx) { return informeDoc(d, ctx, false); }
   };
   function fichaBlocks(kind, list) {
@@ -398,7 +401,8 @@
     function () { return { nombre: '', proveedor: '', lugar: '', presupuestado: '', rendido: '', formaContratacion: '', fechaInicio: '', fechaTermino: '', descripcion: '' }; });
 
   (function () {
-    var sc = SCHEMAS.informeD;
+    var sc = SCHEMAS.informeD, checkFicha = sc.check;
+    sc.check = function (d, ctx) { return checkFicha(d, ctx).concat(rutError(d.rut, 'de la persona contratada')); };
     sc.fields = [
       { k: 'nombre', l: 'Nombre completo de la persona', t: 'text' }, { k: 'rut', l: 'Cédula de identidad', t: 'rut' },
       { k: 'funcion', l: 'Funciones en el proyecto', t: 'textarea', rows: 2, ph: 'Ej: Encargada de los talleres de tejido' },
@@ -435,7 +439,7 @@
       { k: 'oc', l: 'Organismo Colaborador que apoya', t: 'text' }, { k: 'fechaPrimerPago', l: 'Fecha del primer pago (30 % del AIA)', t: 'date' },
       { k: 'resumen', l: 'Resumen del plan de la comunidad', t: 'textarea', rows: 4 }, { k: 'objetivos', l: 'Objetivos del programa', t: 'textarea', rows: 3 }, { k: 'beneficiarios', l: 'Quiénes se benefician (familias, socios)', t: 'textarea', rows: 2 }, { k: 'territorio', l: 'Dónde se hará (territorio)', t: 'text' }
     ],
-    check: function (d) { var o = []; if (!d.resumen) o.push({ level: 'warn', msg: 'Falta el resumen del plan.' }); return o; },
+    check: function (d) { var o = []; if (!d.resumen) o.push({ level: 'warn', msg: 'Falta el resumen del plan.' }); return o.concat(rutError(d.rut, 'de la comunidad')); },
     doc: function (d, ctx) { return { title: 'PEA · Información general del plan', subtitle: 'Borrador de información para presentar a CORFO', sheet: 'PEA general', footer: 'Borrador generado con Rinde Fácil. No es el formulario oficial de CORFO: sirve para reunir y copiar la información. Confirma el formato vigente con tu ejecutivo técnico o con el Organismo Colaborador.', blocks: [{ t: 'kv', rows: [['Comunidad', d.comunidad], ['RUT', d.rut], ['Dirección', d.direccion], ['Representante legal', d.repLegal], ['Contacto', [d.correo, d.telefono].filter(Boolean).join(' · ')], ['Organismo Colaborador', d.oc], ['Fecha del primer pago', d.fechaPrimerPago ? U.fmtDate(d.fechaPrimerPago) : ''], ['Resumen del plan', d.resumen], ['Objetivos del programa', d.objetivos], ['Beneficiarios', d.beneficiarios], ['Territorio', d.territorio]] }] }; }
   };
   SCHEMAS.peaProyecto = {

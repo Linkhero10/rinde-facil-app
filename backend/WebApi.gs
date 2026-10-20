@@ -57,6 +57,7 @@ const RF_WEB = {
   stateFile: 'estado-rinde-facil.json',
   maxBytes: 8 * 1024 * 1024,
   ocrMaxBytes: 20 * 1024 * 1024, /* PDF escaneado: límite de Cloud Vision para archivos */
+  maxPagesPorPeticion: 20, /* tope de páginas por petición de OCR (hallazgo 2); un maxPages del cliente solo puede bajarlo */
   maxStateChars: 4 * 1024 * 1024,
   keepBackups: 5,
   rootCategories: { oficial: 'Documentos oficiales', acta: 'Actas de mesas de trabajo' },
@@ -176,7 +177,9 @@ function rfResumenLecturas_(leer, hoy) {
   };
 }
 /* límite de lecturas: el diario siempre; el semanal y el mensual solo si están configurados */
-function rfCountOcr_() {
+/* reserva `paginas` páginas (una por defecto) con todos los límites. Bajo el candado: o caben todas o no se reserva ninguna */
+function rfCountOcr_(paginas) {
+  const pedir = paginas || 1;
   const props = PropertiesService.getScriptProperties();
   const hoy = rfToday_();
   const key = RF_WEB.counterPrefix + hoy;
@@ -188,14 +191,14 @@ function rfCountOcr_() {
   if (!lock.tryLock(5000)) return { ok: false, error: 'OCUPADO' };
   try {
     const n = Number(props.getProperty(key) || 0);
-    if (n >= limit) return { ok: false, error: 'LIMITE_DIARIO', limit: limit, used: n };
+    if (n + pedir > limit) return { ok: false, error: 'LIMITE_DIARIO', limit: limit, used: n };
     if (semanal || mensual) {
       const resumen = rfResumenLecturas_(leer, hoy);
-      if (semanal && resumen.semanal.usadas >= semanal) return { ok: false, error: 'LIMITE_SEMANAL', limit: semanal, used: resumen.semanal.usadas };
-      if (mensual && resumen.mensual.usadas >= mensual) return { ok: false, error: 'LIMITE_MENSUAL', limit: mensual, used: resumen.mensual.usadas };
+      if (semanal && resumen.semanal.usadas + pedir > semanal) return { ok: false, error: 'LIMITE_SEMANAL', limit: semanal, used: resumen.semanal.usadas };
+      if (mensual && resumen.mensual.usadas + pedir > mensual) return { ok: false, error: 'LIMITE_MENSUAL', limit: mensual, used: resumen.mensual.usadas };
     }
-    props.setProperty(key, String(n + 1));
-    return { ok: true, used: n + 1, limit: limit };
+    props.setProperty(key, String(n + pedir));
+    return { ok: true, used: n + pedir, limit: limit };
   } finally { lock.releaseLock(); }
 }
 /* acción «cuota» (con sesión): lo leído hoy, esta semana y este mes, y los límites configurados */
@@ -204,16 +207,16 @@ function rfCuota_() {
   return Object.assign({ ok: true }, rfResumenLecturas_(function (nombre) { return props.getProperty(nombre); }, rfToday_()));
 }
 
-/* suma al contador diario las páginas que el adaptador leyó además de la primera (rfCountOcr_ ya contó una) */
-function rfAddOcrPages_(extra) {
-  if (!(extra > 0)) return;
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(5000)) return;
-  try {
-    const props = PropertiesService.getScriptProperties();
-    const key = 'RINDE_FACIL_OCR_COUNT_' + rfToday_();
-    props.setProperty(key, String(Number(props.getProperty(key) || 0) + Math.floor(extra)));
-  } finally { lock.releaseLock(); }
+/* páginas máximas por petición: el tope del servidor, o menos si el cliente lo pide. Un valor que no es entero positivo se rechaza antes de gastar cuota */
+function rfMaxPaginas_(valor) {
+  if (valor === undefined || valor === null || valor === '') return { valor: RF_WEB.maxPagesPorPeticion };
+  const n = Number(valor);
+  if (!Number.isInteger(n) || n < 1) return { error: 'MAX_PAGINAS_INVALIDO' };
+  return { valor: Math.min(n, RF_WEB.maxPagesPorPeticion) };
+}
+/* lo cobrado hoy al terminar la petición (cuenta lo que realmente se reservó) */
+function rfUsoOcrHoy_() {
+  return Number(PropertiesService.getScriptProperties().getProperty(RF_WEB.counterPrefix + rfToday_()) || 0);
 }
 
 /* ---------- OCR ---------- */
@@ -222,21 +225,32 @@ function rfOcr_(p) {
   if (RF_WEB.okMime.indexOf(String(p.mimeType || '').toLowerCase()) < 0) return { ok: false, error: 'TIPO_NO_PERMITIDO' };
   if (!rfIsBase64_(p.base64)) return { ok: false, error: 'BASE64_INVALIDO' };
   if (rfBase64Bytes_(p.base64) > RF_WEB.ocrMaxBytes) return { ok: false, error: 'ARCHIVO_MUY_GRANDE' };
-  const cnt = rfCountOcr_();
+  /* el tope por petición lo pone el servidor; un maxPages del cliente solo puede bajarlo. Se valida antes de gastar cuota */
+  const maxPaginas = rfMaxPaginas_(p.maxPages);
+  if (maxPaginas.error) return { ok: false, error: maxPaginas.error };
+  /* diseño de Sol: primero se reserva una página; el resto se reserva cuando Cloud Vision informa el total del archivo */
+  const cnt = rfCountOcr_(1);
   if (!cnt.ok) return cnt;
   const bytes = Utilities.base64Decode(p.base64);
   const blob = Utilities.newBlob(bytes, String(p.mimeType).toLowerCase(), String(p.fileName || 'comprobante').slice(0, 120));
-  const r = callCloudVision_(blob, { file_name: String(p.fileName || '').slice(0, 120), max_pages: Number(p.maxPages) || undefined });
-  const ok = r && r.status === 'SUCCESS' && !!r.raw_text;
-  if (r && r.page_count > 1) rfAddOcrPages_(r.page_count - 1);
+  const r = callCloudVision_(blob, {
+    file_name: String(p.fileName || '').slice(0, 120),
+    max_pages: maxPaginas.valor,
+    reservar: function (paginas) { return rfCountOcr_(paginas); }
+  });
+  /* solo es lectura válida si Cloud Vision confirmó todas las páginas: el cliente de PDF rechaza una cobertura parcial (js/33-cloud.js) */
+  const completo = !r || !r.document_coverage || r.document_coverage === 'COMPLETE';
+  const ok = !!r && r.status === 'SUCCESS' && !!r.raw_text && completo;
+  /* las páginas siguientes ya se reservaron en callCloudVision_ cuando se conoció el total */
   return {
     ok: ok, engine: 'cloud_vision', raw_text: ok ? r.raw_text : '', confidence: r && r.confidence != null ? r.confidence : null,
     duration_ms: r && r.duration_ms || null, page_count: r && r.page_count || null,
     pages: ok && r.pages_layout ? r.pages_layout : [],
     total_pages: r && r.total_pages || null,
     document_coverage: r && r.document_coverage || null,
-    used_today: cnt.used, limit: cnt.limit,
-    error: ok ? null : (r && r.error) || 'OCR_SIN_TEXTO'
+    used_today: rfUsoOcrHoy_(), limit: cnt.limit,
+    pages_without_text: r && r.pages_without_text || [],
+    error: ok ? null : (r && r.error) || (completo ? 'OCR_SIN_TEXTO' : 'PDF_COVERAGE_INCOMPLETE: no se procesaron todas las páginas.')
   };
 }
 
@@ -292,6 +306,13 @@ function rfSetup_(p) {
 }
 
 /* ---------- copia de datos ---------- */
+/* baseRev válido: entero no negativo, como número o como texto de dígitos. null si no viene; NaN si viene mal */
+function rfBaseRev_(v) {
+  if (v === undefined || v === null) return null;
+  if (typeof v === 'number') return Number.isInteger(v) && v >= 0 ? v : NaN;
+  if (typeof v === 'string' && /^\d+$/.test(v.trim())) return Number(v.trim());
+  return NaN;
+}
 function rfSaveState_(p) {
   const text = typeof p.state === 'string' ? p.state : JSON.stringify(p.state || {});
   if (!text || text.length > RF_WEB.maxStateChars) return { ok: false, error: 'ESTADO_INVALIDO' };
@@ -300,9 +321,13 @@ function rfSaveState_(p) {
   if (!lock.tryLock(10000)) return { ok: false, error: 'OCUPADO' };
   try {
     if (!rfSessionValid_(p.t)) return { ok: false, error: 'SESION_INVALIDA' };
-    /* control de versiones: si otro dispositivo guardó algo más nuevo, no se pisa; la app decide (traer lo nuevo o quedarse con lo suyo) */
+    /* control de versiones: si otro dispositivo guardó algo más nuevo, no se pisa; la app decide (traer lo nuevo o quedarse con lo suyo).
+       Sin un baseRev válido no se guarda si ya hay versión. Sin versión todavía, la ausencia equivale a 0. «force» solo salva la igualdad. */
     const rev = Number(rfProps_().getProperty(RF_AUTH.revProp) || 0);
-    if (p.baseRev != null && Number(p.baseRev) < rev && !p.force) return { ok: false, error: 'CONFLICTO', rev: rev };
+    const base = rfBaseRev_(p.baseRev);
+    const esperada = base === null ? (rev === 0 ? 0 : null) : base;
+    if (Number.isNaN(base) || esperada === null) return { ok: false, error: 'CONFLICTO', rev: rev };
+    if (esperada !== rev && !p.force) return { ok: false, error: 'CONFLICTO', rev: rev };
     const dir = rfSub_(rfRoot_(), RF_WEB.backupsName);
     const it = dir.getFilesByName(RF_WEB.stateFile);
     const stamp = Utilities.formatDate(new Date(), 'America/Santiago', 'yyyyMMdd-HHmmss');
@@ -335,11 +360,13 @@ function rfLoadState_() {
 }
 
 /* ---------- archivar documentos ---------- */
+function rfEsCategoria_(lista, categoria) { return Object.prototype.hasOwnProperty.call(lista, categoria); }
 function rfSaveFile_(p) {
   const mime = String(p.mimeType || '').toLowerCase();
   const category = String(p.category || 'comprobante');
-  const isRoot = !!RF_WEB.rootCategories[category];
-  if (!isRoot && !RF_WEB.categories[category]) return { ok: false, error: 'CATEGORIA_INVALIDA' };
+  /* solo cuentan las categorías de la lista: «constructor» o «toString» son propiedades heredadas de Object, no categorías */
+  const isRoot = rfEsCategoria_(RF_WEB.rootCategories, category);
+  if (!isRoot && !rfEsCategoria_(RF_WEB.categories, category)) return { ok: false, error: 'CATEGORIA_INVALIDA' };
   const allowed = category === 'comprobante' ? RF_WEB.okMime.concat(['text/plain']) : RF_WEB.okMime.concat(RF_WEB.docMime); // junto a la foto va la ficha con los datos (texto)
   if (allowed.indexOf(mime) < 0) return { ok: false, error: 'TIPO_NO_PERMITIDO' };
   if (!rfIsBase64_(p.base64)) return { ok: false, error: 'BASE64_INVALIDO' };

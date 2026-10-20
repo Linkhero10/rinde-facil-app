@@ -121,12 +121,17 @@
     var r = 11 - (sum % 11);
     return r === 11 ? '0' : r === 10 ? 'K' : String(r);
   }
+  /* RUT chileno: solo se admiten dígitos, puntos, guion, espacios y la K del dígito verificador (0-9, K o k). Cualquier otro carácter lo invalida:
+     no se limpia en silencio. Valida el formato, el cuerpo (1.000 a 99.999.999, rango provisional) y el dígito verificador.
+     NO valida que el RUT exista ni a quién pertenezca. */
   function rutValid(s) {
-    var c = rutClean(s);
-    if (c.length < 2) return false;
-    var body = c.slice(0, -1), dv = c.slice(-1);
-    if (!/^\d+$/.test(body) || body.length < 5 || body.length > 9) return false;
-    return rutDv(body) === dv;
+    var texto = String(s == null ? '' : s).trim();
+    if (!/^[0-9.\s-]*[0-9kK]$/.test(texto)) return false;
+    var m = /^(\d+)-?([0-9K])$/.exec(texto.replace(/[.\s]/g, '').toUpperCase());
+    if (!m) return false;
+    var cuerpo = Number(m[1]);
+    if (!(cuerpo >= 1000 && cuerpo <= 99999999)) return false;
+    return rutDv(m[1]) === m[2];
   }
   function rutFormat(s) {
     var c = rutClean(s);

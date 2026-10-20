@@ -153,17 +153,40 @@
     root.appendChild(det);
     return root;
   }
+  /* RUT de la comunidad que no cuadra: impide empezar (hallazgo M-4). Vacío = sin RUT, se puede seguir */
+  function errorRutInicio(community) {
+    var rut = String((community && community.rut) || '').trim();
+    return rut && !U.rutValid(rut) ? 'El RUT de la comunidad no es válido. Revísalo: el dígito verificador debe cuadrar.' : '';
+  }
   function onboarding() {
     var s = RF.store.get(), st = { proyecto: '' }, root = h('div', { class: 'view home' });
     root.appendChild(h('section', { class: 'hero' }, h('p', { class: 'kicker' }, 'Bienvenida y bienvenido'), h('h1', null, 'Rinde Fácil te guía en tu rendición'), h('p', { class: 'lead' }, 'Paso a paso, con los formularios ya armados, y avisándote si algo no cuadra. Empecemos con dos datos.')));
-    var go = UI.btn('Empezar', { cls: 'primary big', onclick: function () { if (!s.community.name.trim()) { UI.toast('Escribe el nombre de tu comunidad.', 'bad'); return; } RF.store.addProject(st.proyecto.trim() || 'Mi proyecto'); location.hash = '#/'; } });
-    root.appendChild(UI.section('Cuéntanos', [h('div', { class: 'form-grid' }, (s.community.name || '').trim() ? h('p', { class: 'lead wide' }, 'Comunidad: ', h('strong', null, s.community.name)) : UI.field('Nombre de tu comunidad', s.community, 'name', { type: 'text', cls: 'wide', ph: 'Ej: Comunidad Atacameña de …' }), UI.field('RUT de la comunidad', s.community, 'rut', { type: 'rut' }), UI.field('Nombre de tu proyecto', st, 'proyecto', { type: 'text', ph: 'Ej: Sede comunitaria' })), h('div', { class: 'row-actions' }, go)]));
+    var aviso = h('div', { role: 'alert' });
+    var go = UI.btn('Empezar', { cls: 'primary big', onclick: function () {
+      if (!s.community.name.trim()) { UI.toast('Escribe el nombre de tu comunidad.', 'bad'); return; }
+      /* con un RUT que no cuadra no se crea el proyecto: el error queda a la vista, en esta pantalla (hallazgo M-4) */
+      var errRut = errorRutInicio(s.community);
+      if (errRut) { U.clear(aviso); aviso.appendChild(UI.callout('bad', 'Revisa el RUT de la comunidad.', ' ' + errRut)); return; }
+      RF.store.addProject(st.proyecto.trim() || 'Mi proyecto'); location.hash = '#/';
+    } });
+    root.appendChild(UI.section('Cuéntanos', [h('div', { class: 'form-grid' }, (s.community.name || '').trim() ? h('p', { class: 'lead wide' }, 'Comunidad: ', h('strong', null, s.community.name)) : UI.field('Nombre de tu comunidad', s.community, 'name', { type: 'text', cls: 'wide', ph: 'Ej: Comunidad Atacameña de …' }), UI.field('RUT de la comunidad', s.community, 'rut', { type: 'rut' }), UI.field('Nombre de tu proyecto', st, 'proyecto', { type: 'text', ph: 'Ej: Sede comunitaria' })), aviso, h('div', { class: 'row-actions' }, go)]));
     root.appendChild(h('section', null, h('h2', { class: 'sec-title' }, 'Cómo funciona'), h('div', { class: 'cards-3' },
       h('div', { class: 'mini-card' }, h('strong', null, '1. Sigue la ruta'), h('p', null, 'Seis fases, cada una con sus trámites. Marca lo que ya hiciste.')),
       h('div', { class: 'mini-card' }, h('strong', null, '2. Completa aquí'), h('p', null, 'Carta Gantt, presupuesto, anexos e informes: todo se rellena y sale en Excel, Word, PDF o texto.')),
       h('div', { class: 'mini-card' }, h('strong', null, '3. Revisa el cuadre'), h('p', null, 'La app cruza tus datos y avisa qué falta o no calza, antes de enviar.')))));
     root.appendChild(UI.callout('info', 'Tus datos:', ' se guardan en este dispositivo. Puedes hacer una copia o conectar el servicio de tu comunidad en «Nube y copias».'));
     return root;
+  }
+
+  /* «Marcar todos» pasa por la misma compuerta que el clic manual (hallazgo M-5): un paso de la compuerta con error bloqueante de su formulario no se marca */
+  function marcarTodos(t, id) {
+    var errs = (t.embed && t.gate) ? RF.forms.errors(t.embed, RF.forms.ctxNow()) : [];
+    var saltados = [];
+    t.steps.forEach(function (_, i) {
+      if (errs.length && t.gate && t.gate.indexOf(i) >= 0) { saltados.push(i); return; }
+      RF.store.setDone(id, i, true);
+    });
+    return { saltados: saltados, motivo: errs[0] || '' };
   }
 
   /* ---------- fase ---------- */
@@ -251,7 +274,7 @@
     });
     updCount();
     var naBox = h('label', { class: 'check na-check' }, h('input', { type: 'checkbox', checked: !!(p && p.na && p.na[id]), disabled: !p, onchange: function (ev) { RF.store.update(function () { p.na = p.na || {}; if (ev.target.checked) p.na[id] = true; else delete p.na[id]; }); } }), h('span', null, 'Este trámite no me aplica'));
-    root.appendChild(h('section', { class: 'card steps-card' }, h('div', { class: 'card-title-row' }, h('h2', { class: 'card-title' }, 'Pasos'), counter), stepsBox, h('div', { class: 'row-actions between' }, UI.btn('Marcar todos', { cls: 'ghost small', onclick: function () { t.steps.forEach(function (_, i) { RF.store.setDone(id, i, true); }); RF.app.render(); } }), naBox)));
+    root.appendChild(h('section', { class: 'card steps-card' }, h('div', { class: 'card-title-row' }, h('h2', { class: 'card-title' }, 'Pasos'), counter), stepsBox, h('div', { class: 'row-actions between' }, UI.btn('Marcar todos', { cls: 'ghost small', onclick: function () { var r = marcarTodos(t, id); if (r.saltados.length) UI.toast('Todavía falta: ' + r.motivo + '. No marqué los pasos de ese formulario.', 'bad'); RF.app.render(); } }), naBox)));
     /* herramientas */
     var restTools = (t.tools || []).filter(function (x) { return !shownTools[x]; });
     if (restTools.length) root.appendChild(UI.section('Hazlo aquí', [h('div', { class: 'tool-cards' }, restTools.map(function (tid) { var tl = RF.tools[tid]; return h('a', { class: 'tool-card', href: '#/h/' + tid + '?from=' + encodeURIComponent(id) }, h('span', { class: 'tc-ico' }, UI.icon(tl.icon || 'file', 26)), h('span', { class: 'tc-t' }, tl.title), h('span', { class: 'tc-d' }, tl.desc), UI.icon('right', 18)); }))]));
@@ -262,5 +285,5 @@
   }
   function refreshSide() { var old = document.getElementById('side'); if (!old) return; var keep = old.scrollTop, neu = sidebar(RF.app.route()); old.parentNode.replaceChild(neu, old); if (RF.app.fitSide) RF.app.fitSide(); neu.scrollTop = keep; [0, 60, 200].forEach(function (ms) { setTimeout(function () { var cur = document.getElementById('side'); if (cur && cur === neu && Math.abs(cur.scrollTop - keep) > 2) cur.scrollTop = keep; }, ms); }); if (document.body.classList.contains('menu-open')) { /* mantener */ } RF.app.applyThemeLabel(); }
 
-  RF.views = { toolContext: toolContext, toolTag: toolTag, TOOL_GROUPS: TOOL_GROUPS, sidebar: sidebar, home: homeView, fase: faseView, tramite: tramiteView, ORDER: ORDER, faseOf: faseOf, refreshSide: refreshSide };
+  RF.views = { toolContext: toolContext, toolTag: toolTag, TOOL_GROUPS: TOOL_GROUPS, sidebar: sidebar, home: homeView, fase: faseView, tramite: tramiteView, ORDER: ORDER, faseOf: faseOf, refreshSide: refreshSide, marcarTodos: marcarTodos, errorRutInicio: errorRutInicio };
 })(typeof window !== 'undefined' ? window : globalThis);

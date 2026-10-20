@@ -11,7 +11,7 @@
   var MAX_TEXTO = 1500, MAX_NOMBRE = 60;
   /* la misma versión que sw.js (lo comprueba test/publicar-safety.test.mjs): quien revisa la ve al pie de la lista, para saber qué copia usa */
   var VERSION_REVISION = 'rf-v3-59';
-  var est = { seleccionando: false, comentarios: [], conDatos: false, cargando: false, fallo: false, panelTipo: null, botonContador: null, pinesPorClave: {}, resaltado: null, etiqueta: null, panel: null, menu: null, principal: null, banner: null, aviso: null, objetivo: null, marcas: [], activo: null, vista: null };
+  var est = { seleccionando: false, comentarios: [], conDatos: false, cargando: false, fallo: false, panelTipo: null, botonContador: null, pinesPorClave: {}, resaltado: null, etiqueta: null, panel: null, menu: null, principal: null, banner: null, aviso: null, objetivo: null, marcas: [], activo: null, vista: null, peticion: 0 };
 
   function estilos() {
     if (doc.getElementById('rf-com-estilos')) return;
@@ -70,11 +70,35 @@
   }
   /* texto del comentario: el servicio lo devuelve como «comentario» (y acepta «texto» por si cambia) */
   function textoDe(c) { return String(c.comentario != null ? c.comentario : (c.texto || '')); }
-  /* la fecha llega en UTC; se muestra en la hora de este equipo, como aparece en la hoja */
+  /* la hoja puede tener filas vacías (quedan al borrar un comentario): no son comentarios. Una fila sin texto no tiene nada que mostrar, tenga fecha o no */
+  function esRegistro(c) { return !!c && String(textoDe(c)).trim() !== ''; }
+  /* moderación mínima: quien administra la hoja pone «oculto» en estado y la app no lo muestra */
+  function oculto(c) { return String(c.estado || '').trim().toLowerCase() === 'oculto'; }
+  /* lo que se muestra. Es el único filtro: la lista, las marcas y el contador salen de aquí */
+  function visibles(lista) { return (lista || []).filter(function (c) { return esRegistro(c) && !oculto(c); }); }
+  /* la fecha de la hoja es UTC: «10/15/2026 16:31:35» (texto, mes primero) o ISO («2026-10-15T16:31:35.213Z»). Sin zona, se toma como UTC */
+  function fechaUtc(f) {
+    var s = String(f == null ? '' : f).trim();
+    var m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(s);
+    if (m) {
+      var a = Number(m[1]), b = Number(m[2]), mes = a > 12 ? b : a, dia = a > 12 ? a : b;
+      return new Date(Date.UTC(Number(m[3]), mes - 1, dia, Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0)));
+    }
+    /* la hora de una cifra («9:31») se rellena a dos («09:31»): el formato ISO no la acepta. Sin zona, se toma como UTC */
+    var iso = /^(\d{4}-\d{2}-\d{2})[T ](\d{1,2}):(\d{2})/.exec(s);
+    if (iso) {
+      s = iso[1] + 'T' + (iso[2].length < 2 ? '0' + iso[2] : iso[2]) + ':' + iso[3] + s.slice(iso[0].length);
+      if (!/(z|[+-]\d{2}:?\d{2})$/i.test(s)) s += 'Z';
+    }
+    return new Date(s);
+  }
+  /* se muestra en hora de Chile (America/Santiago, con su horario de verano), no en la hora de este equipo */
   function fechaLegible(f) {
-    var d = new Date(f);
+    var d = fechaUtc(f);
     if (isNaN(d.getTime())) return String(f || '').slice(0, 16).replace('T', ' ');
-    return d.toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    var opciones = { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false };
+    try { return d.toLocaleString('es-CL', Object.assign({ timeZone: 'America/Santiago' }, opciones)); }
+    catch (e) { return d.toLocaleString('es-CL', Object.assign({ timeZone: 'UTC' }, opciones)) + ' (UTC)'; }
   }
   /* texto tal como se ve: innerText pone espacio entre elementos vecinos (textContent los pega: «Subir el PEAElegir») */
   function textoVisible(n) { return String(n.innerText || n.textContent || '').replace(/\s+/g, ' ').trim(); }
@@ -135,18 +159,36 @@
     var corte = root.setTimeout(function () { if (ctl) ctl.abort(); }, 12000);
     var pedido = root.fetch(SERVICIO, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function (j) { if (!j || !Array.isArray(j.comentarios)) throw new Error('RESPUESTA'); return { ok: true, lista: j.comentarios }; });
+      .then(function (j) { if (!j || !Array.isArray(j.comentarios)) throw new Error('RESPUESTA'); return { ok: true, lista: visibles(j.comentarios) }; });
     return pedido.then(function (res) { root.clearTimeout(corte); return res; }, function (e) { root.clearTimeout(corte); throw e; })
       .catch(function () {
         if (n >= 2) return { ok: false, lista: [] };
         return new Promise(function (res) { root.setTimeout(res, 1500 * (n + 1)); }).then(function () { return cargar(n + 1); });
       });
   }
-  function enviar(datos) {
+  /* la hoja tarda entre 10 y 80 s (sin medir): a los 30 s se avisa que seguimos esperando; a los 120 s se deja de esperar y no se reintenta solo,
+     porque el envío puede haber llegado igual (por eso el mensaje dice «no sabemos») */
+  function enviar(datos, alPasar30) {
     if (!SERVICIO) return Promise.resolve({ ok: false, error: 'SIN_SERVICIO' });
-    return root.fetch(SERVICIO, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ accion: 'agregar' }, datos)) })
-      .then(function (r) { return r.json(); })
-      .catch(function () { return { ok: false, error: 'SIN_CONEXION' }; });
+    return new Promise(function (resolver) {
+      var aviso = root.setTimeout(function () { if (alPasar30) alPasar30(); }, 30000);
+      var corte = root.setTimeout(function () { root.clearTimeout(aviso); resolver({ ok: false, error: 'TIEMPO_AGOTADO' }); }, 120000);
+      var pedido;
+      try { pedido = root.fetch(SERVICIO, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ accion: 'agregar' }, datos)) }); }
+      catch (e) { pedido = Promise.reject(e); }
+      pedido.then(function (r) { return r.json(); })
+        .then(function (j) { root.clearTimeout(aviso); root.clearTimeout(corte); resolver(j); }, function () { root.clearTimeout(aviso); root.clearTimeout(corte); resolver({ ok: false, error: 'SIN_CONEXION' }); });
+    });
+  }
+  /* número de envío: el mismo para un reenvío del mismo panel, así el servicio no guarda el comentario dos veces */
+  function nuevoIdEnvio() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+  /* lo que se le dice a quien comenta cuando el envío no sale bien */
+  function mensajeDeEnvio(r) {
+    var error = r && r.error;
+    if (error === 'SIN_SERVICIO') return 'El servicio de comentarios todavía no está conectado.';
+    /* cualquier fallo sin respuesta clara (red o tiempo) dice lo mismo: el envío pudo llegar igual */
+    if (error === 'TIEMPO_AGOTADO' || error === 'SIN_CONEXION' || error === 'ENVIO_INCIERTO') return 'No sabemos si se guardó. Revisa la lista antes de reenviar. Tu texto sigue aquí.';
+    return 'No se pudo enviar (' + (error || 'error') + '). Tu texto sigue aquí; inténtalo de nuevo.';
   }
 
   /* ---- marcas sobre la pantalla: un número en el lugar del comentario, con el mismo número que la lista de esta pantalla.
@@ -190,7 +232,10 @@
   function refrescar() {
     est.cargando = true;
     actualizarMenu();
+    var esta = ++est.peticion;
     return cargar(0).then(function (r) {
+      /* una descarga más nueva ya salió: esta respuesta llegó tarde y no pisa la lista */
+      if (esta !== est.peticion) return r;
       est.cargando = false;
       est.fallo = !r.ok;
       if (r.ok) { est.comentarios = r.lista; est.conDatos = true; }
@@ -202,7 +247,7 @@
   }
   /* el texto de «Ver comentarios»: nunca un 0 mientras no se sabe si llegaron */
   function textoContador() {
-    if (!est.conDatos) return 'Ver comentarios (' + (est.fallo ? 'sin conexión' : 'cargando…') + ')';
+    if (!est.conDatos) return 'Ver comentarios (' + (est.cargando || !est.fallo ? 'cargando…' : 'sin conexión') + ')';
     return 'Ver comentarios (' + est.comentarios.filter(esDeAqui).length + ')';
   }
   function actualizarMenu() { if (est.botonContador) est.botonContador.textContent = textoContador(); }
@@ -217,16 +262,17 @@
     var nombre = el('input', 'rf-com-nombre');
     nombre.type = 'text'; nombre.maxLength = MAX_NOMBRE; nombre.placeholder = 'Tu nombre (opcional)'; nombre.value = nombreGuardado;
     var estado = el('div', 'rf-com-estado');
+    var envioId = nuevoIdEnvio();
     var enviarBtn = boton('Enviar', function () {
       var t = texto.value.trim();
       if (!t) { estado.textContent = 'Escribe el comentario antes de enviar.'; return; }
       try { root.localStorage.setItem('rf-com-nombre', nombre.value.trim()); } catch (e) { /* sin almacenamiento */ }
       enviarBtn.disabled = true; estado.textContent = 'Enviando…';
-      enviar({ pantalla: tipo === 'general' ? direccionActual() : pantallaActual(), tipo: tipo, cita: cita || '', selector: selector || '', nombre: nombre.value.trim(), texto: t })
+      enviar({ id: envioId, pantalla: tipo === 'general' ? direccionActual() : pantallaActual(), tipo: tipo, cita: cita || '', selector: selector || '', nombre: nombre.value.trim(), texto: t }, function () { estado.textContent = 'Seguimos esperando la confirmación.'; })
         .then(function (r) {
           if (r && r.ok) { cerrarPanel(); aviso('Comentario enviado: «' + (t.length > 140 ? t.slice(0, 140) + '…' : t) + '». Gracias.'); refrescar(); return; }
           enviarBtn.disabled = false;
-          estado.textContent = r && r.error === 'SIN_SERVICIO' ? 'El servicio de comentarios todavía no está conectado.' : 'No se pudo enviar (' + ((r && r.error) || 'error') + '). Tu texto sigue aquí; inténtalo de nuevo.';
+          estado.textContent = mensajeDeEnvio(r);
         });
     }, 'primary small');
     est.panel = el('div', 'card rf-com-panel');
@@ -253,7 +299,7 @@
     var propios = est.comentarios.filter(esDeAqui);
     est.panel = el('div', 'card rf-com-panel');
     est.panel.appendChild(el('div', 'rf-com-titulo', est.conDatos ? 'Comentarios de esta pantalla (' + propios.length + ')' : 'Comentarios de esta pantalla'));
-    if (!est.conDatos && est.fallo) {
+    if (!est.conDatos && est.fallo && !est.cargando) {
       est.panel.appendChild(el('div', 'rf-com-estado', 'No se pudieron cargar los comentarios. Revisa la conexión e inténtalo de nuevo.'));
       est.panel.appendChild(boton('Reintentar', function () { refrescar(); }, 'primary small'));
     } else if (!est.conDatos) {
@@ -517,5 +563,5 @@
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', iniciar); else iniciar();
 
   /* para pruebas y para quien administra la revisión: lo que quedó en pantalla */
-  root.RF_COMENTARIOS = { cargar: function () { return cargar(0).then(function (r) { return r.lista; }); }, enviar: enviar, rutaCss: rutaCss, textoDe: textoDe, comentarios: function () { return est.comentarios.slice(); } };
+  root.RF_COMENTARIOS = { cargar: function () { return cargar(0).then(function (r) { return r.lista; }); }, enviar: enviar, rutaCss: rutaCss, textoDe: textoDe, fechaLegible: fechaLegible, comentarios: function () { return est.comentarios.slice(); } };
 })(typeof window !== 'undefined' ? window : globalThis);

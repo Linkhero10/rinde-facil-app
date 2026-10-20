@@ -239,6 +239,14 @@
   function normRutL(r) { return String(r || '').replace(/[^0-9kK]/g, '').toUpperCase(); }
   function hasForm(project, id) { var f = project.forms && project.forms[id]; return Array.isArray(f) ? f.length > 0 : !!(f && f.data && Object.keys(f.data).some(function (k) { var v = f.data[k]; return v !== '' && v != null && !(Array.isArray(v) && !v.length) && k !== 'fecha' && k !== 'firma'; })); }
   function listN(project, id) { var f = project.forms && project.forms[id]; return Array.isArray(f) ? f.length : 0; }
+  /* un formulario guardado con un RUT que no cuadra (error bloqueante) no deja marcar su paso solo (hallazgo M-5).
+     Se revisa sobre una copia de ese formulario: ni crea datos en el proyecto ni cambia los que hay */
+  function rutMalo(project, formId, community) {
+    if (!RF.forms || !RF.forms.errors || !project.forms || !project.forms[formId]) return false;
+    var copia = { id: project.id, forms: {} };
+    copia.forms[formId] = project.forms[formId];
+    return RF.forms.errors([formId], { project: copia, community: community || {} }).some(function (m) { return /El RUT .* no es válido/.test(m); });
+  }
   function missingOf(project, community, list) { return list.filter(function (e) { return requirements(e, project, community).some(function (r) { return !r.met; }); }); }
   function ok(why) { return { done: true, why: why }; }
   function no(why, tool) { return { done: false, why: why, tool: tool }; }
@@ -265,17 +273,17 @@
     verificados: function (p) { var list = (p.expenses || []).filter(realExp); if (!list.length) return no('Todavía no anotas gastos.', 'gastos'); var m = list.filter(function (e) { return !e.verified; }); return m.length ? no(m.length + ' de ' + list.length + ' gastos sin marcar «Lo revisé».', 'gastos') : ok('los ' + list.length + ' gastos están revisados contra el documento.'); },
     gastos_ok: function (p, c) { var list = (p.expenses || []).filter(realExp); if (!list.length) return no('Todavía no anotas gastos.', 'gastos'); var bad = list.filter(function (e) { return evaluateExpense(e, p, c, p.expenses).issues.some(function (i) { return i.level === 'error'; }); }); return bad.length ? no(bad.length + ' de ' + list.length + ' gastos con errores por corregir.', 'revision') : ok('los ' + list.length + ' gastos están anotados sin errores.'); },
     obs_resp: function (p) { var o = p.observations || []; if (!o.length) return no('Todavía no registras observaciones.', 'observaciones'); var pend = o.filter(function (x) { return !x.respondida; }); return pend.length ? no(pend.length + ' observación(es) sin responder.', 'observaciones') : ok('todas las observaciones tienen su respuesta.'); },
-    informe_general: function (p) { var f = forms(p, 'informe'); return f && f.data && f.data.objetivoGeneral ? ok('ya llenaste los datos generales y los objetivos.') : no('Llena los datos generales y los objetivos.', 'informe'); },
-    fichas_alguna: function (p) { var n = ['informeA', 'informeB', 'informeC', 'informeD', 'informeE'].reduce(function (a, k) { return a + listN(p, k); }, 0); return n ? ok('hay ' + n + (n === 1 ? ' ficha' : ' fichas') + ' de actividades.') : no('Todavía no hay fichas de actividades.', 'informe'); },
-    ficha_A: function (p) { var n = listN(p, 'informeA'); return n ? ok('hay ' + n + (n === 1 ? ' ficha' : ' fichas') + ' de actividades.') : no('Todavía no hay fichas.', 'informeA'); },
-    ficha_B: function (p) { var n = listN(p, 'informeB'); return n ? ok('hay ' + n + (n === 1 ? ' ficha' : ' fichas') + ' de estudios.') : no('Todavía no hay fichas.', 'informeB'); },
-    ficha_E: function (p) { var n = listN(p, 'informeE'); return n ? ok('hay ' + n + (n === 1 ? ' ficha' : ' fichas') + ' de otras actividades.') : no('Si tuviste otras actividades, crea su ficha.', 'informeE'); },
-    ficha_C: function (p) { return fichasPorGasto(p, 'informeC', ['inversion'], 'compras de inversión'); },
-    ficha_D: function (p) { return fichasPorGasto(p, 'informeD', ['rrhh'], 'gastos de recursos humanos'); },
-    viaje_form: function (p) { var n = listN(p, 'viaje'); return n ? ok('hay ' + n + (n === 1 ? ' registro de viaje.' : ' registros de viaje.')) : no('Registra quién viaja y por qué es necesario.', 'viaje'); },
-    anexo1: function (p) { return hasForm(p, 'anexo1') ? ok('ya llenaste el Anexo 1.') : no('Llena el Anexo 1.', 'anexo1'); },
+    informe_general: function (p, c) { if (rutMalo(p, 'informe', c)) return no('Corrige el RUT de la comunidad en los datos generales: no es válido.', 'informe'); var f = forms(p, 'informe'); return f && f.data && f.data.objetivoGeneral ? ok('ya llenaste los datos generales y los objetivos.') : no('Llena los datos generales y los objetivos.', 'informe'); },
+    fichas_alguna: function (p, c) { var malo = ['informeA', 'informeB', 'informeC', 'informeD', 'informeE'].filter(function (k) { return rutMalo(p, k, c); })[0]; if (malo) return no('Corrige el RUT de una ficha: no es válido.', malo); var n =['informeA', 'informeB', 'informeC', 'informeD', 'informeE'].reduce(function (a, k) { return a + listN(p, k); }, 0); return n ? ok('hay ' + n + (n === 1 ? ' ficha' : ' fichas') + ' de actividades.') : no('Todavía no hay fichas de actividades.', 'informe'); },
+    ficha_A: function (p, c) { if (rutMalo(p, 'informeA', c)) return no('Corrige el RUT de esta ficha: no es válido.', 'informeA'); var n = listN(p, 'informeA'); return n ? ok('hay ' + n + (n === 1 ? ' ficha' : ' fichas') + ' de actividades.') : no('Todavía no hay fichas.', 'informeA'); },
+    ficha_B: function (p, c) { if (rutMalo(p, 'informeB', c)) return no('Corrige el RUT de esta ficha: no es válido.', 'informeB'); var n = listN(p, 'informeB'); return n ? ok('hay ' + n + (n === 1 ? ' ficha' : ' fichas') + ' de estudios.') : no('Todavía no hay fichas.', 'informeB'); },
+    ficha_E: function (p, c) { if (rutMalo(p, 'informeE', c)) return no('Corrige el RUT de esta ficha: no es válido.', 'informeE'); var n = listN(p, 'informeE'); return n ? ok('hay ' + n + (n === 1 ? ' ficha' : ' fichas') + ' de otras actividades.') : no('Si tuviste otras actividades, crea su ficha.', 'informeE'); },
+    ficha_C: function (p, c) { if (rutMalo(p, 'informeC', c)) return no('Corrige el RUT de esta ficha: no es válido.', 'informeC'); return fichasPorGasto(p, 'informeC', ['inversion'], 'compras de inversión'); },
+    ficha_D: function (p, c) { if (rutMalo(p, 'informeD', c)) return no('Corrige el RUT de esta ficha: no es válido.', 'informeD'); return fichasPorGasto(p, 'informeD', ['rrhh'], 'gastos de recursos humanos'); },
+    viaje_form: function (p, c) { if (rutMalo(p, 'viaje', c)) return no('Corrige el RUT de una persona del viaje: no es válido.', 'viaje'); var n = listN(p, 'viaje'); return n ? ok('hay ' + n + (n === 1 ? ' registro de viaje.' : ' registros de viaje.')) : no('Registra quién viaja y por qué es necesario.', 'viaje'); },
+    anexo1: function (p, c) { if (rutMalo(p, 'anexo1', c)) return no('Corrige el RUT del Anexo 1: no es válido.', 'anexo1'); return hasForm(p, 'anexo1') ? ok('ya llenaste el Anexo 1.') : no('Llena el Anexo 1.', 'anexo1'); },
     anexo2: function (p) { return hasForm(p, 'anexo2') ? ok('ya llenaste el Anexo 2.') : no('Llena el Anexo 2.', 'anexo2'); },
-    anexo3: function (p) { var n = (p.expenses || []).filter(function (e) { return realExp(e) && e.formaPago === 'efectivo'; }).length, have = listN(p, 'anexo3'); if (!n) return no('Todavía no anotas pagos en efectivo.', 'gastos'); return have >= n ? ok('hay ' + have + ' declaración(es) para ' + n + ' pago(s) en efectivo.') : no('Hay ' + have + ' de ' + n + ' declaraciones del Anexo 3.', 'anexo3'); },
+    anexo3: function (p, c) { if (rutMalo(p, 'anexo3', c)) return no('Corrige el RUT de quien recibió un pago en efectivo: no es válido.', 'anexo3'); var n = (p.expenses || []).filter(function (e) { return realExp(e) && e.formaPago === 'efectivo'; }).length, have = listN(p, 'anexo3'); if (!n) return no('Todavía no anotas pagos en efectivo.', 'gastos'); return have >= n ? ok('hay ' + have + ' declaración(es) para ' + n + ' pago(s) en efectivo.') : no('Hay ' + have + ' de ' + n + ' declaraciones del Anexo 3.', 'anexo3'); },
     anexo4: function (p) { var n = (p.expenses || []).filter(function (e) { return realExp(e) && (e.esViatico || e.docType === 'certificado_viatico'); }).length, have = listN(p, 'anexo4'); if (!n) return no('Todavía no anotas viáticos.', 'gastos'); return have >= n ? ok('hay ' + have + ' certificado(s) para ' + n + ' viático(s).') : no('Hay ' + have + ' de ' + n + ' certificados del Anexo 4.', 'anexo4'); },
     anexo5: function (p) { var f = forms(p, 'anexo5'); return f && f.data && (num(f.data.totalUso) + num(f.data.totalHH)) > 0 ? ok('la memoria de cálculo ya suma ' + U.fmtCLP(num(f.data.totalUso) + num(f.data.totalHH)) + '.') : no('Llena la memoria de cálculo (Anexo 5).', 'anexo5'); }
   };
@@ -401,6 +409,9 @@
     if (!project.start || !project.end) add(g1, 'warn', 'Faltan las fechas de inicio y término del proyecto.', { tool: 'proyecto' });
     else if (project.end < project.start) add(g1, 'error', 'El término del proyecto es anterior al inicio.', { tool: 'proyecto' });
     if (!project.periodoInicio || !project.periodoFin) add(g1, 'info', 'Indica el período que estás rindiendo para poder revisar las fechas.', { tool: 'proyecto' });
+    /* los RUT de la comunidad: un RUT escrito que no cuadra impide dar el proyecto por listo */
+    if (community && String(community.rut || '').trim() && !U.rutValid(community.rut)) add(g1, 'error', 'El RUT de la comunidad no es válido. Revísalo en «Mi comunidad y proyectos».', { tool: 'proyecto' });
+    if (community && String(community.repRut || '').trim() && !U.rutValid(community.repRut)) add(g1, 'error', 'La cédula del representante no es válida. Revísala en «Mi comunidad y proyectos».', { tool: 'proyecto' });
     if (!g1.items.length) add(g1, 'ok', 'Datos del proyecto completos.');
 
     /* 1b. Lo que planeó frente a lo que gasta */

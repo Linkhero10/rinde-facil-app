@@ -128,7 +128,7 @@
       el = h('input', { type: 'text', inputmode: 'text', autocomplete: 'off', placeholder: opts.ph || '12.345.678-5' });
       el.value = obj[key] || '';
       el.addEventListener('input', function () { commit(el.value); });
-      el.addEventListener('blur', function () { if (el.value) { el.value = U.rutFormat(el.value); commit(el.value); } });
+      el.addEventListener('blur', function () { if (rutAlSalir(el.value).guardar) { el.value = U.rutFormat(el.value); commit(el.value); } }); /* un RUT que no cuadra se queda como se escribió */
     } else {
       el = h('input', { type: 'text', placeholder: opts.ph || '', maxlength: opts.max || null, autocomplete: 'off' });
       el.value = obj[key] == null ? '' : obj[key];
@@ -138,6 +138,11 @@
     el.dataset.key = key;
     if (opts.aria) el.setAttribute('aria-label', opts.aria);
     return el;
+  }
+  /* RUT al salir del campo: si cuadra, se da formato y se guarda; si no, el texto queda como se escribió (no se limpia en silencio) */
+  function rutAlSalir(texto) {
+    var valido = !!texto && U.rutValid(texto);
+    return { valor: valido ? U.rutFormat(texto) : texto, guardar: valido };
   }
   function field(label, obj, key, opts) {
     opts = opts || {};
@@ -275,5 +280,5 @@
     };
   }
 
-  RF.ui = { tip: tip, closeTip: closeTip, choiceBox: choiceBox, promptSecret: promptSecret, busy: busy, icon: icon, ICONS: ICONS, toast: toast, confirmBox: confirmBox, bind: bind, field: field, labelWrap: labelWrap, btn: btn, exportBar: exportBar, badge: badge, callout: callout, empty: empty, section: section, fileDrop: fileDrop, progressBar: progressBar };
+  RF.ui = { tip: tip, closeTip: closeTip, choiceBox: choiceBox, promptSecret: promptSecret, busy: busy, icon: icon, ICONS: ICONS, toast: toast, confirmBox: confirmBox, bind: bind, field: field, rutAlSalir: rutAlSalir, labelWrap: labelWrap, btn: btn, exportBar: exportBar, badge: badge, callout: callout, empty: empty, section: section, fileDrop: fileDrop, progressBar: progressBar };
 })(typeof window !== 'undefined' ? window : globalThis);

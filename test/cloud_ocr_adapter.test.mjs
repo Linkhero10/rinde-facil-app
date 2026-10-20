@@ -57,15 +57,16 @@ function pdfBlob() {
 }
 
 test('PDF de 7 páginas sin número de páginas: descubre el total y lee el resto', () => {
-  const first = { responses: [{ totalPages: 7, responses: [1, 2, 3, 4, 5].map(n => pageResponse(n, ['Proyecto ' + n])) }] };
-  const rest = { responses: [{ totalPages: 7, responses: [6, 7].map(n => pageResponse(n, ['Pag ' + n], n === 6 ? 90 : 0)) }] };
-  const { ctx, calls } = env([{ body: first }, { body: rest }]);
+  const first = { responses: [{ totalPages: 7, responses: [pageResponse(1, ['Proyecto 1'])] }] };
+  const second = { responses: [{ totalPages: 7, responses: [2, 3, 4, 5, 6].map(n => pageResponse(n, ['Proyecto ' + n], n === 6 ? 90 : 0)) }] };
+  const third = { responses: [{ totalPages: 7, responses: [pageResponse(7, ['Pag 7'])] }] };
+  const { ctx, calls } = env([{ body: first }, { body: second }, { body: third }]);
   const out = JSON.parse(JSON.stringify(ctx.callCloudVision_(pdfBlob(), {})));
   assert.equal(out.status, 'SUCCESS');
   assert.equal(out.document_coverage, 'COMPLETE');
   assert.equal(out.total_pages, 7);
-  // la primera llamada no envía «pages»: la API lee las primeras cinco páginas y devuelve el total
-  assert.deepEqual(JSON.parse(JSON.stringify(calls.map(c => c.requests[0].pages))), [null, [6, 7]]);
+  // la primera llamada pide solo la página 1: Vision informa el total del archivo; el resto se pide en lotes de cinco
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.map(c => c.requests[0].pages))), [[1], [2, 3, 4, 5, 6], [7]]);
   assert.equal(out.pages_layout.length, 7);
   assert.deepEqual(out.pages_layout.map(p => p.number), [1, 2, 3, 4, 5, 6, 7]);
   assert.equal(out.pages_layout[5].angle, 90, 'la página 6 está girada');
@@ -137,7 +138,7 @@ test('si falla la primera llamada de un PDF sin número de páginas, no inventa 
 });
 
 test('si falla el lote con las páginas que faltan, el error lista las 7 páginas pedidas', () => {
-  const first = { responses: [{ totalPages: 7, responses: [1, 2, 3, 4, 5].map(n => pageResponse(n, ['Proyecto ' + n])) }] };
+  const first = { responses: [{ totalPages: 7, responses: [pageResponse(1, ['Proyecto 1'])] }] };
   const { ctx } = env([{ body: first }]);
   const primera = ctx.UrlFetchApp.fetch;
   let llamadas = 0;
@@ -150,4 +151,55 @@ test('si falla el lote con las páginas que faltan, el error lista las 7 página
   assert.equal(out.status, 'ERROR');
   assert.match(out.error, /lote siguiente rechazado/);
   assert.deepEqual(out.pages_requested, [1, 2, 3, 4, 5, 6, 7]);
+});
+
+test('H10 (hallazgo 10): si el llamador indica el número de páginas y Cloud Vision no confirma el total, el resultado no sale COMPLETE', () => {
+  const sinTotal = { responses: [{ responses: [pageResponse(1, ['texto de la única página'])] }] };
+  const { ctx } = env([{ body: sinTotal }]);
+  const out = ctx.callCloudVision_(pdfBlob(), { page_count: 1 });
+  assert.notEqual(out.document_coverage, 'COMPLETE');
+  assert.match(out.error, /PDF_COVERAGE_INCOMPLETE/);
+});
+
+test('H11 (hallazgo 12): una respuesta que no es JSON conserva el código HTTP en el error', () => {
+  const { ctx } = env([]);
+  ctx.UrlFetchApp.fetch = () => ({ getResponseCode: () => 503, getContentText: () => '<html><body>Servicio no disponible</body></html>' });
+  const out = JSON.parse(JSON.stringify(ctx.callCloudVision_(pdfBlob(), { page_count: 1 })));
+  assert.equal(out.status, 'ERROR');
+  assert.match(out.error, /503/);
+  assert.doesNotMatch(out.error, /Unexpected token/);
+});
+
+test('H2 (hallazgo 3): una página sin texto no tira el documento: se devuelve el texto de las demás y se indican las páginas sin texto', () => {
+  const primera = { responses: [{ totalPages: 7, responses: [pageResponse(1, [''])] }] };
+  const segunda = { responses: [{ totalPages: 7, responses: [2, 3, 4, 5, 6].map(n => pageResponse(n, [''])) }] };
+  const tercera = { responses: [{ totalPages: 7, responses: [pageResponse(7, ['texto de la séptima página'])] }] };
+  const { ctx } = env([{ body: primera }, { body: segunda }, { body: tercera }]);
+  const out = JSON.parse(JSON.stringify(ctx.callCloudVision_(pdfBlob(), {})));
+  assert.equal(out.status, 'SUCCESS');
+  assert.equal(out.error, null);
+  assert.equal(out.raw_text, 'texto de la séptima página');
+  assert.deepEqual(out.pages_without_text, [1, 2, 3, 4, 5, 6]);
+  assert.equal(out.document_coverage, 'COMPLETE', 'todas las páginas se procesaron');
+  assert.equal(out.page_count, 7);
+});
+
+test('H2 (hallazgo 3): si ninguna página tiene texto, el documento falla con OCR_SIN_TEXTO y no con un error de la API', () => {
+  const primera = { responses: [{ totalPages: 2, responses: [pageResponse(1, [''])] }] };
+  const segunda = { responses: [{ totalPages: 2, responses: [pageResponse(2, [''])] }] };
+  const { ctx } = env([{ body: primera }, { body: segunda }]);
+  const out = JSON.parse(JSON.stringify(ctx.callCloudVision_(pdfBlob(), {})));
+  assert.equal(out.status, 'ERROR');
+  assert.match(out.error, /OCR_SIN_TEXTO/);
+  assert.equal(out.raw_text, '');
+  assert.deepEqual(out.pages_without_text, [1, 2]);
+});
+
+test('un error de la API en un lote sigue siendo un fallo del documento, aunque el resto tenga texto', () => {
+  const primera = { responses: [{ totalPages: 2, responses: [pageResponse(1, ['texto de la primera página'])] }] };
+  const segunda = { responses: [{ error: { message: 'cuota agotada en el lote (prueba)' } }] };
+  const { ctx } = env([{ body: primera }, { body: segunda }]);
+  const out = JSON.parse(JSON.stringify(ctx.callCloudVision_(pdfBlob(), {})));
+  assert.equal(out.status, 'ERROR');
+  assert.match(out.error, /cuota agotada/);
 });

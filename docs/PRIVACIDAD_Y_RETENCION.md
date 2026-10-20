@@ -16,7 +16,8 @@ Borrador operativo. **No es asesoría legal**: antes de entregar la herramienta 
 | Drive de la comunidad | Copia del estado (con un extracto del texto del OCR), fotos y documentos archivados | El Drive protege el acceso; el contenido del estado está en claro (ver `SEGURIDAD.md` §4) |
 | Google Cloud Vision | La imagen, solo mientras se lee | En tránsito; el servicio no la guarda |
 | Organismo Colaborador | **Nada, salvo el resumen que la comunidad decida sacar** | — |
-| Servidor central | **No existe** | — |
+| Hoja de comentarios (solo versión de revisión, temporal) | Fecha, pantalla, cita, nombre opcional y texto de los comentarios de revisión | No; la hoja está en la cuenta de quien administra la revisión. Ver `COMENTARIOS_TEMPORAL.md` |
+| Servidor central | **No existe** (salvo la hoja de comentarios de la revisión, que es temporal) | — |
 
 ## Consentimiento
 
@@ -33,6 +34,7 @@ Borrador operativo. **No es asesoría legal**: antes de entregar la herramienta 
 | Registro de accesos del servicio | Últimos 80 eventos | Seguridad |
 | Copias de seguridad del estado | Últimas 5 | Recuperar de errores |
 | Datos del equipo | Hasta que la comunidad los borre («Seguridad» → «Borrar los datos de este equipo») | Control de la comunidad |
+| Comentarios de la versión de revisión (hoja) | Hasta que se retire la capa de comentarios (ver `COMENTARIOS_TEMPORAL.md`) | Revisión de la app; no se usa para la rendición |
 
 ## Derechos
 

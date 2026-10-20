@@ -386,6 +386,7 @@
         page_count: res.page_count || null,
         total_pages: res.total_pages || res.page_count || null,
         document_coverage: res.document_coverage || null,
+        pages_without_text: res.pages_without_text || [],
         error: ok ? null : (!completo ? 'Google no leyó todas las páginas del PDF; no se aplica el PEA. Prueba de nuevo o sube el Word.' : (res.error || 'OCR_SIN_TEXTO'))
       };
     });
@@ -457,7 +458,9 @@
 
   /* Convierte el texto leído en campos del gasto usando el analizador ya probado del piloto. */
   /* Los montos, la fecha, el RUT y el N° salen del extractor propio (26-receipt.js), que cuadra neto + IVA = total.
-     Del analizador heredado del piloto solo se aprovecha el nombre del proveedor, y solo si coincide el RUT. */
+     Del analizador heredado del piloto (vendor/parser.js) solo se aprovecha el nombre del proveedor, y solo si coincide el RUT.
+     Ese analizador tiene su propia regla de RUT (cuerpo de 7 u 8 dígitos, y acepta el cero): no cambia el RUT que se guarda, porque
+     la app solo toma su nombre cuando el RUT ya pasó rutValid. El archivo vendorizado no se modifica: su cabecera dice que es una copia sin cambios. */
   function toExpenseFields(rawText, engine, opts) {
     if (!RF.receipt) return { fields: {}, note: 'Falta el analizador.' };
     var x = RF.receipt.extract(rawText, opts), f = x.fields, notes = x.notes.slice(), legacy = null;
