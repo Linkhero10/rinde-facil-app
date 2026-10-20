@@ -81,7 +81,7 @@ test('commit y push usan funciones protegidas y un refspec explícito, sin force
 });
 
 test('toda mutación queda después de validar el destino, confirmar y pasar ShouldProcess', () => {
-  const validation = source.indexOf('Assert-PublishTarget\n$files = Get-PublishFiles');
+  const validation = source.search(/Assert-PublishTarget\r?\n\$files = Get-PublishFiles/);
   const confirmation = source.indexOf('if (-not [string]::Equals($ConfirmPublish');
   const shouldProcess = source.indexOf('$PSCmdlet.ShouldProcess(');
   const mutation = source.indexOf('Copy-Item -LiteralPath $file.Source');
