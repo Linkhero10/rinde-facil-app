@@ -230,10 +230,11 @@
       throw new Error(r && r.error ? humanError({ message: String(r.error) }) : 'El servicio no respondió.');
     });
   }
-  /* cuántas lecturas quedan y cuándo se reinician: la más restrictiva entre el diario y el mensual (si está configurado) */
+  /* cuántas lecturas quedan: la cuota más restrictiva entre día, semana y mes */
   function lecturasDisponibles(c) {
     var opciones = [{ n: c.diario.restan, cuando: 'mañana (a medianoche)' }];
-    if (c.mensual.limite) opciones.push({ n: c.mensual.restan, cuando: 'el día 1 del mes' });
+    if (c.semanal && c.semanal.limite) opciones.push({ n: c.semanal.restan, cuando: 'el lunes (a medianoche)' });
+    if (c.mensual && c.mensual.limite) opciones.push({ n: c.mensual.restan, cuando: 'el día 1 del mes' });
     return opciones.reduce(function (a, b) { return b.n < a.n ? b : a; });
   }
   /* las líneas que se muestran: hoy, este mes y, si se va a leer un PDF, cuántas páginas faltan */
@@ -335,6 +336,7 @@
   /* una foto o un PDF de gasto. Si ya se leyó, se devuelve esa lectura (desdeCache) sin llamar al servicio;
      con forzar («Leer de nuevo») sí se vuelve a leer y se cobra. RF.ocr.recognize solo se llama si hay que leer. */
   function recognizeCached(file, onStage, forzar) {
+    if (file && file.size > OCR_MAX_BYTES) return Promise.reject(archivoGrande());
     return identidad(file).then(function (idn) {
       var leerYGuardar = function () {
         return RF.ocr.recognize(file, onStage).then(function (res) {
@@ -354,6 +356,7 @@
 
   /* Lee un comprobante con Google Cloud Vision a través del servicio de la comunidad. */
   function recognize(file, onStage) {
+    if (file && file.size > OCR_MAX_BYTES) return Promise.reject(archivoGrande());
     var say = function (id, label) { if (onStage) onStage(id, label); };
     say('prep', 'Preparando la foto…');
     return downscale(file).then(function (blob) {
@@ -364,13 +367,15 @@
     });
   }
 
-  /* Lee un PDF (p. ej. el PEA escaneado) con el OCR del servicio. No reduce el archivo: se manda tal cual, en base64.
-     Rechaza con mensaje claro si pesa más de 20 MB. Devuelve { ok, raw_text, pages, page_count, total_pages, document_coverage, error }. */
-  var PDF_MAX_BYTES = 20 * 1024 * 1024; /* límite de Cloud Vision para archivos */
+  /* Límite de transporte sobre el archivo bruto, antes de reducirlo o convertirlo a base64. */
+  var OCR_MAX_BYTES = 7 * 1024 * 1024;
+  function archivoGrande() { return Object.assign(new Error('El archivo pesa más de 7 MB. Usa una foto más pequeña o un PDF con menos páginas.'), { code: 'ARCHIVO_MUY_GRANDE' }); }
+  function validarArchivo(file) { return file && file.size > OCR_MAX_BYTES ? archivoGrande() : null; }
+  /* Lee el PDF sin límite de páginas por archivo. */
   function recognizeDocument(file, onStage) {
     var say = function (id, label) { if (onStage) onStage(id, label); };
     if (!file) return Promise.reject(new Error('Falta el archivo PDF.'));
-    if (file.size > PDF_MAX_BYTES) return Promise.reject(Object.assign(new Error('El PDF pesa más de 20 MB; sepáralo en partes o usa un Word'), { code: 'ARCHIVO_MUY_GRANDE' }));
+    if (file.size > OCR_MAX_BYTES) return Promise.reject(archivoGrande());
     say('prep', 'Preparando el PDF…');
     return blobToBase64(file).then(function (b64) {
       say('read', 'Leyendo el PDF con Google… puede tardar varios minutos.');
@@ -387,7 +392,7 @@
         total_pages: res.total_pages || res.page_count || null,
         document_coverage: res.document_coverage || null,
         pages_without_text: res.pages_without_text || [],
-        error: ok ? null : (!completo ? 'Google no leyó todas las páginas del PDF; no se aplica el PEA. Prueba de nuevo o sube el Word.' : (res.error || 'OCR_SIN_TEXTO'))
+        error: ok ? null : (/^LIMITE_(DIARIO|SEMANAL|MENSUAL)$/.test(res.error || '') ? res.error : (!completo ? 'Google no leyó todas las páginas del PDF; no se aplica el PEA. Prueba de nuevo o sube el Word.' : (res.error || 'OCR_SIN_TEXTO')))
       };
     });
   }
@@ -399,7 +404,6 @@
      onRetry(intento) avisa cada reintento (intento 2 o 3). Una hoja sin texto cuenta como leída (en blanco).
      No usa postRetry: ese reintenta una sola vez y no vuelve a validar la respuesta, y también lo usa el escaneo de recibos. */
   var PAGINA_REINTENTOS = 2;
-  var PAGINA_MAX_BYTES = 20 * 1024 * 1024; /* mismo límite que el servicio (ocrMaxBytes, sobre los bytes ya decodificados) */
   var FALLO_TODO = /^(NO_CONFIGURADO|OCR_NO_CONFIGURADO|SERVICIO_NO_APROBADO|CLAVE_DISTINTA|SIN_CUENTA|BLOQUEADO|BLOQUEADA|SESION_INVALIDA|LIMITE_DIARIO|LIMITE_SEMANAL|LIMITE_MENSUAL|TIPO_NO_PERMITIDO)$/;
   var FALLO_PASAJERO = /^(TIMEOUT|RESPUESTA_INVALIDA|OCUPADO)$|Failed to fetch|NetworkError|Load failed|^Cloud Vision HTTP (408|429|5\d\d)$/;
   var SIN_TEXTO = /SIN_TEXTO|no devolvió texto/;
@@ -441,7 +445,7 @@
   }
   function recognizePage(blob, number, onRetry) {
     if (!blob) return Promise.resolve(paginaFallida(number, 'no se pudo convertir la página en imagen'));
-    if (blob.size > PAGINA_MAX_BYTES) return Promise.resolve(paginaFallida(number, 'la imagen pasa de 20 MB'));
+    if (blob.size > OCR_MAX_BYTES) return Promise.resolve(paginaFallida(number, 'la imagen pasa de 7 MB'));
     return blobToBase64(blob).then(function (b64) {
       return intentarPagina({ fileName: 'pagina-' + number + '.jpg', mimeType: 'image/jpeg', base64: b64 }, 0, onRetry);
     }).then(function (res) {
@@ -488,7 +492,7 @@
     return m || 'error desconocido';
   }
   RF.cloud = { approvedUrls: approvedUrls, humanError: humanError, configured: configured, validUrl: validUrl, trustedUrl: trustedUrl, post: post, postRaw: postRaw, postRawTo: postRawTo, postRetry: postRetry, ping: ping, downscale: downscale, blobToBase64: blobToBase64 };
-  RF.ocr = { recognize: recognize, recognizeDocument: recognizeDocument, recognizePage: recognizePage, toExpenseFields: toExpenseFields,
+  RF.ocr = { recognize: recognize, recognizeDocument: recognizeDocument, recognizePage: recognizePage, validarArchivo: validarArchivo, toExpenseFields: toExpenseFields,
     cuota: cuota, lineasLimites: lineasLimites, lecturasDisponibles: lecturasDisponibles, tarjetaLimites: tarjetaLimites, mensajeLimite: mensajeLimite,
     identidad: identidad, leerGuardada: leerGuardada, guardarLectura: guardarLectura, documentoGuardado: documentoGuardado, anotarDocumento: anotarDocumento, recognizeCached: recognizeCached };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -24,7 +24,7 @@
   function defaults() {
     return {
       v: 2,
-      community: { name: '', rut: '', address: '', legalRep: '', repRut: '', email: '', phone: '', ivaModo: 'no_contribuyente', oc: '', ocEmail: '' },
+      community: { name: '', rut: '', address: '', legalRep: '', repRut: '', email: '', phone: '', ivaModo: 'no_contribuyente', oc: '', ocEmail: '', desembolsos: [] },
       cloud: { apiUrl: '', lastSync: null, rev: 0, autoSave: true, rootUrl: '', saves: [] },
       holidays: [], events: [], activity: [], signatures: [], projects: [], activeProjectId: null, repo: { docs: [], actas: [] },
       ui: { theme: 'system', open: {}, idleMinutes: 15 }
@@ -35,6 +35,7 @@
     if (!s || typeof s !== 'object') return d;
     var out = Object.assign({}, d, s);
     out.community = Object.assign({}, d.community, s.community || {});
+    out.community.desembolsos = Array.isArray(out.community.desembolsos) ? out.community.desembolsos : [];
     if (/^SMI/i.test(out.community.oc || '')) out.community.oc = ''; /* el organismo se nombra por su rol, no por la institución */
     out.cloud = Object.assign({}, d.cloud, s.cloud || {});
     out.ui = Object.assign({}, d.ui, s.ui || {});

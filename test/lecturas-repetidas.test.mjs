@@ -132,7 +132,7 @@ test('el registro del documento conserva la primera lectura y el nombre con el q
   assert.equal(despues.nombre, 'PEA.pdf');
 });
 
-test('los límites ya no muestran la semana ni la hora de Chile; el diario y el mensual sí', () => {
+test('la cuota disponible respeta la semana aunque la tarjeta muestre día y mes', () => {
   const { RF } = preparar();
   const cuota = {
     diario: { usadas: 12, limite: 200, restan: 188 },
@@ -145,6 +145,6 @@ test('los límites ya no muestran la semana ni la hora de Chile; el diario y el 
   assert.deepEqual(titulos(lineas), ['Hoy', 'Este mes']);
   assert.doesNotMatch(Array.from(lineas, l => l.texto).join(' '), /hora de Chile|semana/i);
   assert.deepEqual(titulos(RF.ocr.lineasLimites(cuota, { paginas: 31, leidas: 13 })), ['Hoy', 'Este mes', 'Este PDF']);
-  assert.equal(RF.ocr.lecturasDisponibles(cuota).n, 188, 'el límite semanal no cuenta para lo que queda');
+  assert.equal(RF.ocr.lecturasDisponibles(cuota).n, 10, 'el límite semanal cuenta para lo que queda');
   assert.equal(RF.ocr.mensajeLimite('LIMITE_DIARIO', 200), 'se alcanzó el límite diario de lecturas (200); se reinicia a medianoche');
 });

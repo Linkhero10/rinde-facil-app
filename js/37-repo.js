@@ -19,7 +19,7 @@
     { id: 'obs_rend', name: 'Observaciones de CORFO a la rendición', folder: 'Rendiciones - observaciones y respuestas', from: 'corfo', pea: 'no' },
     { id: 'resp_obs', name: 'Respuesta de la comunidad a las observaciones', folder: 'Rendiciones - observaciones y respuestas', from: 'comunidad', pea: 'no' },
     { id: 'transferencia', name: 'Comprobante de transferencia', folder: 'Transferencias', from: 'novandina', pea: 'no' },
-    { id: 'convenio', name: 'Convenio o Acuerdo firmado', folder: 'Convenio', from: 'corfo', pea: 'no' },
+    { id: 'convenio', name: 'Acuerdo', folder: 'Convenio', from: 'corfo', pea: 'no' },
     { id: 'correo', name: 'Correo o carta oficial', folder: 'Correos y cartas', from: 'corfo', pea: 'nose' },
     { id: 'otro', name: 'Otro documento', folder: 'Otros', from: 'otro', pea: 'nose' }
   ];
@@ -94,9 +94,9 @@
         U.clear(advice);
         if (rec.peaChange === 'si') {
           advice.appendChild(h('div', { class: 'callout warn' }, h('strong', null, 'Este documento cambia algo del PEA.'),
-            h('span', null, ' Marca qué cambia. Según los documentos del convenio, los cambios de actividades, presupuesto y fechas se piden con reitemización (o reprogramación si solo cambian los plazos), se aprueban en asamblea, se envían a CORFO con el acta y luego se configuran en SGP.')));
+            h('span', null, ' Marca qué cambia. Los aumentos de presupuesto se aprueban en asamblea y se envían a CORFO con el acta de asamblea o extracto; después, con la aprobación de CORFO, se configuran en SGP.')));
           advice.appendChild(h('div', { class: 'checks' }, CHANGES.map(function (c) { rec.changes = rec.changes || {}; return UI.field(c.name, rec.changes, c.id, { type: 'check' }); })));
-          advice.appendChild(h('div', { class: 'row-actions' }, UI.btn('Preparar la solicitud de cambio', { icon: 'edit', cls: 'ghost', onclick: function () { location.hash = '#/h/reitem?from=TRM-028'; } }), UI.btn('Ver el trámite «Actualización de proyecto (opcional)»', { icon: 'route', cls: 'ghost', onclick: function () { location.hash = '#/t/TRM-028'; } })));
+          advice.appendChild(h('div', { class: 'row-actions' }, UI.btn('Preparar la solicitud de cambio', { icon: 'edit', cls: 'ghost', onclick: function () { location.hash = '#/h/reitem?from=TRM-028'; } }), UI.btn('Ver el trámite «Actualización de proyecto»', { icon: 'route', cls: 'ghost', onclick: function () { location.hash = '#/t/TRM-028'; } })));
         } else if (rec.peaChange === 'nose') {
           advice.appendChild(UI.callout('info', 'Si tienes dudas:', ' pregúntale a tu ejecutivo técnico de CORFO o al Organismo Colaborador si este documento obliga a corregir el PEA. Puedes guardarlo igual y volver a marcarlo después.'));
         }
@@ -162,7 +162,7 @@
             UI.btn('Borrar', { cls: 'ghost small danger', onclick: function () { UI.confirmBox('¿Borrar este documento de la app? Lo que ya está en el Drive no se borra.', 'Borrar').then(function (ok) { if (!ok) return; if (d.blobId) RF.blobs.del(d.blobId); repo().docs.splice(repo().docs.indexOf(d), 1); silent(); paint(); }); } }))));
       });
       box.appendChild(UI.section('Tus documentos', [docs.length ? chips : null, rows.length ? h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid list-grid' }, h('thead', null, h('tr', null, ['Fecha', 'Documento', '¿Cambia el PEA?', 'En el Drive', ''].map(function (x) { return h('th', null, x); }))), h('tbody', null, rows))) : UI.empty(docs.length ? 'No hay documentos en este filtro.' : 'Aún no guardas documentos. Agrega el primero.')]));
-      if (docs.length) box.appendChild(UI.section('Sacar el registro', [UI.exportBar(docsDoc, 'registro-documentos')]));
+      if (docs.length) box.appendChild(UI.section('Descargar el registro', [UI.exportBar(docsDoc, 'registro-documentos')]));
       return box;
     }
     paint();
@@ -263,11 +263,11 @@
           h('td', { 'data-label': 'Acciones' }, h('div', { class: 'row-actions' },
             a.blobId ? UI.btn('Ver acta', { cls: 'ghost small', onclick: function () { openBlob(a.blobId, a.fileName); } }) : null,
             UI.btn('Editar', { cls: 'ghost small', onclick: function () { st.rec = a; st.editing = a.id; st.file = null; paint(); } }),
-            UI.btn('Borrador', { cls: 'ghost small', title: 'Sacar un borrador del acta en Excel, Word o PDF', onclick: function () { RF.exp.printDoc(actaDoc(a)); } }),
+            UI.btn('Borrador', { cls: 'ghost small', title: 'Descargar un borrador del acta en Excel, Word o PDF', onclick: function () { RF.exp.printDoc(actaDoc(a)); } }),
             UI.btn('Borrar', { cls: 'ghost small danger', onclick: function () { UI.confirmBox('¿Borrar esta acta de la app? Lo que ya está en el Drive no se borra.', 'Borrar').then(function (ok) { if (!ok) return; if (a.blobId) RF.blobs.del(a.blobId); repo().actas.splice(repo().actas.indexOf(a), 1); silent(); paint(); }); } }))));
       });
       box.appendChild(UI.section('Tus actas', [rows.length ? h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid list-grid' }, h('thead', null, h('tr', null, ['Fecha', 'Acta', 'Estado', 'Acuerdos', 'En el Drive', ''].map(function (x) { return h('th', null, x); }))), h('tbody', null, rows))) : UI.empty('Aún no guardas actas. Agrega la primera.')]));
-      if (actas.length) box.appendChild(UI.section('Sacar el registro', [UI.exportBar(actasDoc, 'registro-actas')]));
+      if (actas.length) box.appendChild(UI.section('Descargar el registro', [UI.exportBar(actasDoc, 'registro-actas')]));
       return box;
     }
     paint();

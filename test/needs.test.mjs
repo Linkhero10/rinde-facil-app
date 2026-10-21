@@ -48,7 +48,7 @@ test('el cuadre avisa si gasta en algo que no planeó y si agregó algo después
   p.expenses.push({ id: 'e1', cuenta: 'administracion', docType: 'factura', total: 1000 });
   let res = L.reconcile(p, RF.store.get().community, '2026-09-29', []);
   let g = res.groups.find(x => x.id === 'plan');
-  assert.ok(g && g.items.some(i => i.level === 'warn' && /administración/i.test(i.msg)), 'gasto de administración no marcado');
+  assert.ok(g && !g.items.some(i => i.level === 'warn' && /administración/i.test(i.msg)), 'administración se gestiona en el PEA general, sin necesidad que marcar');
   p.peaAprobado = true; p.needsPea = { insumos: true }; p.needsAdded = [{ id: 'viaticos', at: '2026-09-20T10:00:00Z' }];
   p.needsCustom = [{ name: 'Semillas para el vivero', at: '2026-09-21T10:00:00Z', afterPea: true }];
   res = L.reconcile(p, RF.store.get().community, '2026-09-29', []);

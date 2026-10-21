@@ -15,12 +15,13 @@
     { id: 'activos', group: 'Inversión', name: 'Comprar equipos, maquinaria o vehículos', help: 'Bienes que quedan en el inventario de la comunidad.' },
     { id: 'inmuebles', group: 'Inversión', name: 'Comprar terreno, inmueble o derechos de agua', help: 'Piden tasaciones y estar libres de gravámenes.' },
     { id: 'grandes', group: 'Compras', name: 'Alguna compra de más de $10.000.000 netos', help: 'Piden dos cotizaciones de proveedores distintos.' },
-    { id: 'admin', group: 'Administración', name: 'Gastos de administración compartidos', help: 'Luz, agua, internet, contador, oficina: se reparten entre proyectos.' },
     { id: 'efectivo', group: 'Pagos', name: 'Pagar algo en efectivo', help: 'Quien recibe el efectivo firma una declaración.' },
     { id: 'iva_no', group: 'IVA', name: 'Soy contribuyente y no uso el IVA', help: 'Se rinde el total y se acompaña la declaración del Anexo 1.' },
     { id: 'iva_otro', group: 'IVA', name: 'Tengo facturas con IVA que no corresponde al proyecto', help: 'Se informa en el Anexo 2.' }
   ];
   var BY_ID = {}; NEEDS.forEach(function (n) { BY_ID[n.id] = n; });
+  /* Compatibilidad con necesidades ya guardadas; no se ofrece como opción del proyecto. */
+  BY_ID.admin = { id: 'admin', name: 'Gastos de administración' };
 
   /* trámite → necesidades que lo activan (basta con una). Los trámites que no aparecen aquí le tocan a todos. */
   var APPLIES = {
@@ -55,14 +56,14 @@
   (RF.tramites ? RF.tramites.list : []).forEach(function (t) { Object.keys(t.stepTools || {}).forEach(function (i) { STEP_TOOLS[t.id + ':' + i] = t.stepTools[i]; }); });
   /* cada herramienta: ¿hay que usarla? 'clave' = necesaria en la ruta; 'segun' = solo si te toca por lo que marcaste o por tu situación; 'apoyo' = opcional, para tener a mano */
   var TOOL_ROLE = {
-    necesidades: { kind: 'clave', text: 'Esto decide qué trámites te tocan en toda la ruta. Se hace una vez, antes de armar el PEA (unos 2 minutos), y lo puedes cambiar cuando quieras.' },
+    necesidades: { kind: 'clave', text: 'La app te muestra los pasos que te tocan. Lo puedes cambiar cuando quieras.' },
     proyecto: { kind: 'clave', text: 'Los datos de tu comunidad y de tu proyecto se usan para llenar todos los documentos. Se completan una vez.' },
     gantt: { kind: 'clave', text: 'Es parte del PEA y después se carga en SGP. Se arma una vez y se ajusta si cambian las fechas.' },
     presupuesto: { kind: 'clave', text: 'Es parte del PEA y después se carga en SGP. Aquí planificas cuánto gastarás en cada cuenta.' },
     pea: { kind: 'clave', text: 'Reúne la Carta Gantt, el presupuesto y los datos del proyecto en el documento que revisa CORFO.' },
-    subirpea: { kind: 'clave', text: 'Sube el Word del PEA para que la app lea tu comunidad, tus proyectos y el presupuesto, y guarde el archivo en el Drive.' },
+    subirpea: { kind: 'clave', text: 'Sube el Word del proyecto para leer sus datos y guardar el archivo en el Drive. El presupuesto se completa desde el Excel.' },
     reitem: { kind: 'segun', text: 'Solo si necesitas cambiar montos o actividades de un PEA que CORFO ya aprobó.' },
-    cotizaciones: { kind: 'segun', text: 'Solo para compras grandes (sobre $10.000.000 netos): piden comparar proveedores.' },
+    cotizaciones: { kind: 'apoyo', text: 'Respaldo de la rendición (opcional). Puedes guardar las cotizaciones sin rellenar esta herramienta.' },
     gastos: { kind: 'clave', text: 'Aquí anotas cada gasto con su boleta o factura. Es lo que después se rinde.' },
     revision: { kind: 'clave', text: 'Antes de enviar la rendición, revisa que todo cuadre. Puedes usarla cuantas veces quieras.' },
     resumen: { kind: 'clave', text: 'Compara tus gastos con lo aprobado, cuenta por cuenta, antes de enviar.' },
@@ -84,10 +85,9 @@
     obras: { kind: 'segun', text: 'Para el informe técnico: permisos y fotos de obras, fotos de actividades, listas de asistencia e informes de estudios. Aparte de las boletas y sin OCR.' },
     viaje: { kind: 'segun', text: 'Solo si hubo viajes: anota quién viajó, su rol y por qué era necesario.' },
     f29: { kind: 'segun', text: 'Solo si tus gastos incluyen facturas: el Manual pide el Formulario 29 de cada mes. Aquí lo guardas y se compara con el IVA de tus facturas.' },
-    prorroga: { kind: 'segun', text: 'Solo si no alcanzas a entregar el PEA en 90 días: se pide una vez, hasta 30 días más y antes de que venza.' },
     solicitud: { kind: 'clave', text: 'Al final del proyecto, para pedir los aportes que faltan.' },
     calendario: { kind: 'apoyo', text: '' },
-    documentos: { kind: 'apoyo', text: 'Tu archivo de documentos importantes: convenio, resoluciones, certificados. Para tenerlos a mano.' },
+    documentos: { kind: 'apoyo', text: 'Tu archivo de documentos importantes: Acuerdo, resoluciones, certificados. Para tenerlos a mano.' },
     actas: { kind: 'apoyo', text: 'Para dejar registro de las reuniones de la mesa de trabajo. Úsala cuando haya una reunión.' },
     compartir: { kind: 'apoyo', text: 'Para enviar un resumen al Organismo Colaborador, solo si tú quieres y con tu permiso.' },
     plazos: { kind: 'apoyo', text: 'Calcula cuánto tiempo te queda. Úsala cuando quieras confirmar una fecha.' },

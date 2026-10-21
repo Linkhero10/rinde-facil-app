@@ -13,7 +13,7 @@
 
   /* ---------- menú lateral ---------- */
   var TOOL_GROUPS = [
-    { id: 'G-plan', name: 'Planificar', tools: ['necesidades', 'proyecto', 'gantt', 'presupuesto', 'pea', 'subirpea', 'reitem', 'cotizaciones'] },
+    { id: 'G-plan', name: 'PEA', tools: ['necesidades', 'proyecto', 'gantt', 'presupuesto', 'pea', 'subirpea', 'reitem', 'cotizaciones'] },
     { id: 'G-rend', name: 'Rendir', tools: ['gastos', 'f29', 'revision', 'resumen', 'observaciones'] },
     { id: 'G-form', name: 'Anexos y formularios', tools: ['anexo1', 'anexo2', 'anexo3', 'anexo4', 'anexo5', 'informe', 'consulta', 'solicitud'] },
     { id: 'G-doc', name: 'Documentos y actas', tools: ['expediente', 'documentos', 'obras', 'actas', 'historial', 'compartir'] },
@@ -32,7 +32,7 @@
     return h('div', { class: 'acc' + (open ? ' open' : '') }, btn, body);
   }
 
-  /* trámites de la ruta en los que se usa una herramienta (los de ayuda aparte quedan fuera) */
+  /* pasos de la ruta en los que se usa una herramienta (los de ayuda aparte quedan fuera) */
   function stepsOfTool(tid) {
     var out = [];
     RF.tramites.list.forEach(function (t) {
@@ -146,9 +146,53 @@
           duplicates ? h('p', { class: 'hint' }, 'Los ítems con el mismo texto muestran los mismos gastos asociados; el ejecutado del proyecto cuenta cada gasto una sola vez.') : null);
       }));
   }
+  function desembolsos() {
+    var c = RF.store.get().community, box = h('div');
+    function save() { RF.store.update(function () {}, { silent: true }); }
+    function paint() {
+      U.clear(box);
+      var rows = Array.isArray(c.desembolsos) ? c.desembolsos : [];
+      var totals = { CLP: { si: 0, no: 0 }, 'US$': { si: 0, no: 0 } };
+      var tb = h('tbody');
+      rows.forEach(function (r, i) {
+        var currency = r.moneda === 'US$' ? 'US$' : 'CLP';
+        totals[currency][r.transferido === true ? 'si' : 'no'] += Math.max(0, Number(r.monto) || 0);
+        var amount = h('input', { type: 'number', min: '0', step: 'any', 'aria-label': 'Monto' });
+        amount.value = r.monto == null ? '' : r.monto;
+        amount.addEventListener('change', function () {
+          var n = Number(amount.value);
+          if (!isFinite(n) || n < 0) { amount.value = r.monto || 0; UI.toast('El monto no puede ser negativo.', 'bad'); return; }
+          r.monto = n; save(); paint();
+        });
+        tb.appendChild(h('tr', null,
+          h('td', { 'data-label': 'Fondo' }, UI.bind(r, 'fondo', { type: 'select', noEmpty: true, aria: 'Fondo', options: ['AIA', 'AA', 'Subsecuente', 'Otro'].map(function (x) { return { id: x, name: x }; }) })),
+          h('td', { 'data-label': 'Tramo' }, UI.bind(r, 'tramo', { type: 'text', aria: 'Tramo' })),
+          h('td', { 'data-label': 'Monto' }, amount),
+          h('td', { 'data-label': 'Moneda' }, UI.bind(r, 'moneda', { type: 'select', noEmpty: true, aria: 'Moneda', options: [{ id: 'CLP', name: 'CLP' }, { id: 'US$', name: 'US$' }], onChange: paint })),
+          h('td', { 'data-label': 'Fecha' }, UI.bind(r, 'fecha', { type: 'date', aria: 'Fecha' })),
+          h('td', { 'data-label': 'Transferido' }, (function () {
+            var sel = h('select', { 'aria-label': 'Transferido' }, h('option', { value: 'no' }, 'No'), h('option', { value: 'si' }, 'Sí'));
+            sel.value = r.transferido === true ? 'si' : 'no';
+            sel.addEventListener('change', function () { r.transferido = sel.value === 'si'; save(); paint(); }); return sel;
+          })()),
+          h('td', null, UI.btn('Quitar', { cls: 'ghost small', onclick: function () { c.desembolsos.splice(i, 1); save(); paint(); } }))));
+      });
+      box.appendChild(h('div', { class: 'table-scroll' }, h('table', { class: 'edit-grid', 'aria-label': 'Desembolsos y montos asignados' }, h('thead', null, h('tr', null, ['Fondo', 'Tramo', 'Monto', 'Moneda', 'Fecha', 'Transferido', ''].map(function (x) { return h('th', null, x); }))), tb)));
+      box.appendChild(UI.btn('Agregar desembolso', { cls: 'primary', icon: 'plus', onclick: function () {
+        if (!Array.isArray(c.desembolsos)) c.desembolsos = [];
+        c.desembolsos.push({ fondo: 'AIA', tramo: '', monto: 0, moneda: 'CLP', fecha: '', transferido: false }); save(); paint();
+      } }));
+      ['CLP', 'US$'].forEach(function (currency) {
+        ['si', 'no'].forEach(function (status) { box.appendChild(h('p', null, (status === 'si' ? 'Transferido' : 'Por transferir') + ' · ' + currency + ': ' + totals[currency][status].toLocaleString('es-CL', { maximumFractionDigits: 2 }))); });
+      });
+    }
+    paint();
+    return UI.section('Desembolsos y montos asignados', [box]);
+  }
+
   function homeView() {
     var s = RF.store.get(), p = project(), root = h('div', { class: 'view home' });
-    if (!p) return onboarding();
+    if (!p) { root.appendChild(onboarding()); root.appendChild(desembolsos()); return root; }
     var prog = L.progress(p), res = L.reconcile(p, s.community, U.todayISO(), RF.holidays.all());
     var f = fase(prog.faseActual), nx = prog.next, nt = nx && RF.tramites.byId[nx.tramiteId];
     var flagged = res.groups.reduce(function (a, g) { return a.concat(g.items.filter(function (i) { return i.level === 'error' || i.level === 'warn'; })); }, []);
@@ -160,11 +204,12 @@
       h('p', { class: 'lead' }, nx ? f.blurb : doneWithIssues ? 'La revisión encontró ' + flagged.length + (flagged.length === 1 ? ' aviso' : ' avisos') + ' que conviene arreglar antes de enviar la rendición.' : 'Revisa el cuadre final y guarda tu copia.'),
       h('div', { class: 'hero-row' },
         nt ? h('a', { class: 'btn primary big', href: '#/t/' + nt.id }, 'Continuar: ' + nt.title, UI.icon('right', 20)) : h('a', { class: 'btn primary big', href: '#/h/revision' }, doneWithIssues ? 'Ver qué corregir' : 'Ver la revisión final'),
-        h('div', { class: 'ring-wrap' }, UI.progressBar(prog.tramDone, prog.tramTotal, 'Avance total'), h('span', { class: 'ring-t' }, prog.tramDone + ' de ' + prog.tramTotal + ' trámites listos'))),
+        h('div', { class: 'ring-wrap' }, UI.progressBar(prog.tramDone, prog.tramTotal, 'Avance total'), h('span', { class: 'ring-t' }, prog.tramDone + ' de ' + prog.tramTotal + ' pasos listos'))),
       nt ? h('p', { class: 'next-step' }, 'Siguiente paso: ', h('strong', null, nt.steps[nx.stepIdx])) : null));
     root.appendChild(budgetSummary(s.projects));
+    root.appendChild(desembolsos());
     if (!nx && !flagged.some(function (i) { return i.level === 'error'; }) && RF.dash) root.appendChild(RF.dash.congrats(p));
-    if (!L.needsAnswered(p)) root.appendChild(h('section', { class: 'card need-banner' }, h('h2', { class: 'card-title' }, 'Cuéntanos qué necesitará tu proyecto'), h('p', null, 'Marca lo que vas a usar (viáticos, insumos, inmuebles…) y te mostramos solo los trámites que te tocan. Hoy ves todos.'), h('a', { class: 'btn primary', href: '#/h/necesidades' }, 'Marcar lo que necesito')));
+    if (!L.needsAnswered(p)) root.appendChild(h('section', { class: 'card need-banner' }, h('h2', { class: 'card-title' }, 'Cuéntanos qué necesitará tu proyecto'), h('p', null, 'La app te muestra los pasos que te tocan. Lo puedes cambiar cuando quieras.'), h('a', { class: 'btn primary', href: '#/h/necesidades' }, 'Marcar lo que necesito')));
     if (RF.dash && !fresh) root.appendChild(RF.dash.render(p, s, { prog: prog, res: res }));
     /* próximas fechas */
     var soon = RF.calendar.collect(s, p).filter(function (e) { return e.date >= U.todayISO(); }).slice(0, 3);
@@ -174,7 +219,7 @@
     /* fases */
     var cards = h('div', { class: 'phase-cards' }, D.FASES.map(function (fa) {
       var pf = prog.porFase[fa.id];
-      return h('a', { class: 'phase-card' + (fa.id === prog.faseActual ? ' now' : '') + (pf.complete ? ' done' : ''), href: '#/f/' + fa.id }, h('span', { class: 'pc-n' }, String(fa.n)), h('span', { class: 'pc-t' }, fa.name), h('span', { class: 'pc-b' }, fa.blurb), UI.progressBar(pf.tramDone, pf.tramTotal, 'Avance de ' + fa.name), h('span', { class: 'pc-c' }, pf.tramDone + ' de ' + pf.tramTotal + ' trámites'));
+      return h('a', { class: 'phase-card' + (fa.id === prog.faseActual ? ' now' : '') + (pf.complete ? ' done' : ''), href: '#/f/' + fa.id }, h('span', { class: 'pc-n' }, String(fa.n)), h('span', { class: 'pc-t' }, fa.name), h('span', { class: 'pc-b' }, fa.blurb), UI.progressBar(pf.tramDone, pf.tramTotal, 'Avance de ' + fa.name), h('span', { class: 'pc-c' }, pf.tramDone + ' de ' + pf.tramTotal + ' pasos'));
     }));
     root.appendChild(h('section', null, h('h2', { class: 'sec-title' }, 'Tu ruta en 6 fases'), cards));
     /* flujo */
@@ -202,7 +247,7 @@
     } });
     root.appendChild(UI.section('Cuéntanos', [h('div', { class: 'form-grid' }, (s.community.name || '').trim() ? h('p', { class: 'lead wide' }, 'Comunidad: ', h('strong', null, s.community.name)) : UI.field('Nombre de tu comunidad', s.community, 'name', { type: 'text', cls: 'wide', ph: 'Ej: Comunidad Atacameña de …' }), UI.field('RUT de la comunidad', s.community, 'rut', { type: 'rut' }), UI.field('Nombre de tu proyecto', st, 'proyecto', { type: 'text', ph: 'Ej: Sede comunitaria' })), aviso, h('div', { class: 'row-actions' }, go)]));
     root.appendChild(h('section', null, h('h2', { class: 'sec-title' }, 'Cómo funciona'), h('div', { class: 'cards-3' },
-      h('div', { class: 'mini-card' }, h('strong', null, '1. Sigue la ruta'), h('p', null, 'Seis fases, cada una con sus trámites. Marca lo que ya hiciste.')),
+      h('div', { class: 'mini-card' }, h('strong', null, '1. Sigue la ruta'), h('p', null, 'Seis fases, cada una con sus pasos. Marca lo que ya hiciste.')),
       h('div', { class: 'mini-card' }, h('strong', null, '2. Completa aquí'), h('p', null, 'Carta Gantt, presupuesto, anexos e informes: todo se rellena y sale en Excel, Word, PDF o texto.')),
       h('div', { class: 'mini-card' }, h('strong', null, '3. Revisa el cuadre'), h('p', null, 'La app cruza tus datos y avisa qué falta o no calza, antes de enviar.')))));
     root.appendChild(UI.callout('info', 'Tus datos:', ' se guardan en este dispositivo. Puedes hacer una copia o conectar el servicio de tu comunidad en «Nube y copias».'));
@@ -227,7 +272,7 @@
     root.appendChild(h('div', { class: 'crumbs' }, h('a', { href: '#/' }, 'Mi ruta'), ' › ', 'Fase ' + f.n));
     root.appendChild(h('h1', { class: 'view-title' }, 'Fase ' + f.n + ': ' + f.name));
     root.appendChild(h('p', { class: 'lead' }, f.blurb));
-    root.appendChild(UI.section('Trámites de esta fase', [h('ul', { class: 'item-list' }, f.items.slice().sort(function (a, b) { return (L.itemProgress(p || { done: {} }, a).auto ? 1 : 0) - (L.itemProgress(p || { done: {} }, b).auto ? 1 : 0); }).map(function (tid) {
+    root.appendChild(UI.section('Pasos de esta fase', [h('ul', { class: 'item-list' }, f.items.slice().sort(function (a, b) { return (L.itemProgress(p || { done: {} }, a).auto ? 1 : 0) - (L.itemProgress(p || { done: {} }, b).auto ? 1 : 0); }).map(function (tid) {
       var t = RF.tramites.byId[tid], ip = L.itemProgress(p || { done: {} }, tid);
       return h('li', null, h('a', { href: '#/t/' + tid, class: 'item-row' + (ip.complete ? ' done' : '') }, h('span', { class: 'ck ' + (ip.complete ? 'on' : ip.done ? 'part' : '') }, ip.complete ? UI.icon('check', 14) : ''), h('span', { class: 'ir-t' }, t.title), h('span', { class: 'ir-c' }, ip.na ? (ip.auto ? 'no te toca por ahora' : 'no aplica') : ip.done + '/' + ip.total), UI.icon('right', 16)));
     }))]));
@@ -246,7 +291,7 @@
     ids.forEach(function (x) {
       var tl = RF.tools[x]; if (!tl) return;
       kids.push(h('span', { class: 'sd' },
-        h('a', { class: 'btn small', href: '#/h/' + x + '?from=' + encodeURIComponent(tid) }, UI.icon(tl.icon || 'file', 14), (FORMY.test(x) ? 'Rellenar · ' : 'Abrir · ') + tl.title), (RF.needs.TOOL_ROLE[x] && RF.needs.TOOL_ROLE[x].kind === 'apoyo') ? h('span', { class: 'st-opt' }, 'Herramienta opcional') : null,
+        h('a', { class: 'btn small', href: '#/h/' + x + '?from=' + encodeURIComponent(tid) }, UI.icon(tl.icon || 'file', 14), x === 'cotizaciones' ? 'Respaldo de la rendición (opcional)' : (FORMY.test(x) ? 'Rellenar · ' : 'Abrir · ') + tl.title), (RF.needs.TOOL_ROLE[x] && RF.needs.TOOL_ROLE[x].kind === 'apoyo') ? h('span', { class: 'st-opt' }, 'Herramienta opcional') : null,
         RF.docs && RF.docs.hasPreview(x) ? UI.btn('Ver formato', { cls: 'ghost small', title: 'Mira cómo queda el documento', onclick: function () { RF.docs.preview(x); } }) : null));
     });
     return kids.length ? h('div', { class: 'step-docs' }, kids) : null;
@@ -261,11 +306,10 @@
     root.appendChild(h('div', { class: 'tram-nav' }, prev ? h('a', { class: 'btn ghost small', href: '#/t/' + prev, 'aria-label': 'Anterior: ' + RF.tramites.byId[prev].title }, UI.icon('left', 16), 'Anterior') : h('span'), next ? h('a', { class: 'btn ghost small', href: '#/t/' + next, 'aria-label': 'Siguiente: ' + RF.tramites.byId[next].title }, 'Siguiente', UI.icon('right', 16)) : h('span')));
     var who = ACTOR[t.who] || ACTOR.comunidad;
     root.appendChild(h('header', { class: 'tram-head', style: { '--c': 'var(--' + who.id + ')' } }, h('h1', { class: 'view-title' }, t.title), h('p', { class: 'lead' }, t.why),
-      h('div', { class: 'chips-row' }, h('span', { class: 'tag', style: { '--c': 'var(--' + who.id + ')' } }, 'Le toca a: ' + who.name), t.when ? h('span', { class: 'tag plain' }, UI.icon('clock', 14), t.when) : null, t.kind === 'paso' ? h('span', { class: 'tag plain' }, 'Paso del proceso') : null)));
+      h('div', { class: 'chips-row' }, h('span', { class: 'tag', style: { '--c': 'var(--' + who.id + ')' } }, who.id === 'comunidad' ? 'Función de la comunidad' : 'Le toca a: ' + who.name), t.when ? h('span', { class: 'tag plain' }, UI.icon('clock', 14), t.when) : null, t.kind === 'paso' ? h('span', { class: 'tag plain' }, 'Paso del proceso') : null)));
     if (ip.auto) root.appendChild(h('div', { class: 'callout info' }, h('strong', null, 'Este trámite no te toca por ahora.'), h('span', null, ' Según lo que marcaste en «Qué necesitará tu proyecto», no lo vas a usar. Puedes leerlo igual.'), h('div', { class: 'row-actions' }, UI.btn('Me toca igual', { cls: 'ghost small', onclick: function () { RF.store.update(function () { p.show = p.show || {}; p.show[id] = true; }); } }), UI.btn('Cambiar lo que marqué', { cls: 'ghost small', onclick: function () { location.hash = '#/h/necesidades'; } }))));
     if (t.open) root.appendChild(UI.callout('warn', 'Duda abierta:', ' ' + t.open));
     /* plazo automático del PEA */
-    if (id === 'TRM-027' && p) { var pd = L.peaDeadline(p, U.todayISO()); root.appendChild(pd ? UI.callout(pd.diasRestantes < 0 ? 'bad' : pd.diasRestantes <= 15 ? 'warn' : 'info', 'Tu plazo:', ' vence el ' + U.fmtDate(pd.fin) + (pd.diasRestantes >= 0 ? ' (faltan ' + pd.diasRestantes + ' días).' : ' (ya venció; con prórroga única, hasta el ' + U.fmtDate(pd.finProrroga) + ').')) : UI.callout('info', '', 'Anota la fecha de aprobación del PEA en «Mi comunidad y proyectos» para calcular tu plazo.')); }
     /* qué necesitas */
     if (t.need && t.need.length) root.appendChild(UI.section('Qué necesitas', [h('ul', { class: 'need-list' }, t.need.map(function (n) { return h('li', null, n); }))]));
     /* a tener en cuenta (texto, no se marca) */
@@ -316,5 +360,5 @@
   }
   function refreshSide() { var old = document.getElementById('side'); if (!old) return; var keep = old.scrollTop, neu = sidebar(RF.app.route()); old.parentNode.replaceChild(neu, old); if (RF.app.fitSide) RF.app.fitSide(); neu.scrollTop = keep; [0, 60, 200].forEach(function (ms) { setTimeout(function () { var cur = document.getElementById('side'); if (cur && cur === neu && Math.abs(cur.scrollTop - keep) > 2) cur.scrollTop = keep; }, ms); }); if (document.body.classList.contains('menu-open')) { /* mantener */ } RF.app.applyThemeLabel(); }
 
-  RF.views = { toolContext: toolContext, toolTag: toolTag, TOOL_GROUPS: TOOL_GROUPS, sidebar: sidebar, home: homeView, fase: faseView, tramite: tramiteView, ORDER: ORDER, faseOf: faseOf, refreshSide: refreshSide, marcarTodos: marcarTodos, errorRutInicio: errorRutInicio };
+  RF.views = { toolContext: toolContext, toolTag: toolTag, TOOL_GROUPS: TOOL_GROUPS, sidebar: sidebar, home: homeView, desembolsos: desembolsos, fase: faseView, tramite: tramiteView, ORDER: ORDER, faseOf: faseOf, refreshSide: refreshSide, marcarTodos: marcarTodos, errorRutInicio: errorRutInicio };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -396,6 +396,8 @@
     /* PDF escaneado: cada página se dibuja derecha, se manda al OCR del servicio y el texto se lee por posición (RF.pea.extractFromOcr).
        Si el usuario elige otro archivo mientras esto corre, deja de mandar páginas y no toca la pantalla. */
     function onPdf(file) {
+      var fileError = RF.ocr && RF.ocr.validarArchivo && RF.ocr.validarArchivo(file);
+      if (fileError) { st.notice = fileError.message; paint(); return; }
       if (!RF.ocr || !RF.ocr.recognizePage || !RF.pdfPages || !RF.pea.extractFromOcr) { st.notice = 'No está cargada la lectura de PDF en esta versión.'; paint(); return; }
       if (!RF.cloud || !RF.cloud.configured()) { st.notice = 'Para leer un PDF escaneado conecta primero el servicio en la nube (en Ajustes). Mientras tanto puedes subir el Word del PEA.'; paint(); return; }
       if (PEA_EN_CURSO) {
@@ -544,13 +546,12 @@
           h('td', { 'data-label': 'Cuenta' }, UI.bind(l, 'cuenta', { type: 'select', noEmpty: true, options: CUENTAS_OPC, aria: 'Cuenta' })),
           h('td', { 'data-label': 'Ítem' }, UI.bind(l, 'item', { type: 'text', ph: 'Ej: Materiales', aria: 'Ítem' })),
           h('td', { 'data-label': 'Glosa' }, UI.bind(l, 'glosa', { type: 'text', ph: 'Qué es y para qué', max: 200, aria: 'Glosa' })),
-          h('td', { 'data-label': 'Fuente' }, UI.bind(l, 'fuente', { type: 'select', noEmpty: true, options: [{ id: 'corfo', name: 'F1 · CORFO' }, { id: 'propio', name: 'F2 · Aporte propio' }], aria: 'Fuente' })),
           h('td', { 'data-label': 'Monto' }, UI.bind(l, 'monto', { type: 'money', aria: 'Monto' })),
           h('td', { class: 'act' }, h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar línea', title: 'Quitar línea', onclick: function () { mp.budgetLines.splice(i, 1); paint(); } }, UI.icon('trash', 18)))));
       });
       return [
         mp.budgetLines.length ? null : h('p', { class: 'hint' }, 'Aún no hay líneas de presupuesto. Agrega la primera.'),
-        h('div', { class: 'table-scroll' }, h('table', { class: 'edit-grid' }, h('thead', null, h('tr', null, ['Cuenta', 'Ítem', 'Glosa (máx. 200)', 'Fuente', 'Monto', ''].map(function (x) { return h('th', null, x); }))), tb)),
+        h('div', { class: 'table-scroll' }, h('table', { class: 'edit-grid' }, h('thead', null, h('tr', null, ['Cuenta', 'Ítem', 'Glosa (máx. 200)', 'Monto', ''].map(function (x) { return h('th', null, x); }))), tb)),
         UI.btn('Agregar línea', { icon: 'plus', cls: 'ghost', onclick: function () { mp.budgetLines.push({ id: U.uid('b'), cuenta: 'operacion', item: '', glosa: '', fuente: 'corfo', monto: 0, actId: '' }); paint(); } })
       ];
     }
@@ -656,7 +657,7 @@
             UI.field('Otras fuentes', mp.fuentes, 'otras', { type: 'money' })),
           h('p', { class: 'hint' }, (mp.presupuestoTotal != null ? 'Total declarado en el PEA: ' + U.fmtCLP(mp.presupuestoTotal) + '. ' : '') + 'La administración no se reparte: va al proyecto «' + ADMIN + '».'),
         ].concat(
-          [h('h4', null, 'Presupuesto: líneas por cuenta y fuente')], lineasEditor(mp),
+          [h('h4', null, 'Presupuesto: líneas por cuenta')], lineasEditor(mp),
           [h('h4', null, 'Carta Gantt: etapas y actividades')], ganttEditor(mp))));
       });
 

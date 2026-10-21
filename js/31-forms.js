@@ -431,27 +431,37 @@
   })();
 
   /* ============ PEA ============ */
+  function presupuestoAdmin() {
+    var adm = RF.store.get().projects.filter(function (p) { return p.tipo === 'administracion' || p.name === 'Gastos de administración'; })[0];
+    return adm && adm.budgetApproved ? adm.budgetApproved.administracion : '';
+  }
   SCHEMAS.peaGeneral = {
-    id: 'peaGeneral', title: 'PEA · 1. Información general del plan', repeat: false, sheet: 'PEA general',
-    defaults: function (ctx) { return { comunidad: v(com(ctx).name), rut: v(com(ctx).rut), direccion: v(com(ctx).address), repLegal: v(com(ctx).legalRep), correo: v(com(ctx).email), telefono: v(com(ctx).phone), oc: v(com(ctx).oc, 'Organismo Colaborador'), fechaPrimerPago: v(proj(ctx).desembolso1), resumen: '', objetivos: '', beneficiarios: '', territorio: '' }; },
+    id: 'peaGeneral', title: 'PEA General', repeat: false, sheet: 'PEA general',
+    defaults: function (ctx) { return { comunidad: v(com(ctx).name), rut: v(com(ctx).rut), direccion: v(com(ctx).address), repLegal: v(com(ctx).legalRep), repRut: v(com(ctx).repRut), presupuestoAdmin: presupuestoAdmin(), correo: v(com(ctx).email), telefono: v(com(ctx).phone), oc: v(com(ctx).oc, 'Organismo Colaborador'), fechaPrimerPago: v(proj(ctx).desembolso1), resumen: '', objetivos: '', beneficiarios: '', territorio: '' }; },
     fields: [
-      { k: 'comunidad', l: 'Nombre de la comunidad', t: 'text' }, { k: 'rut', l: 'RUT', t: 'rut' }, { k: 'direccion', l: 'Dirección', t: 'text' }, { k: 'repLegal', l: 'Representante legal', t: 'text' }, { k: 'correo', l: 'Correo', t: 'text' }, { k: 'telefono', l: 'Teléfono', t: 'text' },
+      { k: 'comunidad', l: 'Nombre de la comunidad', t: 'text' }, { k: 'rut', l: 'RUT', t: 'rut' }, { k: 'direccion', l: 'Dirección', t: 'text' }, { k: 'repLegal', l: 'Representante legal', t: 'text' }, { k: 'repRut', l: 'RUT del representante', t: 'rut' }, { k: 'presupuestoAdmin', l: 'Presupuesto de administración', t: 'money' }, { k: 'correo', l: 'Correo', t: 'text' }, { k: 'telefono', l: 'Teléfono', t: 'text' },
       { k: 'oc', l: 'Organismo Colaborador que apoya', t: 'text' }, { k: 'fechaPrimerPago', l: 'Fecha del primer pago (30 % del AIA)', t: 'date' },
-      { k: 'resumen', l: 'Resumen del plan de la comunidad', t: 'textarea', rows: 4 }, { k: 'objetivos', l: 'Objetivos del programa', t: 'textarea', rows: 3 }, { k: 'beneficiarios', l: 'Quiénes se benefician (familias, socios)', t: 'textarea', rows: 2 }, { k: 'territorio', l: 'Dónde se hará (territorio)', t: 'text' }
+      { k: 'objetivos', l: 'Objetivos del programa', t: 'textarea', rows: 3 }, { k: 'beneficiarios', l: 'Quiénes se benefician (familias, socios)', t: 'textarea', rows: 2 }, { k: 'territorio', l: 'Dónde se hará (territorio)', t: 'text' }
     ],
-    check: function (d) { var o = []; if (!d.resumen) o.push({ level: 'warn', msg: 'Falta el resumen del plan.' }); return o.concat(rutError(d.rut, 'de la comunidad')); },
-    doc: function (d, ctx) { return { title: 'PEA · Información general del plan', subtitle: 'Borrador de información para presentar a CORFO', sheet: 'PEA general', footer: 'Borrador generado con Rinde Fácil. No es el formulario oficial de CORFO: sirve para reunir y copiar la información. Confirma el formato vigente con tu ejecutivo técnico o con el Organismo Colaborador.', blocks: [{ t: 'kv', rows: [['Comunidad', d.comunidad], ['RUT', d.rut], ['Dirección', d.direccion], ['Representante legal', d.repLegal], ['Contacto', [d.correo, d.telefono].filter(Boolean).join(' · ')], ['Organismo Colaborador', d.oc], ['Fecha del primer pago', d.fechaPrimerPago ? U.fmtDate(d.fechaPrimerPago) : ''], ['Resumen del plan', d.resumen], ['Objetivos del programa', d.objetivos], ['Beneficiarios', d.beneficiarios], ['Territorio', d.territorio]] }] }; }
+    check: function (d) { var o = []; return o.concat(rutError(d.rut, 'de la comunidad'), rutError(d.repRut, 'del representante')); },
+    onChange: function (k, d) {
+      var c = RF.store.get().community;
+      var keys = { comunidad: 'name', rut: 'rut', direccion: 'address', repLegal: 'legalRep', repRut: 'repRut', correo: 'email', telefono: 'phone', oc: 'oc' };
+      if (keys[k]) c[keys[k]] = d[k];
+      if (k === 'presupuestoAdmin') RF.store.get().projects.forEach(function (p) { if (p.tipo === 'administracion' || p.name === 'Gastos de administración') p.budgetApproved.administracion = num(d[k]); });
+    },
+    doc: function (d, ctx) { return { title: 'PEA General', subtitle: 'Borrador de información para presentar a CORFO', sheet: 'PEA general', footer: 'Borrador generado con Rinde Fácil. No es el formulario oficial de CORFO: sirve para reunir y copiar la información. Confirma el formato vigente con tu ejecutivo técnico o con el Organismo Colaborador.', blocks: [{ t: 'kv', rows: [['Comunidad', d.comunidad], ['RUT', d.rut], ['Dirección', d.direccion], ['Representante legal', d.repLegal], ['RUT del representante', d.repRut], ['Presupuesto de administración', U.fmtCLP(num(d.presupuestoAdmin))], ['Contacto', [d.correo, d.telefono].filter(Boolean).join(' · ')], ['Organismo Colaborador', d.oc], ['Fecha del primer pago', d.fechaPrimerPago ? U.fmtDate(d.fechaPrimerPago) : ''], ['Objetivos del programa', d.objetivos], ['Beneficiarios', d.beneficiarios], ['Territorio', d.territorio]] }] }; }
   };
   SCHEMAS.peaProyecto = {
     id: 'peaProyecto', title: 'PEA · 2. Información por proyecto', repeat: true, sheet: 'PEA proyecto', addLabel: 'Nuevo proyecto en el PEA', itemName: function (d) { return d.nombre || 'Proyecto sin nombre'; },
-    defaults: function (ctx) { return { nombre: v(proj(ctx).name), tipo: v(proj(ctx).tipo, 'inversion'), objetivoGeneral: '', objetivosEspecificos: '', descripcion: '', beneficiarios: '', lugar: '', inicio: v(proj(ctx).start), termino: v(proj(ctx).end), resultados: '', riesgos: '', sostenibilidad: '' }; },
+    defaults: function (ctx) { return { nombre: v(proj(ctx).name), tipo: v(proj(ctx).tipo, 'inversion'), clasificacion: v(proj(ctx).clasificacion), objetivoGeneral: '', objetivosEspecificos: '', descripcion: '', beneficiarios: '', lugar: '', inicio: v(proj(ctx).start), termino: v(proj(ctx).end), resultados: '', riesgos: '', sostenibilidad: '' }; },
     fields: [
-      { k: 'nombre', l: 'Nombre del proyecto', t: 'text' }, { k: 'tipo', l: 'Tipo de proyecto', t: 'select', options: RF.data.TIPOS_PROYECTO }, { k: 'objetivoGeneral', l: 'Objetivo general', t: 'textarea', rows: 2 }, { k: 'objetivosEspecificos', l: 'Objetivos específicos', t: 'textarea', rows: 3 },
+      { k: 'nombre', l: 'Nombre del proyecto', t: 'text' }, { k: 'clasificacion', l: 'Clasificación', t: 'select', options: ['Agricultura', 'Agua', 'Productivo', 'Turismo', 'Otro'].map(function (x) { return { id: x, name: x }; }) }, { k: 'objetivoGeneral', l: 'Objetivo general', t: 'textarea', rows: 2 }, { k: 'objetivosEspecificos', l: 'Objetivos específicos', t: 'textarea', rows: 3 },
       { k: 'descripcion', l: 'Descripción del proyecto', t: 'textarea', rows: 4 }, { k: 'beneficiarios', l: 'Quiénes se benefician', t: 'text' }, { k: 'lugar', l: 'Lugar de ejecución', t: 'text' }, { k: 'inicio', l: 'Inicio', t: 'date' }, { k: 'termino', l: 'Término', t: 'date' },
-      { k: 'resultados', l: 'Resultados esperados', t: 'textarea', rows: 3 }, { k: 'riesgos', l: 'Riesgos y cómo enfrentarlos', t: 'textarea', rows: 2 }, { k: 'sostenibilidad', l: 'Cómo se mantendrá en el tiempo', t: 'textarea', rows: 2 }
+      { k: 'resultados', l: 'Resultados esperados', t: 'textarea', rows: 3 }, { k: 'riesgos', l: 'Riesgos y cómo enfrentarlos', t: 'textarea', rows: 2 }
     ],
     check: function (d) { var o = []; if (!d.objetivoGeneral) o.push({ level: 'warn', msg: 'Falta el objetivo general.' }); if (d.inicio && d.termino && d.termino < d.inicio) o.push({ level: 'error', msg: 'El término es anterior al inicio.' }); return o; },
-    doc: function (d) { return { title: 'PEA · Proyecto «' + v(d.nombre, 'sin nombre') + '»', subtitle: 'Borrador de información para presentar a CORFO', sheet: 'PEA proyecto', footer: 'Borrador generado con Rinde Fácil. No es el formulario oficial de CORFO.', blocks: [{ t: 'kv', rows: [['Nombre', d.nombre], ['Tipo', (RF.data.TIPOS_PROYECTO.filter(function (x) { return x.id === d.tipo; })[0] || {}).name], ['Objetivo general', d.objetivoGeneral], ['Objetivos específicos', d.objetivosEspecificos], ['Descripción', d.descripcion], ['Beneficiarios', d.beneficiarios], ['Lugar', d.lugar], ['Plazo', (d.inicio ? U.fmtDate(d.inicio) : '') + (d.termino ? ' al ' + U.fmtDate(d.termino) : '')], ['Resultados esperados', d.resultados], ['Riesgos', d.riesgos], ['Sostenibilidad', d.sostenibilidad]] }] }; }
+    doc: function (d) { return { title: 'PEA · Proyecto «' + v(d.nombre, 'sin nombre') + '»', subtitle: 'Borrador de información para presentar a CORFO', sheet: 'PEA proyecto', footer: 'Borrador generado con Rinde Fácil. No es el formulario oficial de CORFO.', blocks: [{ t: 'kv', rows: [['Nombre', d.nombre], ['Clasificación', d.clasificacion], ['Objetivo general', d.objetivoGeneral], ['Objetivos específicos', d.objetivosEspecificos], ['Descripción', d.descripcion], ['Beneficiarios', d.beneficiarios], ['Lugar', d.lugar], ['Plazo', (d.inicio ? U.fmtDate(d.inicio) : '') + (d.termino ? ' al ' + U.fmtDate(d.termino) : '')], ['Resultados esperados', d.resultados], ['Riesgos', d.riesgos]] }] }; }
   };
 
   /* ============ Consulta a CORFO y solicitud de aportes ============ */
@@ -527,6 +537,18 @@
   function ctxNow() { var s = RF.store.get(); return { project: RF.store.project(), community: s.community, state: s }; }
   function getSingle(project, id) {
     var sc = SCHEMAS[id];
+    if (id === 'peaGeneral') {
+      var s = RF.store.get(), c = s.community;
+      c.forms = c.forms || {};
+      if (!c.forms[id] || !c.forms[id].data) {
+        /* Copiar el primer formulario guardado; los originales por proyecto se conservan. */
+        var saved = [project].concat(s.projects || []).filter(function (p) { return p && p.forms && p.forms[id] && p.forms[id].data; })[0];
+        c.forms[id] = { data: Object.assign(sc.defaults({ project: project, community: c }), saved ? JSON.parse(JSON.stringify(saved.forms[id].data)) : {}) };
+      }
+      if (c.forms[id].data.repRut == null) c.forms[id].data.repRut = v(c.repRut);
+      if (c.forms[id].data.presupuestoAdmin == null) c.forms[id].data.presupuestoAdmin = presupuestoAdmin();
+      return c.forms[id].data;
+    }
     if (!project.forms[id] || !project.forms[id].data) project.forms[id] = { data: sc.defaults({ project: project, community: RF.store.get().community }) };
     return project.forms[id].data;
   }
@@ -744,7 +766,7 @@
     var sb = signBlock(sc, data, ctx, function () { issues.refresh(); });
     if (sb) root.appendChild(UI.section('Firma', [sb]));
     root.appendChild(UI.section('Revisión', [issues]));
-    root.appendChild(UI.section('Sacar el documento', [UI.exportBar(function () { return docOf(id, data, ctx); }, sc.sheet)]));
+    root.appendChild(UI.section('Descargar el documento', [UI.exportBar(function () { return docOf(id, data, ctx); }, sc.sheet)]));
     root._redraw = drawFields;
     return root;
   }
@@ -782,7 +804,7 @@
       var sbR = signBlock(sc, cur.data, ctx, function () { issues.refresh(); });
       if (sbR) root.appendChild(UI.section('Firma', [sbR]));
       root.appendChild(UI.section('Revisión', [issues]));
-      root.appendChild(UI.section('Sacar el documento', [UI.exportBar(function () { return docOf(id, cur.data, ctx); }, sc.sheet + '-' + (cur.data.nombre || cur.data.viajero || cur.data.proveedorNombre || 'ficha'))]));
+      root.appendChild(UI.section('Descargar el documento', [UI.exportBar(function () { return docOf(id, cur.data, ctx); }, sc.sheet + '-' + (cur.data.nombre || cur.data.viajero || cur.data.proveedorNombre || 'ficha'))]));
       if (list.length > 1) root.appendChild(UI.section('Todos juntos', [UI.exportBar(function () { return combinedDoc(id, list, ctx); }, sc.sheet + '-todos')]));
     }
     paint();

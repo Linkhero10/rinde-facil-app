@@ -84,15 +84,13 @@ test('resumen: porcentaje real sobre 100 y sin división por cero', () => {
   assert.equal(p.lines[1].pct, null);
 });
 
-test('trámites: actualización de proyecto y prórroga accesible fuera de la ruta', () => {
-  assert.equal(RF.tramites.byId['TRM-028'].title, 'Actualización de proyecto (opcional)');
+test('trámites: actualización de proyecto y prórroga retirada', () => {
+  assert.equal(RF.tramites.byId['TRM-028'].title, 'Actualización de proyecto');
   assert.match(RF.tramites.byId['TRM-028'].why, /tiempo, actividades y presupuesto/);
   const f2 = RF.data.FASES.find(f => f.id === 'F2');
   assert.deepEqual(Array.from(f2.items), ['TRM-027', 'TRM-028']);
-  assert.match(RF.tramites.byId['TRM-030'].why, /solo si todavía no has enviado el PEA a CORFO/);
-  const result = RF.search.search('prórroga', 30).find(r => r.item.href === '#/t/TRM-030');
-  assert.ok(result, 'la prórroga sigue indexada sin pertenecer a una fase visible');
-  assert.equal(result.item.path.includes('Mi ruta'), false);
+  assert.equal(RF.tramites.byId['TRM-030'], undefined);
+  assert.equal(RF.search.search('prórroga', 30).some(r => r.item.href === '#/t/TRM-030'), false);
   assert.ok(RF.search.search('actualización de proyecto', 30).some(r => r.item.href === '#/t/TRM-028'));
 });
 
@@ -147,18 +145,18 @@ test('inicio: resumen antes de las fases, todos los proyectos, solo lectura y ba
   assert.equal(JSON.stringify(app.store.get()), before, 'la pantalla no persiste modificaciones');
 });
 
-test('bienvenida sin resumen de presupuesto y acceso a la prórroga desde plazos', () => {
+test('bienvenida sin resumen de presupuesto y sin enlace de prórroga desde plazos', () => {
   const app = uiApp();
   const home = app.views.home();
   assert.match(home.textContent, /Bienvenida y bienvenido/);
   assert.doesNotMatch(home.textContent, /Resumen de presupuesto|Sin proyectos/);
   const plazos = descendants(app.tools.plazos.render());
-  assert.ok(plazos.some(n => n.attributes.href === '#/t/TRM-030'));
-  assert.match(plazos.map(n => n._text).join(''), /solo si todavía no has enviado el PEA a CORFO/);
+  assert.equal(plazos.some(n => n.attributes.href === '#/t/TRM-030'), false);
+  assert.doesNotMatch(plazos.map(n => n._text).join(''), /solo si todavía no has enviado el PEA a CORFO/);
 });
 
 for (const tool of ['documentos', 'necesidades']) {
-  test(`${tool}: el botón de actualización incluye el título opcional del trámite`, () => {
+  test(`${tool}: el botón de actualización incluye el título del paso`, () => {
     const app = uiApp();
     const p = app.store.newProject('Proyecto sintético');
     p.needsAdded = [{ id: 'viaticos' }];
@@ -167,7 +165,7 @@ for (const tool of ['documentos', 'necesidades']) {
     if (tool === 'documentos') descendants(page).find(n => n.tagName === 'button' && n.textContent === 'Agregar un documento').click();
     const buttons = descendants(page).filter(n => n.tagName === 'button' && n.textContent.includes('Actualización de proyecto'));
     assert.equal(buttons.length, 1);
-    assert.equal(buttons[0].textContent, 'Ver el trámite «Actualización de proyecto (opcional)»');
+    assert.equal(buttons[0].textContent, 'Ver el trámite «Actualización de proyecto»');
     buttons[0].click();
     assert.equal(loadApp.lastCtx.location.hash, '#/t/TRM-028');
   });

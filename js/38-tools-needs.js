@@ -37,7 +37,7 @@
     preview: function (tid) { var d = null; try { d = RF.docs.model(tid); } catch (e) { d = null; } if (!d) { UI.toast('Primero crea tu proyecto para ver el formato.', 'bad'); return; } RF.exp.printDoc(d); }
   };
 
-  TOOLS.necesidades = { title: 'Qué necesitará tu proyecto', icon: 'list', desc: 'Marca lo que vas a necesitar (viáticos, insumos, inmuebles…) y te mostramos solo los trámites que te tocan.', render: function () {
+  TOOLS.necesidades = { title: 'Qué necesitará tu proyecto', icon: 'list', desc: 'La app te muestra los pasos que te tocan. Lo puedes cambiar cuando quieras.', render: function () {
     var p = RF.store.project();
     var root = h('div', { class: 'tool-page' }, h('h1', { class: 'tool-title' }, 'Qué necesitará tu proyecto'));
     if (!p) { root.appendChild(UI.callout('warn', 'Primero crea tu proyecto.', ' Ve a «Mi comunidad y proyectos» y agrega el primero.')); return root; }
@@ -55,7 +55,7 @@
     function paint() {
       U.clear(body);
       var dv = RF.needs.derivedFromExpenses(p);
-      body.appendChild(h('p', { class: 'lead' }, 'Marca lo que dice tu PEA que vas a necesitar en este proyecto. Con eso, la app te muestra solo los trámites que te tocan y esconde el resto. Lo puedes cambiar cuando quieras.'));
+      body.appendChild(h('p', { class: 'lead' }, 'La app te muestra los pasos que te tocan. Lo puedes cambiar cuando quieras.'));
 
       /* lista de necesidades por grupo */
       var groups = {}, order = [];
@@ -79,7 +79,7 @@
       /* otras cosas */
       var inp = h('input', { type: 'text', placeholder: 'Ej: compra de semillas para el vivero', 'aria-label': 'Otra cosa que necesitará el proyecto' });
       body.appendChild(UI.section('¿Algo más?', [
-        h('p', { class: 'hint' }, 'Anota aquí lo que no está en la lista. No cambia los trámites que te tocan, pero queda registrado.'),
+        h('p', { class: 'hint' }, 'Anota aquí lo que no está en la lista y consideras que debe quedar registrado.'),
         h('div', { class: 'inline-add' }, inp, UI.btn('Agregar', { icon: 'plus', onclick: function () { var v = inp.value.trim(); if (!v) return; p.needsCustom = p.needsCustom || []; p.needsCustom.push({ name: v, at: nowIso(), afterPea: !!p.peaAprobado }); p.needsSet = true; silent(); paint(); } })),
         h('ul', { class: 'need-custom' }, (p.needsCustom || []).map(function (c, i) {
           return h('li', null, h('span', null, c.name + (c.afterPea ? '  ·  agregado después de aprobado el PEA' : '')), UI.btn('Quitar', { cls: 'ghost small', onclick: function () { p.needsCustom.splice(i, 1); silent(); paint(); } }));
@@ -91,19 +91,19 @@
         body.appendChild(h('section', { class: 'card warn-card' },
           h('h2', { class: 'card-title' }, 'Esto no estaba en tu PEA aprobado'),
           h('ul', null, (p.needsAdded || []).map(function (a) { return h('li', null, (RF.needs.BY_ID[a.id] || { name: a.id }).name); }).concat((p.needsCustom || []).filter(function (c) { return c.afterPea; }).map(function (c) { return h('li', null, c.name); }))),
-          h('p', null, 'Antes de gastar en algo que tu PEA no contempla, conviene modificar el PEA. Según los documentos del convenio, un proyecto puede cambiar en tiempo, actividades y presupuesto si la comunidad lo pide: la reitemización agrega actividades o cambia fechas y presupuesto; la reprogramación cambia solo los plazos.'),
-          h('p', null, 'En los informes del Organismo Colaborador, los cambios al PEA se aprueban en asamblea y se envían a CORFO con el acta; después se configuran en SGP (a veces con un Acta de No Objeción de CORFO). Confirma el paso exacto con tu ejecutivo técnico.'),
+          h('p', null, 'Antes de gastar en algo que tu PEA no contempla, conviene modificar el PEA. Según los documentos del Acuerdo, un proyecto puede cambiar en tiempo, actividades y presupuesto si la comunidad lo pide: la reitemización agrega actividades o cambia fechas y presupuesto; la reprogramación cambia solo los plazos.'),
+          h('p', null, 'Los aumentos de presupuesto se aprueban en asamblea y se envían a CORFO con el acta de asamblea o extracto; después, con la aprobación de CORFO, se configuran en SGP.'),
           h('div', { class: 'row-actions' },
             UI.btn('Preparar la solicitud de cambio', { icon: 'edit', cls: 'primary', onclick: function () { location.hash = '#/h/reitem?from=TRM-028'; } }),
-            UI.btn('Ver el trámite «Actualización de proyecto (opcional)»', { icon: 'route', onclick: function () { location.hash = '#/t/TRM-028'; } }),
+            UI.btn('Ver el trámite «Actualización de proyecto»', { icon: 'route', onclick: function () { location.hash = '#/t/TRM-028'; } }),
             UI.btn('Guardar el acta o la respuesta de CORFO', { icon: 'file', onclick: function () { location.hash = '#/h/documentos'; } }))));
       }
 
       /* resumen */
       var c = countApplicable(p);
       body.appendChild(UI.section('Lo que te toca', [
-        p.needsSet ? h('p', { class: 'big-line' }, 'Te tocan ', h('strong', null, String(c.mine)), ' de ' + c.total + ' trámites.') : UI.callout('info', 'Todavía no marcas nada:', ' mientras tanto te mostramos todos los trámites.'),
-        c.hidden.length && p.needsSet ? h('details', null, h('summary', null, 'Trámites que no te aparecerán por ahora (' + c.hidden.length + ')'), h('ul', null, c.hidden.map(function (t) { return h('li', null, t); })), h('p', { class: 'hint' }, 'Si alguno sí te toca, puedes abrirlo igual desde el menú y marcar «Me toca igual».')) : null,
+        p.needsSet ? h('p', { class: 'big-line' }, 'Te tocan ', h('strong', null, String(c.mine)), ' de ' + c.total + ' pasos.') : UI.callout('info', 'Todavía no marcas nada:', ' mientras tanto te mostramos todos los pasos.'),
+        c.hidden.length && p.needsSet ? h('details', null, h('summary', null, 'Pasos que no te aparecerán por ahora (' + c.hidden.length + ')'), h('ul', null, c.hidden.map(function (t) { return h('li', null, t); })), h('p', { class: 'hint' }, 'Si alguno sí te toca, puedes abrirlo igual desde el menú y marcar «Me toca igual».')) : null,
         h('div', { class: 'row-actions' }, UI.btn('Listo, ver mi ruta', { icon: 'route', cls: 'primary', onclick: function () { location.hash = '#/'; } }))]));
     }
     paint();

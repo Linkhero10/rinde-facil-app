@@ -284,7 +284,7 @@
     return have >= need ? ok('hay ' + have + (have === 1 ? ' ficha' : ' fichas') + ' para ' + need + (formId === 'informeD' ? (need === 1 ? ' persona.' : ' personas.') : (need === 1 ? ' gasto.' : ' gastos.'))) : no('Hay ' + have + ' de ' + need + ' fichas.', formId);
   }
   var AUTO = {
-    pea_docs: function (p) { var g = forms(p, 'peaGeneral'); var ok1 = !!(g && g.data && g.data.resumen), ok2 = listN(p, 'peaProyecto') > 0, ok3 = allActivities(p).length > 0, ok4 = (p.budgetLines || []).length > 0; return ok1 && ok2 && ok3 && ok4 ? ok('tienes la información general, ' + listN(p, 'peaProyecto') + ' formulario(s) de proyecto, la Carta Gantt y el presupuesto.') : no('Falta: ' + [!ok1 && 'información general', !ok2 && 'formulario de proyecto', !ok3 && 'Carta Gantt', !ok4 && 'presupuesto'].filter(Boolean).join(', ') + '.', 'pea'); },
+    pea_docs: function (p) { var g = forms(p, 'peaGeneral'); var ok1 = !!(g && g.data && g.data.comunidad), ok2 = listN(p, 'peaProyecto') > 0, ok3 = allActivities(p).length > 0, ok4 = (p.budgetLines || []).length > 0; return ok1 && ok2 && ok3 && ok4 ? ok('tienes la información general, ' + listN(p, 'peaProyecto') + ' formulario(s) de proyecto, la Carta Gantt y el presupuesto.') : no('Falta: ' + [!ok1 && 'información general', !ok2 && 'formulario de proyecto', !ok3 && 'Carta Gantt', !ok4 && 'presupuesto'].filter(Boolean).join(', ') + '.', 'pea'); },
     reitem_form: function (p) { return (p.reitem && ((p.reitem.rows || []).length || p.reitem.motivo)) ? ok('ya llenaste la solicitud de cambio.') : no('Llena la solicitud de cambio.', 'reitem'); },
     prorroga_form: function (p) { var f = forms(p, 'prorroga'); return f && f.data && f.data.motivo ? ok('ya redactaste la solicitud de prórroga.') : no('Redacta la solicitud de prórroga.', 'prorroga'); },
     cot_ok: function (p) { var big = (p.cotizaciones || []).filter(function (c) { return num(c.neto) > R.COTIZACION_UMBRAL; }); if (!big.length) return no('Todavía no registras compras sobre $10.000.000 con sus cotizaciones.', 'cotizaciones'); var bad = big.filter(function (c) { return !(c.servicioTecnico || c.autorizacion || cotizacionOk(c)); }); return bad.length ? no(bad.length + ' compra(s) grande(s) sin 2 cotizaciones ni autorización.', 'cotizaciones') : ok('las compras grandes tienen sus cotizaciones o su autorización.'); },
@@ -411,7 +411,7 @@
   }
 
   /* ---------- cuadre entre trámites ---------- */
-  function forms(project, id) { return (project.forms && project.forms[id]) || null; }
+  function forms(project, id) { var c = RF.store.get().community; return (id === 'peaGeneral' && c.forms && c.forms[id]) || (project.forms && project.forms[id]) || null; }
   function formList(project, id) { var f = forms(project, id); return Array.isArray(f) ? f : []; }
 
   function reconcile(project, community, todayIso, holidays) {
@@ -439,7 +439,7 @@
     if (needsAnswered(project)) {
       var gp = grp('plan', 'Lo que planeaste'), dv = RF.needs.derivedFromExpenses(project), sel = project.needs || {};
       Object.keys(dv).forEach(function (k) {
-        if (sel[k]) return;
+        if (sel[k] || k === 'admin') return;
         add(gp, 'warn', 'Anotaste gastos de «' + RF.needs.BY_ID[k].name + '» que no marcaste en «Qué necesitará tu proyecto».', { tool: 'necesidades' });
       });
       (project.needsAdded || []).forEach(function (a) {
