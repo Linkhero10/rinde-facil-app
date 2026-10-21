@@ -195,7 +195,7 @@
     var c = ctx(), p = c.project;
     var esAdmin = function (x) { return x.tipo === 'administracion' || x.name === 'Gastos de administración'; };
     /* Tras registrar la rendición de administración, el proyecto activo puede ser ese: el PEA parte de un proyecto real. */
-    if (p && esAdmin(p)) { var primero = c.state.projects.filter(function (x) { return !esAdmin(x); })[0]; if (primero) { p = primero; c.project = primero; RF.store.update(function (s) { s.activeProjectId = primero.id; }, { silent: true }); } }
+    if (p && esAdmin(p)) { var primero = c.state.projects.filter(function (x) { return !esAdmin(x); })[0]; p = primero || null; if (primero) { c.project = primero; RF.store.update(function (s) { s.activeProjectId = primero.id; }, { silent: true }); } }
     if (!p) return page('PEA', '', needProject(c));
     var root = h('div'), tabs = h('div', { class: 'chips', role: 'tablist', 'aria-label': 'PEA' }), content = h('div', { role: 'tabpanel', id: 'pea-panel' });
     var selected = 'general';

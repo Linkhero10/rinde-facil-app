@@ -60,7 +60,7 @@
     var phases = h('div', { class: 'dash-phases', role: 'list', 'aria-label': 'Avance por fase' }, D.FASES.map(function (f) {
       var pf = prog.porFase[f.id], pct = pf.tramTotal ? Math.round(pf.tramDone * 100 / pf.tramTotal) : 0;
       var a = h('a', { class: 'dash-phase' + (f.id === prog.faseActual ? ' now' : '') + (pf.complete ? ' done' : ''), href: '#/f/' + f.id, role: 'listitem', 'aria-label': 'Fase ' + f.n + ' ' + f.name + ': ' + pf.tramDone + ' de ' + pf.tramTotal }, h('span', { class: 'dp-n' }, String(f.n)), h('span', { class: 'dp-t' }, f.short), h('span', { class: 'dp-bar' }, h('i', { style: { width: pct + '%' } })), h('span', { class: 'dp-c' }, pf.tramDone + '/' + pf.tramTotal));
-      a.addEventListener('mousemove', function (ev) { showTip(ev, ['Fase ' + f.n + ': ' + f.name, pf.tramDone + ' de ' + pf.tramTotal + ' pasos listos', 'Toca para abrirla']); }); a.addEventListener('mouseleave', hideTip); a.addEventListener('focus', function (ev) { showTip(ev, ['Fase ' + f.n + ': ' + f.name, pf.tramDone + ' de ' + pf.tramTotal + ' trámites listos']); }); a.addEventListener('blur', hideTip);
+      a.addEventListener('mousemove', function (ev) { showTip(ev, ['Fase ' + f.n + ': ' + f.name, pf.tramDone + ' de ' + pf.tramTotal + ' pasos listos', 'Toca para abrirla']); }); a.addEventListener('mouseleave', hideTip); a.addEventListener('focus', function (ev) { showTip(ev, ['Fase ' + f.n + ': ' + f.name, pf.tramDone + ' de ' + pf.tramTotal + ' pasos listos']); }); a.addEventListener('blur', hideTip);
       return a;
     }));
 

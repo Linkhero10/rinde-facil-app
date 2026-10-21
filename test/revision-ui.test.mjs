@@ -230,10 +230,11 @@ test('el PEA general nuevo parte del formulario con más datos y no lo pisa con 
   const RF = app(), p = RF.store.project();
   const p2 = RF.store.newProject('Otro proyecto sintético');
   RF.store.get().projects.push(p2);
-  p.forms.peaGeneral = { data: { objetivos: '', territorio: '' } };
+  p.forms.peaGeneral = { data: { objetivos: '', territorio: '', fechaPrimerPago: '2026-10-01' } };
   p2.forms.peaGeneral = { data: { objetivos: 'Objetivo sintético', territorio: 'Territorio sintético', beneficiarios: 'Familias sintéticas' } };
   const g = RF.forms.getSingle(p, 'peaGeneral');
   assert.equal(g.objetivos, 'Objetivo sintético');
   assert.equal(g.territorio, 'Territorio sintético');
   assert.equal(g.beneficiarios, 'Familias sintéticas');
+  assert.equal(g.fechaPrimerPago, '2026-10-01');
 });

@@ -541,15 +541,21 @@
       var s = RF.store.get(), c = s.community;
       c.forms = c.forms || {};
       if (!c.forms[id] || !c.forms[id].data) {
-        /* Partir del formulario guardado con más datos escritos (de cualquier proyecto); los originales por proyecto se conservan.
-           Un valor vacío guardado no pisa lo que ya trae la comunidad. */
-        var base = sc.defaults({ project: project, community: c }), mejor = null, mejorN = -1;
+        /* Unir los formularios guardados de todos los proyectos: primero el que tiene más datos y luego los campos que solo llenó otro proyecto; los originales por proyecto se conservan.
+           Presupuesto de administración y RUT del representante vienen de sus fuentes, no del formulario anterior. */
+        var base = sc.defaults({ project: project, community: c }), guardados = [];
+        var llenos = function (d) { return Object.keys(d).filter(function (k) { return d[k] !== '' && d[k] != null && k !== 'presupuestoAdmin' && k !== 'repRut'; }).length; };
         [project].concat(s.projects || []).forEach(function (p) {
           var d = p && p.forms && p.forms[id] && p.forms[id].data;
-          var n = d ? Object.keys(d).filter(function (k) { return d[k] !== '' && d[k] != null; }).length : -1;
-          if (n > mejorN) { mejor = d; mejorN = n; }
+          if (d) guardados.push(d);
         });
-        if (mejor) Object.keys(mejor).forEach(function (k) { if (mejor[k] !== '' && mejor[k] != null) base[k] = JSON.parse(JSON.stringify(mejor[k])); });
+        guardados.sort(function (a, b) { return llenos(b) - llenos(a); });
+        guardados.forEach(function (d) {
+          Object.keys(d).forEach(function (k) {
+            if (k === 'presupuestoAdmin' || k === 'repRut') return;
+            if ((base[k] === '' || base[k] == null) && d[k] !== '' && d[k] != null) base[k] = JSON.parse(JSON.stringify(d[k]));
+          });
+        });
         c.forms[id] = { data: base };
       }
       if (!c.forms[id].data.repRut) c.forms[id].data.repRut = v(c.repRut);
