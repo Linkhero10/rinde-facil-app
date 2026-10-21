@@ -116,6 +116,36 @@
   }
 
   /* ---------- inicio ---------- */
+  function budgetSummary(projects) {
+    var rows = L.resumenPresupuesto(projects);
+    function bar(spent, assigned, pct, label) {
+      var limited = Math.max(0, Math.min(100, pct == null ? 0 : pct));
+      var node = UI.progressBar(limited, 100, label);
+      node.setAttribute('aria-valuetext', U.fmtCLP(spent) + ' de ' + U.fmtCLP(assigned) + (pct == null ? ' · Sin monto asignado' : ' · ' + pct + ' %'));
+      return h('div', { class: 'budget-progress' + (assigned > 0 && spent > assigned ? ' over' : '') }, node,
+        h('p', { class: 'hint' }, pct == null ? 'Sin monto asignado' : pct + ' %' + (spent > assigned ? ' · Supera el monto asignado' : '')));
+    }
+    return h('section', { class: 'budget-summary', 'aria-label': 'Resumen de presupuesto' },
+      h('h2', { class: 'sec-title' }, 'Resumen de presupuesto'),
+      !rows.length ? h('p', { class: 'empty-note' }, 'Sin proyectos. Cuando agregues uno, verás aquí su presupuesto.') : rows.map(function (p) {
+        var duplicates = p.lines.some(function (line, i) { return line.item && p.lines.some(function (other, j) { return j !== i && other.item === line.item; }); });
+        return h('article', { class: 'card budget-project' },
+          h('h3', { class: 'card-title' }, p.name),
+          h('p', { class: 'hint' }, h('strong', null, 'Primer desembolso: '), p.desembolso1 ? U.fmtDate(p.desembolso1) : 'Sin fecha registrada',
+            p.primerDesembolsoMonto == null ? ' · Importe no registrado' : ' · Con cargo al 30 % del AIA para este proyecto: ' + U.fmtCLP(p.primerDesembolsoMonto)),
+          h('div', { class: 'budget-amounts' }, h('p', null, 'Monto asignado: ', h('strong', null, U.fmtCLP(p.asignado))), h('p', null, 'Ejecutado: ', h('strong', null, U.fmtCLP(p.ejecutado)))),
+          bar(p.ejecutado, p.asignado, p.pct, 'Presupuesto ejecutado de ' + p.name),
+          !p.gastos ? h('p', { class: 'empty-note' }, 'Sin gastos registrados.') : null,
+          h('h4', { class: 'budget-items-title' }, 'Ítems del presupuesto'),
+          !p.lines.length ? h('p', { class: 'empty-note' }, 'Sin líneas de presupuesto.') : h('ul', { class: 'budget-items' }, p.lines.map(function (line) {
+            var name = line.item || 'Ítem sin nombre';
+            return h('li', null, h('strong', null, name),
+              h('p', { class: 'hint' }, 'Gastado: ' + U.fmtCLP(line.ejecutado) + ' de ' + U.fmtCLP(line.asignado)),
+              bar(line.ejecutado, line.asignado, line.pct, p.name + ' · ' + name));
+          })),
+          duplicates ? h('p', { class: 'hint' }, 'Los ítems con el mismo texto muestran los mismos gastos asociados; el ejecutado del proyecto cuenta cada gasto una sola vez.') : null);
+      }));
+  }
   function homeView() {
     var s = RF.store.get(), p = project(), root = h('div', { class: 'view home' });
     if (!p) return onboarding();
@@ -132,6 +162,7 @@
         nt ? h('a', { class: 'btn primary big', href: '#/t/' + nt.id }, 'Continuar: ' + nt.title, UI.icon('right', 20)) : h('a', { class: 'btn primary big', href: '#/h/revision' }, doneWithIssues ? 'Ver qué corregir' : 'Ver la revisión final'),
         h('div', { class: 'ring-wrap' }, UI.progressBar(prog.tramDone, prog.tramTotal, 'Avance total'), h('span', { class: 'ring-t' }, prog.tramDone + ' de ' + prog.tramTotal + ' trámites listos'))),
       nt ? h('p', { class: 'next-step' }, 'Siguiente paso: ', h('strong', null, nt.steps[nx.stepIdx])) : null));
+    root.appendChild(budgetSummary(s.projects));
     if (!nx && !flagged.some(function (i) { return i.level === 'error'; }) && RF.dash) root.appendChild(RF.dash.congrats(p));
     if (!L.needsAnswered(p)) root.appendChild(h('section', { class: 'card need-banner' }, h('h2', { class: 'card-title' }, 'Cuéntanos qué necesitará tu proyecto'), h('p', null, 'Marca lo que vas a usar (viáticos, insumos, inmuebles…) y te mostramos solo los trámites que te tocan. Hoy ves todos.'), h('a', { class: 'btn primary', href: '#/h/necesidades' }, 'Marcar lo que necesito')));
     if (RF.dash && !fresh) root.appendChild(RF.dash.render(p, s, { prog: prog, res: res }));

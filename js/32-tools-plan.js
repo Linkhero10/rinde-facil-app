@@ -389,6 +389,7 @@
     function p1() { U.clear(o1); if (!st.pago) return; var pd = L.peaDeadline({ peaAprobadoAt: st.pago }, U.todayISO()); o1.appendChild(UI.callout(pd.diasRestantes < 0 ? 'warn' : 'ok', 'El PEA vence el ' + U.fmtDate(pd.fin) + '.', ' Con la prórroga única (hasta 30 días, pedida antes del vencimiento): ' + U.fmtDate(pd.finProrroga) + '.')); }
     function p2() { U.clear(o2); if (!st.obs) return; var lim = L.aclaracionDeadline(st.obs, RF.holidays.all()); o2.appendChild(UI.callout('info', 'Tienes hasta el ' + U.fmtDate(lim) + '.', ' Son 10 días hábiles desde que CORFO comunicó las observaciones' + ' (descontando los feriados de Chile).' + ' La aclaración se hace una sola vez.')); }
     var root = h('div', null, UI.section('Plazo del PEA', [UI.field('Fecha de aprobación del PEA', st, 'pago', { type: 'date', onChange: p1 }), o1]), UI.section('Plazo para aclarar observaciones', [UI.field('Fecha en que CORFO comunicó las observaciones', st, 'obs', { type: 'date', onChange: p2 }), o2]));
+    root.appendChild(h('p', { class: 'hint' }, h('a', { href: '#/t/TRM-030' }, 'Pedir prórroga del PEA (opcional)'), ': solo si todavía no has enviado el PEA a CORFO.'));
     p1(); p2();
     return page('Calculadora de plazos', 'Los plazos que aparecen en los documentos del convenio.', root);
   } };

@@ -99,6 +99,15 @@ img{max-width:100%;display:block}
 .next-step{margin-top:14px;font-size:16px;color:var(--ink-2);border:1px solid color-mix(in srgb,var(--action) 55%,var(--line));border-radius:6px;padding:10px 14px;background:color-mix(in srgb,var(--action) 6%,transparent)}
 .pbar{height:12px;border-radius:99px;background:var(--line);overflow:hidden}
 .pbar span{display:block;height:100%;background:var(--action);border-radius:99px;transition:width .3s ease}
+.budget-project{min-width:0;overflow-wrap:anywhere}
+.budget-amounts{display:flex;flex-wrap:wrap;gap:8px 28px;margin:14px 0 8px}
+.budget-amounts p{margin:0}
+.budget-items-title{font:700 17px var(--body);margin:18px 0 8px}
+.budget-items{list-style:none;padding:0;margin:0;display:grid;gap:12px}
+.budget-items>li{border-top:1px solid var(--line);padding-top:10px}
+.budget-items .pbar{height:8px;margin-top:6px}
+.budget-progress.over .pbar span{background:var(--bad)}
+.budget-progress.over>.hint{color:var(--bad)}
 .phase-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
 .phase-card{display:flex;flex-direction:column;gap:6px;padding:16px;background:var(--card);border:1px solid var(--line);border-top:5px solid var(--line);border-radius:var(--radius);text-decoration:none;color:var(--ink);transition:transform .15s ease,box-shadow .15s ease}
 .phase-card:hover{transform:translateY(-2px);box-shadow:var(--shadow)}

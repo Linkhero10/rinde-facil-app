@@ -97,7 +97,7 @@
     gantt: ['Etapas', 'Actividades', 'Meses', 'Fechas de inicio y término', 'Excel', 'Copiar para SGP', 'Guardar en Drive'],
     presupuesto: ['Líneas por cuenta', 'Recursos humanos', 'Gastos operacionales', 'Inversión', 'Administración', 'Presupuesto aprobado', 'Supera lo aprobado', 'Copiar para SGP'],
     pea: ['Plan Estratégico Anual', 'PEA general', 'PEA por proyecto', 'Todo el PEA en un solo documento', 'Plazo de 90 días', 'Prórroga de 30 días'],
-    reitem: ['Reitemización', 'Mover plata entre cuentas', 'Motivo del cambio', 'Cambio de presupuesto'],
+    reitem: ['Actualización de proyecto', 'Reitemización', 'Mover plata entre cuentas', 'Motivo del cambio', 'Cambio de presupuesto', 'Cambio de actividades', 'Cambio de plazos'],
     cotizaciones: ['Cotizaciones', 'Cuadro comparativo', 'Sobre $10.000.000 netos', 'Dos proveedores distintos', 'Autorización previa de CORFO', 'Servicio técnico-profesional'],
     gastos: ['Subir foto o PDF', 'Sacar foto al comprobante', 'Anotar a mano', 'Leer con la nube (OCR)', 'Boleta', 'Factura', 'Boleta de honorarios', 'Monto neto', 'IVA', 'Total del documento', 'Monto a rendir', 'Glosa', 'Viático', 'Pago en efectivo', 'Comparé cada dato con el documento original', 'Rendición en formato SGP', 'Carpeta de respaldos por gasto', 'Gastos por cuenta', 'Proveedor', 'RUT del proveedor', 'Número (folio)', 'Foto del comprobante'],
     revision: ['Cuadre entre trámites', 'Qué falta', 'Arreglar', 'Diferencias entre anexos y gastos', 'Fases saltadas', 'Si los números cuadran'],
@@ -148,6 +148,8 @@
       f.items.forEach(function (id) { addTramite(byId[id], ['Mi ruta', 'Fase ' + f.n + ' · ' + f.name]); });
     });
     D.AYUDA.forEach(function (id) { addTramite(byId[id], ['¿Tienes una duda?']); });
+    /* La prórroga se consulta aparte: no es un paso de la ruta vigente. */
+    addTramite(byId['TRM-030'], ['Ayudas', 'Plazos']);
     function addTramite(t, path) {
       if (!t) return;
       var fields = [{ text: t.why, label: 'Por qué' }, { text: 'Quién: ' + actorName(t.who), label: '' }, { text: 'Cuándo: ' + (t.when || ''), label: '' }];

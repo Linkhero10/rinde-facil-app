@@ -11,7 +11,7 @@
   ];
 
   var FASES = [
-    { id: 'F2', n: 0, name: 'Armar el PEA', short: 'PEA', blurb: 'Armar el plan de tus proyectos y enviarlo a CORFO.', items: ['TRM-027', 'TRM-030', 'TRM-028'] },
+    { id: 'F2', n: 0, name: 'Armar el PEA', short: 'PEA', blurb: 'Armar el plan de tus proyectos y enviarlo a CORFO.', items: ['TRM-027', 'TRM-028'] },
     { id: 'F4', n: 1, name: 'Gastos y respaldos', short: 'Gastos', blurb: 'Gastar bien y guardar cada respaldo.', items: ['TRM-006', 'TRM-007', 'TRM-008', 'TRM-009', 'TRM-011', 'TRM-021', 'TRM-022', 'TRM-023', 'TRM-024', 'TRM-025'] },
     { id: 'F5', n: 2, name: 'Rendir y responder', short: 'Rendir', blurb: 'Enviar la rendición, el informe técnico y responder a CORFO.', items: ['TRM-013', 'TRM-014', 'TRM-016', 'TRM-015'] },
     { id: 'F6', n: 3, name: 'Cierre', short: 'Cierre', blurb: 'Pedir los aportes que faltan.', items: ['TRM-029', 'TRM-032'] }

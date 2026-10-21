@@ -96,7 +96,7 @@
           advice.appendChild(h('div', { class: 'callout warn' }, h('strong', null, 'Este documento cambia algo del PEA.'),
             h('span', null, ' Marca qué cambia. Según los documentos del convenio, los cambios de actividades, presupuesto y fechas se piden con reitemización (o reprogramación si solo cambian los plazos), se aprueban en asamblea, se envían a CORFO con el acta y luego se configuran en SGP.')));
           advice.appendChild(h('div', { class: 'checks' }, CHANGES.map(function (c) { rec.changes = rec.changes || {}; return UI.field(c.name, rec.changes, c.id, { type: 'check' }); })));
-          advice.appendChild(h('div', { class: 'row-actions' }, UI.btn('Preparar la solicitud de cambio', { icon: 'edit', cls: 'ghost', onclick: function () { location.hash = '#/h/reitem?from=TRM-028'; } }), UI.btn('Ver el trámite «Cambiar el PEA»', { icon: 'route', cls: 'ghost', onclick: function () { location.hash = '#/t/TRM-028'; } })));
+          advice.appendChild(h('div', { class: 'row-actions' }, UI.btn('Preparar la solicitud de cambio', { icon: 'edit', cls: 'ghost', onclick: function () { location.hash = '#/h/reitem?from=TRM-028'; } }), UI.btn('Ver el trámite «Actualización de proyecto (opcional)»', { icon: 'route', cls: 'ghost', onclick: function () { location.hash = '#/t/TRM-028'; } })));
         } else if (rec.peaChange === 'nose') {
           advice.appendChild(UI.callout('info', 'Si tienes dudas:', ' pregúntale a tu ejecutivo técnico de CORFO o al Organismo Colaborador si este documento obliga a corregir el PEA. Puedes guardarlo igual y volver a marcarlo después.'));
         }

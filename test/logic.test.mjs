@@ -36,7 +36,8 @@ test('datos: cada trámite del inventario está cubierto una sola vez', () => {
   const ids = JSON.parse(fs.readFileSync(new URL('./fixtures/tramite-ids.json', import.meta.url), 'utf8')).sort();
   assert.equal(ids.length, 20);
   const inFases = [].concat(...D.FASES.map(f => f.items), D.AYUDA).filter(x => x.startsWith('TRM-')).sort();
-  assert.deepEqual(Array.from(inFases), ids, 'las fases + ayuda deben cubrir exactamente los 20 trámites');
+  assert.deepEqual(Array.from(inFases), ids.filter(id => id !== 'TRM-030'), 'la ruta + ayuda cubren 19 trámites; la prórroga queda en catálogo');
+  assert.deepEqual(Array.from(RF.tramites.list, t => t.id).sort(), ids, 'el catálogo conserva los 20 trámites');
   const all = [].concat(...D.FASES.map(f => f.items), D.AYUDA);
   assert.equal(new Set(all).size, all.length, 'ningún trámite repetido');
   all.forEach(id => assert.ok(RF.tramites.byId[id], 'existe contenido para ' + id));

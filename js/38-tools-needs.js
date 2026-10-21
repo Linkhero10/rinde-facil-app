@@ -95,7 +95,7 @@
           h('p', null, 'En los informes del Organismo Colaborador, los cambios al PEA se aprueban en asamblea y se envían a CORFO con el acta; después se configuran en SGP (a veces con un Acta de No Objeción de CORFO). Confirma el paso exacto con tu ejecutivo técnico.'),
           h('div', { class: 'row-actions' },
             UI.btn('Preparar la solicitud de cambio', { icon: 'edit', cls: 'primary', onclick: function () { location.hash = '#/h/reitem?from=TRM-028'; } }),
-            UI.btn('Ver el trámite «Cambiar el PEA»', { icon: 'route', onclick: function () { location.hash = '#/t/TRM-028'; } }),
+            UI.btn('Ver el trámite «Actualización de proyecto (opcional)»', { icon: 'route', onclick: function () { location.hash = '#/t/TRM-028'; } }),
             UI.btn('Guardar el acta o la respuesta de CORFO', { icon: 'file', onclick: function () { location.hash = '#/h/documentos'; } }))));
       }
 

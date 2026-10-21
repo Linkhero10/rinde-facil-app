@@ -155,6 +155,27 @@
     (project.expenses || []).forEach(function (e) { if (out[e.cuenta]) { out[e.cuenta].rendido += num(e.montoRendir); out[e.cuenta].cantidad++; } });
     return out;
   }
+  /* Resumen de lectura: la misma suma de montoRendir que Gastos, sin recalcular IVA
+   * ni filtrar por período. Los ítems se vinculan por su texto, no por actId. */
+  function resumenPresupuesto(projects) {
+    function percent(spent, assigned) { return assigned > 0 ? Math.round(spent * 100 / assigned) : null; }
+    return (projects || []).map(function (p) {
+      var expenses = p.expenses || [], accounts = totalsByCuenta(p);
+      var assigned = U.sum(D.CUENTAS, function (c) { return accounts[c.id].aprobado; });
+      var spent = U.sum(expenses, function (e) { return num(e.montoRendir); });
+      var first = p.fuentes && p.fuentes.aia30;
+      return {
+        id: p.id, name: p.name || 'Sin nombre', desembolso1: p.desembolso1 || '',
+        primerDesembolsoMonto: first == null || first === '' ? null : num(first),
+        asignado: assigned, ejecutado: spent, pct: percent(spent, assigned), gastos: expenses.length,
+        lines: (p.budgetLines || []).map(function (line) {
+          var item = String(line.item || ''), amount = num(line.monto);
+          var used = U.sum(expenses, function (e) { return item && String(e.item || '') === item ? num(e.montoRendir) : 0; });
+          return { id: line.id, item: item, asignado: amount, ejecutado: used, pct: percent(used, amount) };
+        })
+      };
+    });
+  }
   function activityReferences(project, ids) {
     var refs = [];
     ['expenses', 'budgetLines'].forEach(function (k) { (project[k] || []).forEach(function (r) { if (ids.indexOf(r.actId) >= 0) refs.push({ kind: k, id: r.id }); }); });
@@ -552,7 +573,7 @@
 
   RF.logic = {
     expectedMontoRendir: expectedMontoRendir, requirements: requirements, evaluateExpense: evaluateExpense, effectiveHas: effectiveHas, cotizacionOk: cotizacionOk,
-    totalsByCuenta: totalsByCuenta, adminByMonth: adminByMonth, expensesByActivity: expensesByActivity, budgetByActivity: budgetByActivity,
+    totalsByCuenta: totalsByCuenta, resumenPresupuesto: resumenPresupuesto, adminByMonth: adminByMonth, expensesByActivity: expensesByActivity, budgetByActivity: budgetByActivity,
     allActivities: allActivities, ganttIssues: ganttIssues, activityDays: activityDays, activityReferences: activityReferences, removeActivity: removeActivity, removeStage: removeStage,
     peaDeadline: peaDeadline, aclaracionDeadline: aclaracionDeadline,
     f29Audit: f29Audit, autoStep: autoStep, stepDone: stepDone, itemProgress: itemProgress, requiredSteps: requiredSteps, applies: applies, needsAnswered: needsAnswered, effectiveNeeds: effectiveNeeds, progress: progress, skippedPhases: skippedPhases, reconcile: reconcile
