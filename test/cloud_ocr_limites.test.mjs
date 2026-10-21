@@ -1,5 +1,5 @@
-/* Límites del adaptador OCR (backend/CloudOcrAdapter.gs), hallazgos M-1 y B-1 de SMI-RF-03: el tope por petición vale también
-   para las páginas explícitas y para page_count, y una respuesta de Document AI que no es JSON conserva el código HTTP.
+/* Límites del adaptador OCR (backend/CloudOcrAdapter.gs): no hay tope por archivo; las páginas se piden en lotes de cinco y la
+   cuota diaria (reservar) decide si un PDF cabe. Una respuesta de Document AI que no es JSON conserva el código HTTP.
    Usa respuestas simuladas: no llama a Google ni cobra nada. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -30,6 +30,12 @@ function lote(paginas, total) {
   return { body: { responses: [{ totalPages: total, responses: paginas.map(pagina) }] } };
 }
 const rango = (desde, hasta) => Array.from({ length: hasta - desde + 1 }, (_, i) => desde + i);
+/* el resto de páginas en lotes de cinco, como hace el adaptador */
+function lotesDesde(desde, hasta) {
+  const out = [];
+  for (let i = desde; i <= hasta; i += 5) out.push(rango(i, Math.min(i + 4, hasta)));
+  return out;
+}
 
 /* entorno de Apps Script simulado: cada UrlFetchApp.fetch consume la siguiente respuesta de la lista */
 function env(replies) {
@@ -55,38 +61,44 @@ function env(replies) {
 function pdfBlob() {
   return { getContentType: () => 'application/pdf', getBytes: () => Buffer.from('%PDF-falso') };
 }
+const paginasPedidas = calls => JSON.parse(JSON.stringify(calls.map(c => c.requests[0].pages)));
 
-test('M-1: páginas explícitas por encima del tope por petición no llaman a Vision', () => {
-  const { ctx, calls } = env([]);
-  const out = ctx.callCloudVision_(pdfBlob(), { pages: rango(1, 21) });
-  assert.equal(out.status, 'ERROR');
-  assert.match(out.error, /^PDF_DEMASIADAS_PAGINAS/);
-  assert.equal(calls.length, 0, 'no se llama a Vision ni se cobra nada');
-});
-
-test('M-1: un page_count por encima del tope no llama a Vision', () => {
-  const { ctx, calls } = env([]);
-  const out = ctx.callCloudVision_(pdfBlob(), { page_count: 25 });
-  assert.equal(out.status, 'ERROR');
-  assert.match(out.error, /^PDF_DEMASIADAS_PAGINAS/);
-  assert.equal(calls.length, 0);
-});
-
-test('M-1: el max_pages del llamador también vale para las páginas explícitas', () => {
-  const { ctx, calls } = env([]);
-  const out = ctx.callCloudVision_(pdfBlob(), { pages: rango(1, 6), max_pages: 5 });
-  assert.equal(out.status, 'ERROR');
-  assert.match(out.error, /máximo por petición es 5/);
-  assert.equal(calls.length, 0);
-});
-
-test('M-1: 20 páginas explícitas (el tope) sí se piden, en lotes de cinco', () => {
-  const replies = [rango(1, 5), rango(6, 10), rango(11, 15), rango(16, 20)].map(p => lote(p, 20));
+test('sin tope por archivo: 21 páginas explícitas se piden en lotes de cinco', () => {
+  const replies = [rango(1, 5), rango(6, 10), rango(11, 15), rango(16, 20), [21]].map(p => lote(p, 21));
   const { ctx, calls } = env(replies);
-  const out = ctx.callCloudVision_(pdfBlob(), { pages: rango(1, 20) });
-  assert.doesNotMatch(String(out.error || ''), /PDF_DEMASIADAS_PAGINAS/);
-  assert.deepEqual(JSON.parse(JSON.stringify(calls.map(c => c.requests[0].pages))),
-    [rango(1, 5), rango(6, 10), rango(11, 15), rango(16, 20)]);
+  const out = ctx.callCloudVision_(pdfBlob(), { pages: rango(1, 21) });
+  assert.doesNotMatch(String(out.error || ''), /DEMASIADAS/, 'ningún tope por archivo');
+  assert.deepEqual(paginasPedidas(calls), [rango(1, 5), rango(6, 10), rango(11, 15), rango(16, 20), [21]]);
+});
+
+test('sin tope por archivo: un page_count de 25 se lee entero en lotes de cinco', () => {
+  const replies = [rango(1, 5), rango(6, 10), rango(11, 15), rango(16, 20), rango(21, 25)].map(p => lote(p, 25));
+  const { ctx, calls } = env(replies);
+  const out = ctx.callCloudVision_(pdfBlob(), { page_count: 25 });
+  assert.equal(out.document_coverage, 'COMPLETE');
+  assert.equal(calls.length, 5);
+});
+
+test('PDF de 100 páginas: se reserva lo que falta, se lee entero y cobra exactamente 100', () => {
+  const replies = [lote([1], 100), ...lotesDesde(2, 100).map(p => lote(p, 100))];
+  const { ctx, calls } = env(replies);
+  const reservas = [];
+  const out = ctx.callCloudVision_(pdfBlob(), { reservar: n => { reservas.push(n); return { ok: true }; } });
+  assert.deepEqual(reservas, [99], 'se reservan las 99 páginas que faltan, de una vez');
+  assert.equal(out.status, 'SUCCESS');
+  assert.equal(out.document_coverage, 'COMPLETE');
+  assert.equal(out.pages_returned, 100);
+  assert.equal(calls.length, 21, 'una llamada de descubrimiento y veinte de lotes');
+});
+
+test('PDF de 101 páginas con el límite diario agotado: se rechaza tras el descubrimiento, sin pedir más páginas', () => {
+  const replies = [lote([1], 101)];
+  const { ctx, calls } = env(replies);
+  const out = ctx.callCloudVision_(pdfBlob(), { reservar: () => ({ ok: false, error: 'LIMITE_DIARIO' }) });
+  assert.equal(out.status, 'ERROR');
+  assert.equal(out.error, 'LIMITE_DIARIO');
+  assert.equal(out.pages_returned, 1, 'solo cuesta la primera página');
+  assert.equal(calls.length, 1, 'no se llama a Vision para las páginas que no caben');
 });
 
 test('B-1: una respuesta de Document AI que no es JSON conserva el código HTTP', () => {

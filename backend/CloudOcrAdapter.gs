@@ -16,7 +16,6 @@ const CLOUD_OCR_CONFIG = {
   projectProperty: 'RINDE_FACIL_GCP_PROJECT_ID',
   processorProperty: 'RINDE_FACIL_DOCUMENT_AI_PROCESSOR',
   defaultProvider: 'drive_v3',
-  maxPagesPerRequest: 20, /* tope de páginas por petición de OCR de un archivo (hallazgo 2) */
   visionEndpoint: 'https://vision.googleapis.com/v1/images:annotate',
   fileVisionEndpoint: 'https://vision.googleapis.com/v1/files:annotate',
   documentAiEndpoint: 'https://documentai.googleapis.com/v1/',
@@ -300,16 +299,6 @@ function callCloudVisionRequest_(blob, metadata, pages) {
   return result;
 }
 
-/* respuesta de error antes de llamar a Vision: la petición pide más páginas que el tope por petición; no se llama ni se cobra nada */
-function demasiadasPaginas_(metadata, started, paginas, maximo) {
-  return {
-    status: 'ERROR', ocr_engine: 'cloud_vision', raw_text: '', file_id: metadata.file_id || null,
-    file_name: metadata.file_name || null, file_hash_sha256: metadata.file_hash_sha256 || null,
-    duration_ms: Date.now() - started, document_coverage: 'UNKNOWN_OR_PARTIAL', pages_requested: [], pages_returned: 0,
-    error: 'PDF_DEMASIADAS_PAGINAS: la petición pide ' + paginas + ' páginas y el máximo por petición es ' + maximo + '.'
-  };
-}
-
 /* pide los lotes en orden y se detiene en el primero que falla: el documento ya no puede salir completo, y las páginas
    que no se piden quedan en la reserva que rfOcr_ devuelve */
 function cloudVisionRunBatches_(batches, request) {
@@ -351,24 +340,18 @@ function callCloudVision_(blob, metadata = {}) {
       const explicitPages = Array.isArray(metadata.pages) && metadata.pages.length > 0;
       const configuredPageCount = Number(metadata.page_count);
       const hasConfiguredPageCount = Number.isInteger(configuredPageCount) && configuredPageCount > 0;
-      /* el tope por petición (maxPagesPerRequest, o el que pida el llamador si es menor) vale también para las páginas explícitas y el page_count */
-      const maximoPeticion = Number(metadata.max_pages) > 0
-        ? Math.min(Number(metadata.max_pages), CLOUD_OCR_CONFIG.maxPagesPerRequest)
-        : CLOUD_OCR_CONFIG.maxPagesPerRequest;
       if (explicitPages) {
         requestedPages = metadata.pages.map(Number);
-        if (requestedPages.length > maximoPeticion) return demasiadasPaginas_(metadata, started, requestedPages.length, maximoPeticion);
         const batches = cloudVisionPageBatches_(requestedPages);
         results = cloudVisionRunBatches_(batches, request);
         expectedPageCount = hasConfiguredPageCount ? configuredPageCount : null;
       } else if (hasConfiguredPageCount) {
         expectedPageCount = configuredPageCount;
-        if (expectedPageCount > maximoPeticion) return demasiadasPaginas_(metadata, started, expectedPageCount, maximoPeticion);
         requestedPages = Array.from({ length: expectedPageCount }, (_, index) => index + 1);
         results = cloudVisionRunBatches_(cloudVisionPageBatches_(requestedPages), request);
       } else {
         // Diseño de Sol (hallazgos 2 y 3): el descubrimiento pide solo la página 1. Vision devuelve totalPages del archivo aunque
-        // se pida una sola página. Antes de leer más se valida el total, se aplica el máximo por petición y se reserva el resto
+        // se pida una sola página. Antes de leer más se valida el total y se reserva el resto
         // de las páginas (metadata.reservar). Un rechazo cuesta, como mucho, una página.
         const discovery = request([1]);
         if (discovery.status !== 'SUCCESS' || !Number.isInteger(discovery.total_pages) || discovery.total_pages < 1) {
@@ -379,13 +362,6 @@ function callCloudVision_(blob, metadata = {}) {
           });
         }
         const total = discovery.total_pages;
-        if (total > maximoPeticion) {
-          return Object.assign({}, discovery, {
-            status: 'ERROR', raw_text: '', duration_ms: Date.now() - started,
-            document_coverage: 'UNKNOWN_OR_PARTIAL', pages_requested: [], pages_returned: 1,
-            error: 'PDF_DEMASIADAS_PAGINAS: el archivo tiene ' + total + ' páginas y el máximo por petición es ' + maximoPeticion + '.'
-          });
-        }
         if (total > 1 && typeof metadata.reservar === 'function') {
           const reserva = metadata.reservar(total - 1);
           if (!reserva || !reserva.ok) {

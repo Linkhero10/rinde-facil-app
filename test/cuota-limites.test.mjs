@@ -31,8 +31,8 @@ test('resumen: suma por semana (desde el lunes) y por mes; sin límites configur
   const leer = (k) => (cuentas.has(k) ? cuentas.get(k) : null);
   const r = e.ctx.rfResumenLecturas_(leer, '2026-10-14');
   assert.equal(r.diario.usadas, 2);
-  assert.equal(r.diario.limite, 200, 'el diario por defecto es 200');
-  assert.equal(r.diario.restan, 198);
+  assert.equal(r.diario.limite, 100, 'el diario por defecto es 100 páginas');
+  assert.equal(r.diario.restan, 98);
   assert.equal(r.semanal.desde, '2026-10-12');
   assert.equal(r.semanal.usadas, 3 + 2);
   assert.equal(r.mensual.desde, '2026-10-01');
@@ -57,7 +57,7 @@ test('resumen: los límites configurados se informan; valores no válidos cuenta
   assert.equal(r.mensual.restan, 23);
   const basura = { RINDE_FACIL_OCR_DAILY_LIMIT: 'abc', RINDE_FACIL_OCR_WEEKLY_LIMIT: '0', RINDE_FACIL_OCR_MONTHLY_LIMIT: '-5' };
   const r2 = e.ctx.rfResumenLecturas_((k) => (k in basura ? basura[k] : null), '2026-10-14');
-  assert.equal(r2.diario.limite, 200, 'un diario no numérico vuelve al valor por defecto');
+  assert.equal(r2.diario.limite, 100, 'un diario no numérico vuelve al valor por defecto');
   assert.equal(r2.semanal.limite, null);
   assert.equal(r2.mensual.limite, null);
 });
@@ -70,14 +70,14 @@ test('cuota: informa lo leído hoy, esta semana y este mes; exige sesión', () =
   const c0 = e.call({ action: 'cuota', t: e.t });
   assert.equal(c0.ok, true);
   assert.equal(c0.diario.usadas, 0);
-  assert.equal(c0.diario.limite, 200);
+  assert.equal(c0.diario.limite, 100);
   assert.equal(c0.semanal.usadas, 2);
   assert.equal(c0.semanal.limite, null);
   assert.equal(c0.mensual.usadas, 2);
   assert.equal(lectura(e).ok, true);
   const c1 = e.call({ action: 'cuota', t: e.t });
   assert.equal(c1.diario.usadas, 1);
-  assert.equal(c1.diario.restan, 199);
+  assert.equal(c1.diario.restan, 99);
   assert.equal(c1.semanal.usadas, 3);
   assert.equal(c1.mensual.usadas, 3);
 });

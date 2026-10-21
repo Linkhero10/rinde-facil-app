@@ -28,7 +28,8 @@
  *     la app envía una clave derivada (PBKDF2) y el servidor guarda solo un HMAC de ella. Ver la sección «cuenta de la comunidad».
  *   - Salvo ping, challenge, setup, login y resetPassword, toda solicitud exige un token de sesión (vence a las 12 horas).
  *   - Bloqueo por intentos fallidos, registro de accesos, cierre de todas las sesiones al cambiar la contraseña.
- *   - Límite diario de lecturas OCR (RINDE_FACIL_OCR_DAILY_LIMIT, por defecto 200) para no gastar cuota por error.
+ *   - Límite diario de páginas escaneadas (RINDE_FACIL_OCR_DAILY_LIMIT, por defecto 100) para no gastar cuota por error.
+ *     No hay tope por archivo: un PDF largo se lee entero si cabe en el día; si no cabe, se rechaza antes de llamar a Google.
  *     Semanal y mensual solo existen si se configuran (RINDE_FACIL_OCR_WEEKLY_LIMIT y RINDE_FACIL_OCR_MONTHLY_LIMIT).
  *     La acción «cuota» (con sesión) informa lo leído hoy, esta semana y este mes, y los límites vigentes.
  *
@@ -57,7 +58,7 @@ const RF_WEB = {
   stateFile: 'estado-rinde-facil.json',
   maxBytes: 8 * 1024 * 1024,
   ocrMaxBytes: 20 * 1024 * 1024, /* PDF escaneado: límite de Cloud Vision para archivos */
-  maxPagesPorPeticion: 20, /* tope de páginas por petición de OCR (hallazgo 2); un maxPages del cliente solo puede bajarlo */
+  dailyLimitDefault: 100, /* páginas escaneadas por día si no hay RINDE_FACIL_OCR_DAILY_LIMIT. Sin tope por petición: el diario controla el gasto */
   maxStateChars: 4 * 1024 * 1024,
   keepBackups: 5,
   rootCategories: { oficial: 'Documentos oficiales', acta: 'Actas de mesas de trabajo' },
@@ -159,7 +160,7 @@ function rfLimiteProp_(leer, nombre) {
 }
 /* lo leído hasta hoy y los límites vigentes (null = sin límite configurado) */
 function rfResumenLecturas_(leer, hoy) {
-  const diario = rfLimiteProp_(leer, RF_WEB.limitProp) || 200;
+  const diario = rfLimiteProp_(leer, RF_WEB.limitProp) || RF_WEB.dailyLimitDefault;
   const lunes = rfAddDias_(hoy, -rfDiaSemana_(hoy));
   const dia1 = hoy.slice(0, 8) + '01';
   const usadasHoy = Number(leer(RF_WEB.counterPrefix + hoy) || 0);
@@ -184,7 +185,7 @@ function rfCountOcr_(paginas, fecha) {
   const hoy = fecha || rfToday_();
   const key = RF_WEB.counterPrefix + hoy;
   const leer = function (nombre) { return props.getProperty(nombre); };
-  const limit = rfLimiteProp_(leer, RF_WEB.limitProp) || 200;
+  const limit = rfLimiteProp_(leer, RF_WEB.limitProp) || RF_WEB.dailyLimitDefault;
   const semanal = rfLimiteProp_(leer, RF_WEB.weeklyLimitProp);
   const mensual = rfLimiteProp_(leer, RF_WEB.monthlyLimitProp);
   const lock = LockService.getScriptLock();
@@ -224,13 +225,6 @@ function rfCuota_() {
   return Object.assign({ ok: true }, rfResumenLecturas_(function (nombre) { return props.getProperty(nombre); }, rfToday_()));
 }
 
-/* páginas máximas por petición: el tope del servidor, o menos si el cliente lo pide. Un valor que no es entero positivo se rechaza antes de gastar cuota */
-function rfMaxPaginas_(valor) {
-  if (valor === undefined || valor === null || valor === '') return { valor: RF_WEB.maxPagesPorPeticion };
-  const n = Number(valor);
-  if (!Number.isInteger(n) || n < 1) return { error: 'MAX_PAGINAS_INVALIDO' };
-  return { valor: Math.min(n, RF_WEB.maxPagesPorPeticion) };
-}
 /* lo cobrado hoy al terminar la petición, después de devolver la reserva no utilizada */
 function rfUsoOcrHoy_() {
   return Number(PropertiesService.getScriptProperties().getProperty(RF_WEB.counterPrefix + rfToday_()) || 0);
@@ -242,9 +236,6 @@ function rfOcr_(p) {
   if (RF_WEB.okMime.indexOf(String(p.mimeType || '').toLowerCase()) < 0) return { ok: false, error: 'TIPO_NO_PERMITIDO' };
   if (!rfIsBase64_(p.base64)) return { ok: false, error: 'BASE64_INVALIDO' };
   if (rfBase64Bytes_(p.base64) > RF_WEB.ocrMaxBytes) return { ok: false, error: 'ARCHIVO_MUY_GRANDE' };
-  /* el tope por petición lo pone el servidor; un maxPages del cliente solo puede bajarlo. Se valida antes de gastar cuota */
-  const maxPaginas = rfMaxPaginas_(p.maxPages);
-  if (maxPaginas.error) return { ok: false, error: maxPaginas.error };
   /* diseño de Sol: primero se reserva una página; el resto se reserva cuando Cloud Vision informa el total del archivo */
   const fecha = rfToday_();
   const cnt = rfCountOcr_(1, fecha);
@@ -256,7 +247,6 @@ function rfOcr_(p) {
     const blob = Utilities.newBlob(bytes, String(p.mimeType).toLowerCase(), String(p.fileName || 'comprobante').slice(0, 120));
     r = callCloudVision_(blob, {
       file_name: String(p.fileName || '').slice(0, 120),
-      max_pages: maxPaginas.valor,
       reservar: function (paginas) {
         const reserva = rfCountOcr_(paginas, fecha);
         if (reserva.ok) reservadas += paginas;

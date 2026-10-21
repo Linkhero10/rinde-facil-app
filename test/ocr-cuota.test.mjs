@@ -1,5 +1,6 @@
-/* Hallazgo 2 (tope de OCR): rfOcr_ de backend/WebApi.gs con el adaptador real (backend/CloudOcrAdapter.gs) y Vision simulado.
-   Ninguna llamada llega a Google. El contador es el de propiedades del script de la prueba. */
+/* Cuota de OCR: rfOcr_ de backend/WebApi.gs con el adaptador real (backend/CloudOcrAdapter.gs) y Vision simulado.
+   Ninguna llamada llega a Google. El contador es el de propiedades del script de la prueba. Límite diario por defecto: 100 páginas;
+   no hay tope por archivo: un PDF se lee entero si cabe en el día, y si no cabe se rechaza antes de pedir las páginas que sobran. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -20,6 +21,11 @@ function pagina(num, texto) {
   const parrafos = texto ? [{ boundingBox: caja, words: [{ boundingBox: caja, symbols: [...texto].map(c => ({ text: c })) }] }] : [];
   return { context: { pageNumber: num }, fullTextAnnotation: { text: texto, pages: [{ width: 1000, height: 1400, blocks: [{ paragraphs: parrafos }] }] } };
 }
+/* la respuesta de un lote de Vision: las páginas pedidas, con el total del archivo */
+function lote(paginas, total) {
+  return { responses: [{ totalPages: total, responses: paginas.map(n => pagina(n, 'página ' + n)) }] };
+}
+const rango = (desde, hasta) => Array.from({ length: hasta - desde + 1 }, (_, i) => desde + i);
 
 /* Vision simulado: cada respuesta de la lista sale en orden; la página pedida en cada llamada queda anotada */
 function vision(e, respuestas) {
@@ -40,62 +46,51 @@ function preparar(propiedades = {}) {
 }
 const pedir = (e, extra = {}) => e.call(Object.assign({ action: 'ocr', t: e.t, mimeType: PDF, base64: B64 }, extra));
 
-test('H1 (hallazgo 2): con el contador en 199, un PDF de 12 páginas se rechaza antes de pedir las páginas siguientes', () => {
-  const e = preparar({ [CLAVE]: '199' });
-  const llamadas = vision(e, [{ responses: [{ totalPages: 12, responses: [pagina(1, 'primera página')] }] }]);
+test('con el contador en 99, un PDF de 12 páginas se rechaza tras el descubrimiento: solo cuesta la página reservada', () => {
+  const e = preparar({ [CLAVE]: '99' });
+  const llamadas = vision(e, [lote([1], 12)]);
   const r = pedir(e);
   assert.equal(r.ok, false);
   assert.equal(r.error, 'LIMITE_DIARIO');
   assert.deepEqual(llamadas, [[1]], 'solo la página 1 llegó a Vision');
-  assert.equal(e.P.get(CLAVE), '200', 'se cobró la página reservada; no las doce');
+  assert.equal(e.P.get(CLAVE), '100', 'se cobró la página reservada; no las doce');
 });
 
-test('con el contador en 190, un PDF de 12 páginas también se rechaza, y el rechazo cuesta una página', () => {
-  const e = preparar({ [CLAVE]: '190' });
-  const llamadas = vision(e, [{ responses: [{ totalPages: 12, responses: [pagina(1, 'primera página')] }] }]);
+test('con el contador en 90, un PDF de 12 páginas también se rechaza, y el rechazo cuesta una página', () => {
+  const e = preparar({ [CLAVE]: '90' });
+  const llamadas = vision(e, [lote([1], 12)]);
   assert.equal(pedir(e).error, 'LIMITE_DIARIO');
   assert.equal(llamadas.length, 1);
-  assert.equal(e.P.get(CLAVE), '191');
+  assert.equal(e.P.get(CLAVE), '91');
 });
 
-test('con el contador en 190, un PDF de 3 páginas se lee entero y se cobran exactamente sus tres páginas', () => {
-  const e = preparar({ [CLAVE]: '190' });
-  const llamadas = vision(e, [
-    { responses: [{ totalPages: 3, responses: [pagina(1, 'primera')] }] },
-    { responses: [{ totalPages: 3, responses: [pagina(2, 'segunda'), pagina(3, 'tercera')] }] }
-  ]);
+test('con el contador en 90, un PDF de 3 páginas se lee entero y se cobran exactamente sus tres páginas', () => {
+  const e = preparar({ [CLAVE]: '90' });
+  const llamadas = vision(e, [lote([1], 3), lote([2, 3], 3)]);
   const r = pedir(e);
   assert.equal(r.ok, true);
-  assert.match(r.raw_text, /tercera/);
+  assert.match(r.raw_text, /página 3/);
   assert.deepEqual(llamadas, [[1], [2, 3]]);
-  assert.equal(r.used_today, 193);
-  assert.equal(e.P.get(CLAVE), '193');
+  assert.equal(r.used_today, 93);
+  assert.equal(e.P.get(CLAVE), '93');
 });
 
-test('un PDF de más de 20 páginas se rechaza tras la primera página, sin leer el resto', () => {
+test('un PDF de 25 páginas se lee entero: no hay tope por archivo, solo el diario', () => {
   const e = preparar();
-  const llamadas = vision(e, [{ responses: [{ totalPages: 25, responses: [pagina(1, 'primera')] }] }]);
+  const llamadas = vision(e, [lote([1], 25), lote(rango(2, 6), 25), lote(rango(7, 11), 25), lote(rango(12, 16), 25), lote(rango(17, 21), 25), lote(rango(22, 25), 25)]);
   const r = pedir(e);
-  assert.equal(r.ok, false);
-  assert.match(r.error, /PDF_DEMASIADAS_PAGINAS/);
-  assert.equal(llamadas.length, 1);
-  assert.equal(e.P.get(CLAVE), '1');
+  assert.equal(r.ok, true);
+  assert.equal(r.document_coverage, 'COMPLETE');
+  assert.equal(llamadas.length, 6);
+  assert.equal(e.P.get(CLAVE), '25', 'se cobran las 25 páginas leídas');
 });
 
-test('maxPages baja el tope: con maxPages 5, un PDF de 6 páginas se rechaza', () => {
+test('maxPages del cliente no baja el tope: un PDF de 6 páginas se lee entero aunque el cliente pida 5', () => {
   const e = preparar();
-  vision(e, [{ responses: [{ totalPages: 6, responses: [pagina(1, 'primera')] }] }]);
-  assert.match(pedir(e, { maxPages: 5 }).error, /PDF_DEMASIADAS_PAGINAS/);
-});
-
-test('un maxPages que no es un entero positivo se rechaza antes de gastar cuota ni llamar a Vision', () => {
-  const e = preparar({ [CLAVE]: '5' });
-  const llamadas = vision(e, []);
-  for (const maxPages of [0, -3, 2.5, 'abc']) {
-    assert.equal(pedir(e, { maxPages }).error, 'MAX_PAGINAS_INVALIDO', String(maxPages));
-  }
-  assert.equal(llamadas.length, 0);
-  assert.equal(e.P.get(CLAVE), '5');
+  vision(e, [lote([1], 6), lote(rango(2, 6), 6)]);
+  const r = pedir(e, { maxPages: 5 });
+  assert.equal(r.ok, true);
+  assert.equal(e.P.get(CLAVE), '6');
 });
 
 test('una imagen cuesta exactamente una página y devuelve su texto', () => {
