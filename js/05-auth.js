@@ -39,6 +39,7 @@
   function createAccount(user, password, opts) {
     var legacy = V.legacyState(), initial = legacy || RF.store.defaults();
     initial.community = Object.assign({}, initial.community || {}, { name: (initial.community && initial.community.name) || user });
+    RF.store.ensureAdminProject(initial);
     return V.create(user, password, initial, opts).then(function (r) {
       var next = legacy ? V.verifyReadable().then(function (ok) { if (!ok) throw new Error('No se pudo comprobar la copia cifrada; no se borró nada.'); V.dropLegacy(); }) : Promise.resolve();
       return next.then(function () { afterOpen(r.state, true); return { recoveryCode: r.recoveryCode, migrated: !!legacy }; });
@@ -195,6 +196,7 @@
       return RF.cloud.postRawTo(url, 'loadState', { t: r.token }).then(function (st) {
         var state = st && st.ok ? RF.util.safeParse(st.state) : RF.store.defaults();
         state.cloud = Object.assign({}, state.cloud || {}, { apiUrl: url }); delete state.cloud.device; delete state.cloud.base; delete state.cloud.syncFp; if (typeof r.device === 'string' && /^[0-9a-f]{64}$/.test(r.device)) state.cloud.device = r.device; state.community = Object.assign({}, state.community || {}, { name: (state.community && state.community.name) || user });
+        RF.store.ensureAdminProject(state);
         return V.create(user, password, state, { noRecovery: true, skipPolicy: !problems.length ? false : true }).then(function () { afterOpen(state); return { rev: st && st.rev }; });
       });
     });

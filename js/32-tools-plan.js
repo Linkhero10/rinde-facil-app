@@ -46,7 +46,7 @@
         UI.field('Fecha de aprobación del PEA', p, 'peaAprobadoAt', { type: 'date' }),
         UI.field('Período que estás rindiendo: desde', p, 'periodoInicio', { type: 'date' }), UI.field('hasta', p, 'periodoFin', { type: 'date' }));
       root.appendChild(UI.section('Datos de «' + (p.name || 'tu proyecto') + '»', [f]));
-      var bud = h('div', { class: 'form-grid' }, D.CUENTAS.filter(function (cu) { return cu.id !== 'administracion' || p.tipo === 'administracion' || p.name === 'Gastos de administración'; }).map(function (cu) { return UI.field(cu.name, p.budgetApproved, cu.id, { type: 'money', hint: 'Lo aprobado por CORFO' }); }));
+      var bud = h('div', { class: 'form-grid' }, D.CUENTAS.filter(function (cu) { return cu.id !== 'administracion' || RF.store.esAdmin(p); }).map(function (cu) { return UI.field(cu.name, p.budgetApproved, cu.id, { type: 'money', hint: 'Lo aprobado por CORFO' }); }));
       root.appendChild(UI.section('Presupuesto aprobado por cuenta', [bud]));
       if (s.projects.length > 1 || true) root.appendChild(h('div', { class: 'row-actions' }, UI.btn('Borrar este proyecto', { icon: 'trash', cls: 'ghost danger', onclick: function () { UI.confirmBox('¿Borrar «' + (p.name || 'este proyecto') + '» y todos sus datos? No se puede deshacer.', 'Borrar').then(function (ok) { if (ok) RF.store.removeProject(p.id); }); } })));
     }
@@ -185,7 +185,7 @@
       RF.forms.getList(p, 'peaProyecto').forEach(function (it, i) { var d = RF.forms.docOf('peaProyecto', it.data, c); blocks.push({ t: 'h', text: '2.' + (i + 1) + ' ' + d.title }); d.blocks.forEach(function (b) { blocks.push(b); }); });
       var gd = ganttDoc(p, c.community); blocks.push({ t: 'h', text: '3a. Carta Gantt' }); gd.blocks.forEach(function (b) { blocks.push(b); });
       var bd = budgetDoc(p, c.community); blocks.push({ t: 'h', text: '3b. Presupuesto' }); bd.blocks.forEach(function (b) { blocks.push(b); });
-      var adm = (c.state && c.state.projects || []).filter(function (x) { return x.id !== p.id && (x.tipo === 'administracion' || x.name === 'Gastos de administración'); })[0];
+      var adm = (c.state && c.state.projects || []).filter(function (x) { return x.id !== p.id && (RF.store.esAdmin(x)); })[0];
       if (adm) { blocks.push({ t: 'h', text: 'Administración' }); budgetDoc(adm, c.community).blocks.forEach(function (b) { blocks.push(b); }); }
       return { title: 'Programa de Ejecución de Actividades (PEA)', subtitle: (c.community.name || 'Comunidad') + ' · ' + (p.name || ''), sheet: 'PEA', footer: 'Borrador generado con Rinde Fácil. No es el formulario oficial de CORFO.', blocks: blocks };
     
@@ -193,7 +193,7 @@
 
   TOOLS.pea = { title: 'PEA: los 3 documentos', icon: 'form', desc: 'Información general, un formulario por proyecto y presupuesto con Carta Gantt.', render: function () {
     var c = ctx(), p = c.project;
-    var esAdmin = function (x) { return x.tipo === 'administracion' || x.name === 'Gastos de administración'; };
+    var esAdmin = function (x) { return RF.store.esAdmin(x); };
     /* Tras registrar la rendición de administración, el proyecto activo puede ser ese: el PEA parte de un proyecto real. */
     if (p && esAdmin(p)) { var primero = c.state.projects.filter(function (x) { return !esAdmin(x); })[0]; p = primero || null; if (primero) { c.project = primero; RF.store.update(function (s) { s.activeProjectId = primero.id; }, { silent: true }); } }
     if (!p) return page('PEA', '', needProject(c));
@@ -201,17 +201,13 @@
     var selected = 'general';
     root.appendChild(UI.callout('info', 'Ojo:', ' estos documentos son un borrador para reunir y copiar tu información. No tenemos el formulario oficial del PEA, así que confirma el formato vigente con tu ejecutivo técnico o con el Organismo Colaborador (Componente 3).'));
     function adminProject(create) {
-      var adm = c.state.projects.filter(function (x) { return x.tipo === 'administracion' || x.name === 'Gastos de administración'; })[0];
-      if (!adm && create) {
-        adm = RF.store.newProject('Gastos de administración'); adm.tipo = 'administracion'; adm.auto = true;
-        adm.budgetApproved.administracion = num(RF.forms.getSingle(p, 'peaGeneral').presupuestoAdmin);
-        c.state.projects.push(adm); RF.store.update(function () {}, { silent: true });
-      }
+      var adm = c.state.projects.filter(function (x) { return RF.store.esAdmin(x); })[0];
+      if (!adm && create) { adm = RF.store.ensureAdminProject(c.state); RF.store.update(function () {}, { silent: true }); }
       return adm;
     }
     function show(key) {
       selected = key; U.clear(tabs); U.clear(content);
-      var options = [{ id: 'general', name: 'PEA General' }, { id: 'admin', name: 'Administración' }].concat(c.state.projects.filter(function (x) { return x.tipo !== 'administracion' && x.name !== 'Gastos de administración'; }).map(function (x) { return { id: x.id, name: x.name || 'Proyecto sin nombre' }; }));
+      var options = [{ id: 'general', name: 'PEA General' }, { id: 'admin', name: 'Administración' }].concat(c.state.projects.filter(function (x) { return !RF.store.esAdmin(x); }).map(function (x) { return { id: x.id, name: x.name || 'Proyecto sin nombre' }; }));
       options.forEach(function (x) { tabs.appendChild(h('button', { type: 'button', role: 'tab', id: 'pea-tab-' + x.id, 'aria-controls': 'pea-panel', 'aria-selected': selected === x.id ? 'true' : 'false', class: 'chip' + (selected === x.id ? ' on' : ''), onclick: function () { show(x.id); } }, x.name)); });
       content.setAttribute('aria-labelledby', 'pea-tab-' + selected);
       if (key === 'general') {
@@ -403,7 +399,7 @@
     }
     var root = h('div', null, UI.section('Revisa una fecha', [h('div', { class: 'form-grid' }, UI.field('Fecha del documento', st, 'fecha', { type: 'date', onChange: paint }), UI.field('Actividad (opcional)', st, 'actId', { type: 'select', options: [{ id: '', name: 'Ninguna' }].concat(L.allActivities(p).map(function (x) { return { id: x.act.id, name: x.act.name || '(sin nombre)' }; })), noEmpty: true, onChange: paint })), out]));
     paint();
-    return page('¿Entra este gasto en fecha?', 'Solo se rinden gastos dentro de la vigencia del convenio y del plazo del proyecto.', root);
+    return page('¿Entra este gasto en fecha?', 'Solo se rinden gastos dentro de la vigencia del acuerdo y del plazo del proyecto.', root);
   } };
   TOOLS.cuentas = { title: '¿En qué cuenta va?', icon: 'list', desc: 'Elige la cuenta correcta según lo que compraste.', render: function () {
     var items = [
@@ -425,13 +421,12 @@
     paint();
     return page('¿Se puede pagar con el aporte?', 'El Manual (sección VI) lista lo que no se financia. La única excepción es invertir excedentes en renta fija con aprobación previa de CORFO.', root);
   } };
-  TOOLS.plazos = { title: 'Calculadora de plazos', icon: 'clock', desc: 'PEA (90 + 30 días) y aclaración de observaciones (10 días hábiles).', render: function () {
-    var st = { pago: '', obs: U.todayISO() }, o1 = h('div'), o2 = h('div');
-    function p1() { U.clear(o1); if (!st.pago) return; var pd = L.peaDeadline({ peaAprobadoAt: st.pago }, U.todayISO()); o1.appendChild(UI.callout(pd.diasRestantes < 0 ? 'warn' : 'ok', 'El PEA vence el ' + U.fmtDate(pd.fin) + '.', ' Con la prórroga única (hasta 30 días, pedida antes del vencimiento): ' + U.fmtDate(pd.finProrroga) + '.')); }
-    function p2() { U.clear(o2); if (!st.obs) return; var lim = L.aclaracionDeadline(st.obs, RF.holidays.all()); o2.appendChild(UI.callout('info', 'Tienes hasta el ' + U.fmtDate(lim) + '.', ' Son 10 días hábiles desde que CORFO comunicó las observaciones' + ' (descontando los feriados de Chile).' + ' La aclaración se hace una sola vez.')); }
-    var root = h('div', null, UI.section('Plazo del PEA', [UI.field('Fecha de aprobación del PEA', st, 'pago', { type: 'date', onChange: p1 }), o1]), UI.section('Plazo para aclarar observaciones', [UI.field('Fecha en que CORFO comunicó las observaciones', st, 'obs', { type: 'date', onChange: p2 }), o2]));
-    p1(); p2();
-    return page('Calculadora de plazos', 'Los plazos que aparecen en los documentos del convenio.', root);
+  TOOLS.plazos = { title: 'Calculadora de plazos', icon: 'clock', desc: 'Aclaración de observaciones (10 días hábiles).', render: function () {
+    var st = { obs: U.todayISO() }, o2 = h('div');
+    function p2() { U.clear(o2); if (!st.obs) return; var lim = L.aclaracionDeadline(st.obs, RF.holidays.all()); o2.appendChild(UI.callout('info', 'Tienes hasta el ' + U.fmtDate(lim) + '.', ' Son 10 días hábiles desde que CORFO comunicó las observaciones (descontando los feriados de Chile). La aclaración se hace una sola vez.')); }
+    var root = h('div', null, UI.section('Plazo para aclarar observaciones', [UI.field('Fecha en que CORFO comunicó las observaciones', st, 'obs', { type: 'date', onChange: p2 }), o2]));
+    p2();
+    return page('Calculadora de plazos', 'Plazo para aclarar observaciones de rendición.', root);
   } };
 
   /* ================= Consulta y solicitud (formularios) ================= */

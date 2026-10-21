@@ -11,6 +11,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = path.join(here, '..', 'js');
 const ctx = { TextDecoder, DataView, Uint8Array, console, Promise };
 vm.createContext(ctx);
+for (const file of ['01-util.js', '02-store.js']) vm.runInContext(fs.readFileSync(path.join(jsDir, file), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(jsDir, '23-read-docx.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(jsDir, '24-pea-extract.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(jsDir, '25-pea-screen.js'), 'utf8'), ctx);
@@ -123,22 +124,22 @@ test('al aplicar se copian dirección, organismo y validación por la Asamblea; 
   assert.equal(t.community.oc, 'Organismo previo');
 });
 
-test('el proyecto de administración solo se crea si trae monto', () => {
+test('el proyecto de administración existe también sin monto', () => {
   const m = modeloSintetico();
-  m.projects.push({ name: 'Gastos de administración', budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: null }, budgetLines: [], gantt: { stages: [] } });
+  m.projects.push({ name: 'Gastos administrativos', budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: null }, budgetLines: [], gantt: { stages: [] } });
   const sin = P.applyToState({ community: {}, projects: [] }, m, { rut: '22.222.222-2' });
-  assert.equal(sin.projects.some(p => p.name === 'Gastos de administración'), false);
+  assert.equal(sin.projects.some(p => p.name === 'Gastos administrativos'), true);
 
   m.projects[1].budgetApproved.administracion = 7;
   const con = P.applyToState({ community: {}, projects: [] }, m, { rut: '22.222.222-2' });
-  assert.equal(con.projects.find(p => p.name === 'Gastos de administración').budgetApproved.administracion, 7);
+  assert.equal(con.projects.find(p => p.name === 'Gastos administrativos').budgetApproved.administracion, 7);
 });
 
-test('un PEA con gastos de administración en $0 no crea el proyecto automático (ninguna comunidad lo recibe por defecto)', () => {
+test('un PEA con gastos de administración en $0 conserva el proyecto automático', () => {
   const m = modeloSintetico();
-  m.projects.push({ name: 'Gastos de administración', budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: 0 }, budgetLines: [], gantt: { stages: [] } });
+  m.projects.push({ name: 'Gastos administrativos', budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: 0 }, budgetLines: [], gantt: { stages: [] } });
   const s = P.applyToState({ community: {}, projects: [] }, m, { rut: '22.222.222-2' });
-  assert.equal(s.projects.some(p => p.name === 'Gastos de administración'), false);
+  assert.equal(s.projects.some(p => p.name === 'Gastos administrativos'), true);
 });
 
 test('las líneas que se escriben en la pantalla usan las claves de cuenta de la app (rrhh, operacion, inversion)', () => {

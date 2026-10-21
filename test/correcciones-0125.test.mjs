@@ -29,7 +29,7 @@ test('M-4: con un RUT de comunidad que no cuadra, «Empezar» no crea el proyect
   s.community.rut = '00000-0';
   const vista = RF.views.home();
   botonPorTexto(vista, 'Empezar').dispatch('click');
-  assert.equal(RF.store.get().projects.length, 0, 'no se crea el proyecto');
+  assert.equal(RF.store.get().projects.filter(p => p.tipo !== 'administracion').length, 0, 'no se crea el proyecto operativo');
   const aviso = buscar(vista, n => n.getAttribute('role') === 'alert')[0];
   assert.match(aviso.textContent, /El RUT de la comunidad no es válido/);
 });
@@ -43,7 +43,7 @@ test('M-4: con un RUT que cuadra, o sin RUT, «Empezar» sí crea el proyecto', 
     s.community.rut = rut;
     const vista = RF.views.home();
     botonPorTexto(vista, 'Empezar').dispatch('click');
-    assert.equal(RF.store.get().projects.length, 1, 'se crea el proyecto con RUT «' + rut + '»');
+    assert.equal(RF.store.get().projects.length, 2, 'proyecto y administración con RUT «' + rut + '»');
   }
 });
 

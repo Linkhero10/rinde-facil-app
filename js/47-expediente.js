@@ -80,7 +80,7 @@
     });
     if (hasData(p, 'informe')) { addDoc(n + '. Informe técnico de avance (Anexo 6) con sus fichas', safe(function () { return RF.docs.model('informe'); })); n++; }
     if ((p.reitem && ((p.reitem.rows || []).length || p.reitem.motivo))) { addDoc(n + '. Cambios al PEA (reitemización)', safe(function () { return RF.docs.model('reitem'); })); n++; }
-    if (hasData(p, 'prorroga')) { addDoc(n + '. Solicitud de prórroga del PEA', safe(function () { return RF.docs.model('prorroga'); })); n++; }
+    if (hasData(p, 'prorroga')) { addDoc(n + '. Solicitud de ampliación', safe(function () { return RF.docs.model('prorroga'); })); n++; }
     if ((p.observations || []).length) { H(n + '. Observaciones de CORFO y aclaraciones'); n++; blocks.push({ t: 'table', wide: true, pw: [14, 9, 10, 25, 25, 7, 10], head: ['Resumen', 'Comunicada el', 'Gastos afectados', 'Qué pidió CORFO', 'Aclaración de la comunidad', 'Respondida', 'Archivos de CORFO'], types: ['text', 'date', 'text', 'text', 'text', 'text', 'text'], rows: p.observations.map(function (o) { return [o.titulo, o.recibida, o.gastos, o.detalle, o.respuesta, o.respondida ? 'Sí' : 'No', (o.files || []).map(function (f) { return f.name; }).join(', ')]; }) }); }
     if (hasData(p, 'solicitud')) { addDoc(n + '. Solicitud de aportes restantes', safe(function () { return RF.docs.model('solicitud'); })); n++; }
     return { pro: true, report: true, sheetsBy: 'h', footTitle: (p.name || 'Proyecto') + ' · ' + (c.name || ''), title: 'Informe de ejecución y rendición «' + (p.name || '') + '»', subtitle: (c.name || '') + (p.code ? ' · ' + p.code : '') + ' · emitido el ' + fd(U.todayISO()), sheet: 'Informe', footer: '', blocks: blocks };

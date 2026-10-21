@@ -21,7 +21,7 @@
   ];
   var BY_ID = {}; NEEDS.forEach(function (n) { BY_ID[n.id] = n; });
   /* Compatibilidad con necesidades ya guardadas; no se ofrece como opción del proyecto. */
-  BY_ID.admin = { id: 'admin', name: 'Gastos de administración' };
+  BY_ID.admin = { id: 'admin', name: 'Gastos administrativos' };
 
   /* trámite → necesidades que lo activan (basta con una). Los trámites que no aparecen aquí le tocan a todos. */
   var APPLIES = {

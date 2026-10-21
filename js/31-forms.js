@@ -432,7 +432,7 @@
 
   /* ============ PEA ============ */
   function presupuestoAdmin() {
-    var adm = RF.store.get().projects.filter(function (p) { return p.tipo === 'administracion' || p.name === 'Gastos de administración'; })[0];
+    var adm = RF.store.get().projects.filter(function (p) { return RF.store.esAdmin(p); })[0];
     return adm && adm.budgetApproved ? adm.budgetApproved.administracion : '';
   }
   SCHEMAS.peaGeneral = {
@@ -448,7 +448,7 @@
       var c = RF.store.get().community;
       var keys = { comunidad: 'name', rut: 'rut', direccion: 'address', repLegal: 'legalRep', repRut: 'repRut', correo: 'email', telefono: 'phone', oc: 'oc' };
       if (keys[k]) c[keys[k]] = d[k];
-      if (k === 'presupuestoAdmin') RF.store.get().projects.forEach(function (p) { if (p.tipo === 'administracion' || p.name === 'Gastos de administración') { p.budgetApproved = p.budgetApproved || {}; p.budgetApproved.administracion = num(d[k]); } });
+      if (k === 'presupuestoAdmin') RF.store.ensureAdminProject(RF.store.get(), num(d[k]));
     },
     doc: function (d, ctx) { return { title: 'PEA General', subtitle: 'Borrador de información para presentar a CORFO', sheet: 'PEA general', footer: 'Borrador generado con Rinde Fácil. No es el formulario oficial de CORFO: sirve para reunir y copiar la información. Confirma el formato vigente con tu ejecutivo técnico o con el Organismo Colaborador.', blocks: [{ t: 'kv', rows: [['Comunidad', d.comunidad], ['RUT', d.rut], ['Dirección', d.direccion], ['Representante legal', d.repLegal], ['RUT del representante', d.repRut], ['Presupuesto de administración', U.fmtCLP(num(d.presupuestoAdmin))], ['Contacto', [d.correo, d.telefono].filter(Boolean).join(' · ')], ['Organismo Colaborador', d.oc], ['Fecha del primer pago', d.fechaPrimerPago ? U.fmtDate(d.fechaPrimerPago) : ''], ['Objetivos del programa', d.objetivos], ['Beneficiarios', d.beneficiarios], ['Territorio', d.territorio]] }] }; }
   };
@@ -470,34 +470,26 @@
     defaults: function (ctx) { return { fecha: U.todayISO(), asunto: '', hechos: '', manual: '', impacto: '', pregunta: '', firma: v(com(ctx).legalRep) }; },
     fields: [
       { k: 'asunto', l: 'Asunto', t: 'text', ph: 'Ej: Consulta por compra de camioneta' }, { k: 'hechos', l: 'Qué pasó o qué quieren hacer', t: 'textarea', rows: 4 },
-      { k: 'manual', l: 'Parte del Manual o del convenio que genera la duda', t: 'text', ph: 'Ej: Manual, sección VII (p. 8)' }, { k: 'impacto', l: 'Cuánto dinero o plazo está en juego', t: 'text' },
+      { k: 'manual', l: 'Parte del Manual o del acuerdo que genera la duda', t: 'text', ph: 'Ej: Manual, sección VII (p. 8)' }, { k: 'impacto', l: 'Cuánto dinero o plazo está en juego', t: 'text' },
       { k: 'pregunta', l: 'Tu pregunta concreta', t: 'textarea', rows: 3 }, { k: 'firma', l: 'Quién firma', t: 'text' }
     ],
     check: function (d) { var o = []; if (!d.pregunta) o.push({ level: 'warn', msg: 'Escribe tu pregunta.' }); return o; },
-    doc: function (d, ctx) { return { title: 'Consulta a CORFO', subtitle: v(d.asunto), sheet: 'Consulta', footer: 'Borrador generado con Rinde Fácil. Envíalo a tu ejecutivo técnico de CORFO (con copia al Organismo Colaborador si quieres apoyo) y guarda la respuesta en tu expediente.', blocks: [{ t: 'p', text: 'Fecha: ' + (d.fecha ? U.fmtDate(d.fecha) : '') }, { t: 'p', text: 'Estimado(a) ejecutivo(a) técnico(a):' }, { t: 'p', text: 'Junto con saludar, le escribimos desde ' + v(ctx.community.name, '[comunidad]') + (proj(ctx).code ? ' (proyecto ' + proj(ctx).code + ')' : '') + ' para consultar lo siguiente.' }, { t: 'h', text: 'Situación' }, { t: 'p', text: v(d.hechos, '[describa los hechos]') }, { t: 'h', text: 'Norma que genera la duda' }, { t: 'p', text: v(d.manual, '[indique la parte del Manual o del convenio]') }, { t: 'h', text: 'Impacto' }, { t: 'p', text: v(d.impacto, '[monto o plazo involucrado]') }, { t: 'h', text: 'Consulta' }, { t: 'p', text: v(d.pregunta, '[su pregunta]') }, { t: 'p', text: 'Agradecemos su respuesta antes de ejecutar el gasto.' }, { t: 'sign', labels: [v(d.firma, 'Nombre')] }] }; }
+    doc: function (d, ctx) { return { title: 'Consulta a CORFO', subtitle: v(d.asunto), sheet: 'Consulta', footer: 'Borrador generado con Rinde Fácil. Envíalo a tu ejecutivo técnico de CORFO (con copia al Organismo Colaborador si quieres apoyo) y guarda la respuesta en tu expediente.', blocks: [{ t: 'p', text: 'Fecha: ' + (d.fecha ? U.fmtDate(d.fecha) : '') }, { t: 'p', text: 'Estimado(a) ejecutivo(a) técnico(a):' }, { t: 'p', text: 'Junto con saludar, le escribimos desde ' + v(ctx.community.name, '[comunidad]') + (proj(ctx).code ? ' (proyecto ' + proj(ctx).code + ')' : '') + ' para consultar lo siguiente.' }, { t: 'h', text: 'Situación' }, { t: 'p', text: v(d.hechos, '[describa los hechos]') }, { t: 'h', text: 'Norma que genera la duda' }, { t: 'p', text: v(d.manual, '[indique la parte del Manual o del acuerdo]') }, { t: 'h', text: 'Impacto' }, { t: 'p', text: v(d.impacto, '[monto o plazo involucrado]') }, { t: 'h', text: 'Consulta' }, { t: 'p', text: v(d.pregunta, '[su pregunta]') }, { t: 'p', text: 'Agradecemos su respuesta antes de ejecutar el gasto.' }, { t: 'sign', labels: [v(d.firma, 'Nombre')] }] }; }
   };
+  /* Compatibilidad con borradores guardados: no se derivan ni se ofrecen plazos del PEA. */
   SCHEMAS.prorroga = {
-    id: 'prorroga', title: 'Solicitud de prórroga del PEA', repeat: false, sheet: 'Prórroga',
-    defaults: function (ctx) { var pd = ctx.project && RF.logic.peaDeadline ? RF.logic.peaDeadline(ctx.project, '') : null; return { fecha: U.todayISO(), vencimiento: pd ? pd.fin : '', dias: 30, motivo: '', antecedentes: '', firma: v(com(ctx).legalRep) }; },
+    id: 'prorroga', title: 'Solicitud de ampliación', repeat: false, sheet: 'Solicitud',
+    defaults: function (ctx) { return { fecha: U.todayISO(), vencimiento: '', dias: '', motivo: '', antecedentes: '', firma: v(com(ctx).legalRep) }; },
     fields: [
-      { k: 'vencimiento', l: 'Fecha en que vence el plazo del PEA', t: 'date' }, { k: 'dias', l: 'Días que pides (máximo 30)', t: 'number', min: 1, max: 30 },
-      { k: 'motivo', l: 'Por qué necesitas más tiempo', t: 'textarea', rows: 5 }, { k: 'antecedentes', l: 'Antecedentes que adjuntas (uno por línea, si los hay)', t: 'textarea', rows: 3 }, { k: 'firma', l: 'Quién firma', t: 'text' }
+      { k: 'motivo', l: 'Motivo de la solicitud', t: 'textarea', rows: 5 }, { k: 'antecedentes', l: 'Antecedentes que adjuntas (uno por línea, si los hay)', t: 'textarea', rows: 3 }, { k: 'firma', l: 'Quién firma', t: 'text' }
     ],
-    check: function (d) {
-      var o = [], today = U.todayISO();
-      if (!d.motivo) o.push({ level: 'warn', msg: 'Explica por qué necesitas más tiempo: la solicitud tiene que ser fundada.' });
-      if (d.dias && (Number(d.dias) < 1 || Number(d.dias) > 30)) o.push({ level: 'error', msg: 'La prórroga es de hasta 30 días.' });
-      if (d.vencimiento && today > d.vencimiento) o.push({ level: 'error', msg: 'El plazo del PEA ya venció. La prórroga se pide antes de que venza.' });
-      o.push({ level: 'info', msg: 'Se concede una sola vez. El flujograma no dice el canal ni los antecedentes que se adjuntan: confirma con tu ejecutivo técnico antes de enviarla.' });
-      return o;
-    },
+    check: function (d) { return d.motivo ? [] : [{ level: 'warn', msg: 'Explica el motivo de la solicitud.' }]; },
     doc: function (d, ctx) {
-      var nuevo = d.vencimiento && d.dias ? U.addDays(d.vencimiento, Number(d.dias)) : '';
-      return { title: 'Solicitud de prórroga del plazo del PEA', sheet: 'Prórroga', footer: 'Borrador generado con Rinde Fácil. No es un formato oficial: confirma el canal y los antecedentes con tu ejecutivo técnico de CORFO.', blocks: [{ t: 'p', text: 'Fecha: ' + (d.fecha ? U.fmtDate(d.fecha) : '') }, { t: 'p', text: 'Estimado(a) ejecutivo(a) técnico(a):' },
-        { t: 'p', text: 'Junto con saludar, ' + v(ctx.community.name, '[comunidad]') + (ctx.community.rut ? ' (RUT ' + ctx.community.rut + ')' : '') + ' solicita la prórroga del plazo para presentar el Programa de Ejecución de Actividades (PEA)' + (d.dias ? ', por ' + d.dias + ' días' : '') + (d.vencimiento ? '. El plazo vence el ' + U.fmtDate(d.vencimiento) + (nuevo ? ' y con la prórroga pasaría al ' + U.fmtDate(nuevo) : '') : '') + '.' },
-        { t: 'h', text: 'Fundamento' }, { t: 'p', text: v(d.motivo, '[explique por qué necesita más tiempo]') },
+      return { title: 'Solicitud de ampliación', sheet: 'Solicitud', footer: 'Borrador generado con Rinde Fácil. No es un formato oficial: confirma el canal y los antecedentes con tu ejecutivo técnico de CORFO.', blocks: [{ t: 'p', text: 'Fecha: ' + (d.fecha ? U.fmtDate(d.fecha) : '') }, { t: 'p', text: 'Estimado(a) ejecutivo(a) técnico(a):' },
+        { t: 'p', text: 'Junto con saludar, ' + v(ctx.community.name, '[comunidad]') + ' presenta la siguiente solicitud.' },
+        { t: 'h', text: 'Fundamento' }, { t: 'p', text: v(d.motivo, '[explique el motivo]') },
         { t: 'h', text: 'Antecedentes que se adjuntan' }, { t: 'p', text: v(d.antecedentes, 'Ninguno.') },
-        { t: 'p', text: 'Quedamos atentos a su respuesta.' }, { t: 'sign', labels: [v(d.firma, 'Nombre')] }] };
+        { t: 'sign', labels: [v(d.firma, 'Nombre')] }] };
     }
   };
   SCHEMAS.solicitud = {

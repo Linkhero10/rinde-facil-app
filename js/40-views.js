@@ -192,7 +192,7 @@
 
   function homeView() {
     var s = RF.store.get(), p = project(), root = h('div', { class: 'view home' });
-    if (!p) { root.appendChild(onboarding()); root.appendChild(desembolsos()); return root; }
+    if (!p || !s.projects.some(function (x) { return !RF.store.esAdmin(x); })) { root.appendChild(onboarding()); root.appendChild(desembolsos()); return root; }
     var prog = L.progress(p), res = L.reconcile(p, s.community, U.todayISO(), RF.holidays.all());
     var f = fase(prog.faseActual), nx = prog.next, nt = nx && RF.tramites.byId[nx.tramiteId];
     var flagged = res.groups.reduce(function (a, g) { return a.concat(g.items.filter(function (i) { return i.level === 'error' || i.level === 'warn'; })); }, []);
