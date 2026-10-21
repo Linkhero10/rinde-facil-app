@@ -19,6 +19,8 @@ const CLOUD_OCR_CONFIG = {
   visionEndpoint: 'https://vision.googleapis.com/v1/images:annotate',
   fileVisionEndpoint: 'https://vision.googleapis.com/v1/files:annotate',
   documentAiEndpoint: 'https://documentai.googleapis.com/v1/',
+  executionBudgetMs: 270000, /* margen para devolver reservas y responder antes de los 6 minutos y del cliente PDF (5 minutos) */
+  maxFetchMs: 60000, /* una llamada a Vision puede durar hasta esto: no se inicia si no cabe antes del presupuesto */
   languageHints: ['es', 'en']
 };
 
@@ -180,28 +182,44 @@ function cloudVisionLayout_(annotations, pageNumbers) {
 }
 
 function parseCloudVisionPayload_(payload, metadata = {}) {
-  const fileResponse = payload && payload.responses && payload.responses[0] || {};
-  if (payload && payload.error || fileResponse.error) {
-    const error = payload && payload.error || fileResponse.error;
+  const fileResponse = payload && Array.isArray(payload.responses) && payload.responses.length === 1 && payload.responses[0];
+  const missingPages = metadata.file_request && (!fileResponse || !Array.isArray(fileResponse.responses) || !fileResponse.responses.length);
+  if (payload && payload.error || !fileResponse || typeof fileResponse !== 'object' || Array.isArray(fileResponse) || fileResponse.error || missingPages) {
+    const error = payload && payload.error || fileResponse && fileResponse.error || { message: 'Cloud Vision: respuesta inválida, faltan las anotaciones.' };
     return {
       status: 'ERROR', raw_text: '', ocr_engine: 'cloud_vision',
       file_id: metadata.file_id || null, file_name: metadata.file_name || null,
       file_hash_sha256: metadata.file_hash_sha256 || null,
       duration_ms: metadata.duration_ms || 0,
+      page_count: 0,
       error: error.message || JSON.stringify(error)
     };
   }
   const pageResponses = Array.isArray(fileResponse.responses)
     ? fileResponse.responses
     : [fileResponse];
-  const pageErrors = pageResponses.map(response => response.error).filter(Boolean);
-  const annotations = pageResponses.map(response => response.fullTextAnnotation || {});
+  /* Vision garantiza las anotaciones presentes aun si otra parte de la operación informa un error.
+     Se acepta solo una anotación OCR; otras anotaciones no confirman la lectura del texto. */
+  /* un fullTextAnnotation vacío ({}) no es OCR: solo cuenta con texto o con páginas */
+  const hasOcr = response => !!response && (
+    (!!response.fullTextAnnotation && (!!response.fullTextAnnotation.text || (Array.isArray(response.fullTextAnnotation.pages) && response.fullTextAnnotation.pages.length > 0))) ||
+    (Array.isArray(response.textAnnotations) && response.textAnnotations.length > 0));
+  /* número de página: el que informa Vision o, si falta, el de la lista pedida en este lote (no el índice dentro del lote) */
+  const numeroDePagina = (response, index) => response && response.context && Number.isInteger(response.context.pageNumber)
+    ? response.context.pageNumber
+    : ((Array.isArray(metadata.pages_batch) && metadata.pages_batch[index]) || index + 1);
+  const validResponse = response => !!response && typeof response === 'object' && !Array.isArray(response);
+  const processed = response => validResponse(response) && (!response.error || hasOcr(response));
+  const pageErrors = pageResponses.map(response => !validResponse(response)
+    ? { message: 'Cloud Vision: respuesta de página inválida.' }
+    : (!hasOcr(response) && response.error)).filter(Boolean);
+  const annotations = pageResponses.map(response => response && response.fullTextAnnotation || {});
   /* una página sin texto se cuenta como procesada: se anota su número y el texto de las demás se conserva */
   const textosPorPagina = annotations.map((annotation, index) => String(annotation.text ||
-    ((pageResponses[index].textAnnotations || [])[0] || {}).description || '').trim());
+    (((pageResponses[index] || {}).textAnnotations || [])[0] || {}).description || '').trim());
   const rawText = textosPorPagina.filter(Boolean).join('\n\n');
   const paginasSinTexto = textosPorPagina
-    .map((texto, index) => (texto ? null : (pageResponses[index].context && pageResponses[index].context.pageNumber) || index + 1))
+    .map((texto, index) => (texto || !processed(pageResponses[index]) ? null : numeroDePagina(pageResponses[index], index)))
     .filter(numero => numero !== null).sort((a, b) => a - b);
   const allPages = annotations.reduce((pages, annotation) =>
     pages.concat(annotation.pages || []), []);
@@ -217,10 +235,12 @@ function parseCloudVisionPayload_(payload, metadata = {}) {
     duration_ms: metadata.duration_ms || 0,
     confidence: confidenceStats.mean,
     confidence_sample_count: confidenceStats.count,
-    page_count: pageResponses.filter(response => !response.error).length,
+    page_count: pageResponses.filter(processed).length,
+    /* la cobertura solo usa el número que informa Vision: sin él no se puede confirmar qué página llegó */
+    pages_received: pageResponses.filter(processed).map(response => response.context && response.context.pageNumber),
     total_pages: Number(fileResponse.totalPages) || null,
     ocr_quality: cloudVisionQuality_({ pages: allPages }, rawText),
-    pages_layout: cloudVisionLayout_(annotations, pageResponses.map(response => response.context && response.context.pageNumber)),
+    pages_layout: cloudVisionLayout_(annotations, pageResponses.map(response => response && response.context && response.context.pageNumber)),
     error: error || null,
     pages_without_text: paginasSinTexto
   };
@@ -260,6 +280,8 @@ function callCloudVisionRequest_(blob, metadata, pages) {
     ? CLOUD_OCR_CONFIG.fileVisionEndpoint
     : CLOUD_OCR_CONFIG.visionEndpoint;
   const started = Date.now();
+  const deadline = Number.isFinite(metadata.deadline_ms) ? metadata.deadline_ms : started + CLOUD_OCR_CONFIG.executionBudgetMs;
+  cloudVisionCheckTime_(deadline);
   const options = {
     method: 'post', contentType: 'application/json',
     payload: JSON.stringify(buildCloudVisionRequest_(blob, { pages: pages })),
@@ -271,13 +293,16 @@ function callCloudVisionRequest_(blob, metadata, pages) {
   let response;
   let codigo;
   for (let intento = 0; intento < 3; intento++) {
-    if (intento > 0 && typeof Utilities.sleep === 'function') Utilities.sleep(1500 * intento);
+    const delay = intento > 0 ? 1500 * intento : 0;
+    cloudVisionCheckTime_(deadline, delay);
+    if (delay && typeof Utilities.sleep === 'function') Utilities.sleep(delay);
+    cloudVisionCheckTime_(deadline);
     response = UrlFetchApp.fetch(endpoint, options);
     codigo = response.getResponseCode();
     const transitorio = codigo === 408 || codigo === 429 || (codigo >= 500 && codigo < 600);
     if (!transitorio) break;
   }
-  const meta = Object.assign({}, metadata, { duration_ms: Date.now() - started });
+  const meta = Object.assign({}, metadata, { duration_ms: Date.now() - started, file_request: fileRequest, pages_batch: Array.isArray(pages) ? pages : null });
   let payload;
   try {
     payload = JSON.parse(response.getContentText() || '{}');
@@ -293,10 +318,16 @@ function callCloudVisionRequest_(blob, metadata, pages) {
   const result = parseCloudVisionPayload_(payload, meta);
   if (codigo < 200 || codigo >= 300) {
     result.status = 'ERROR';
+    result.raw_text = '';
     result.page_count = 0;
-    result.error = result.error || 'Cloud Vision HTTP ' + codigo;
+    const providerError = payload && (payload.error || payload.responses && payload.responses[0] && payload.responses[0].error);
+    result.error = providerError ? (providerError.message || JSON.stringify(providerError)) : 'Cloud Vision HTTP ' + codigo;
   }
   return result;
+}
+
+function cloudVisionCheckTime_(deadline, delay = 0) {
+  if (Date.now() + delay + CLOUD_OCR_CONFIG.maxFetchMs >= deadline) throw new Error('OCR_TIEMPO_AGOTADO: se detuvo la lectura antes de iniciar otro lote o reintento.');
 }
 
 /* pide los lotes en orden y se detiene en el primero que falla: el documento ya no puede salir completo, y las páginas
@@ -324,10 +355,13 @@ function callCloudVision_(blob, metadata = {}) {
     : '';
   const fileRequest = isCloudVisionFileMime_(mimeType);
   const started = Date.now();
+  const requestMetadata = Object.assign({}, metadata, {
+    deadline_ms: (Number.isFinite(metadata.started_at_ms) ? Math.min(started, metadata.started_at_ms) : started) + CLOUD_OCR_CONFIG.executionBudgetMs
+  });
   let requestedPages = [];
   let pagesReturned = 0;
   const request = function (pages) {
-    const result = callCloudVisionRequest_(blob, metadata, pages);
+    const result = callCloudVisionRequest_(blob, requestMetadata, pages);
     pagesReturned += result.page_count || 0;
     return result;
   };
@@ -367,7 +401,8 @@ function callCloudVision_(blob, metadata = {}) {
           if (!reserva || !reserva.ok) {
             return Object.assign({}, discovery, {
               status: 'ERROR', raw_text: '', duration_ms: Date.now() - started,
-              document_coverage: 'UNKNOWN_OR_PARTIAL', pages_requested: [], pages_returned: 1,
+              document_coverage: 'UNKNOWN_OR_PARTIAL', pages_requested: [], pages_returned: pagesReturned,
+              limit: reserva && reserva.limit, used: reserva && reserva.used,
               error: (reserva && reserva.error) || 'LIMITE_DIARIO'
             });
           }
@@ -405,8 +440,10 @@ function callCloudVision_(blob, metadata = {}) {
     const totalConfirmed = reportedPageCounts.length > 0;
     const countsAgree = totalConfirmed && reportedPageCounts.every(count => count === pageCount);
     const returnedPages = results.reduce((sum, result) => sum + (result.page_count || 0), 0);
+    const receivedPages = results.reduce((all, result) => all.concat(result.pages_received || []), []);
     const pageSelectionComplete = Number.isInteger(pageCount) && pageCount > 0 &&
       requestedPages.length === pageCount && returnedPages === pageCount && countsAgree &&
+      receivedPages.length === pageCount && receivedPages.every((page, index) => page === index + 1) &&
       requestedPages.every((page, index) => page === index + 1);
     const confidenceSamples = results.reduce((sum, result) =>
       sum + (result.confidence_sample_count || 0), 0);
@@ -560,6 +597,7 @@ function callDocumentAi_(blob, metadata = {}) {
       /* el mensaje del proveedor si lo trae; si no, el código HTTP (parseDocumentAiPayload_ ya habría puesto «no devolvió texto») */
       const mensaje = payload && payload.error && (payload.error.message || JSON.stringify(payload.error));
       result.status = 'ERROR';
+      result.raw_text = '';
       result.error = mensaje || 'Document AI HTTP ' + response.getResponseCode();
     }
     return result;

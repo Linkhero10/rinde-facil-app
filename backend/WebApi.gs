@@ -73,6 +73,7 @@ function doGet() {
 }
 
 function doPost(e) {
+  const started = Date.now();
   try {
     const raw = e && e.postData && typeof e.postData.contents === 'string' ? e.postData.contents : '';
     if (!raw) return rfJson_({ ok: false, error: 'SIN_DATOS' });
@@ -92,11 +93,11 @@ function doPost(e) {
       case 'logout': return rfJson_(rfLogout_(p, false));
       case 'logoutAll': return rfJson_(rfLogout_(p, true));
       case 'audit': return rfJson_(rfAuditList_());
-      case 'ocr': return rfJson_(rfOcr_(p));
+      case 'ocr': return rfJson_(rfOcr_(p, started));
       case 'cuota': return rfJson_(rfCuota_());
       case 'folders': return rfJson_(rfSetup_(p));
       case 'saveState': return rfJson_(rfSaveState_(p));
-      case 'loadState': return rfJson_(rfLoadState_());
+      case 'loadState': return rfJson_(rfLoadState_(p));
       case 'saveFile': return rfJson_(rfSaveFile_(p));
       default: return rfJson_({ ok: false, error: 'ACCION_DESCONOCIDA' });
     }
@@ -156,7 +157,7 @@ function rfSumaLecturas_(leer, desde, hasta) {
 /* un límite configurado en las propiedades del script; null si falta o no es un número positivo */
 function rfLimiteProp_(leer, nombre) {
   const n = Math.floor(Number(leer(nombre)));
-  return n > 0 ? n : null;
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 /* lo leído hasta hoy y los límites vigentes (null = sin límite configurado) */
 function rfResumenLecturas_(leer, hoy) {
@@ -179,7 +180,7 @@ function rfResumenLecturas_(leer, hoy) {
 }
 /* límite de lecturas: el diario siempre; el semanal y el mensual solo si están configurados */
 /* reserva `paginas` páginas (una por defecto) con todos los límites. Bajo el candado: o caben todas o no se reserva ninguna */
-function rfCountOcr_(paginas, fecha) {
+function rfCountOcr_(paginas, fecha, token) {
   const pedir = paginas || 1;
   const props = PropertiesService.getScriptProperties();
   const hoy = fecha || rfToday_();
@@ -191,6 +192,8 @@ function rfCountOcr_(paginas, fecha) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return { ok: false, error: 'OCUPADO' };
   try {
+    /* La sesión pudo revocarse mientras esta primera reserva esperaba el candado. */
+    if (token !== undefined && !rfSessionValid_(token)) return { ok: false, error: 'SESION_INVALIDA' };
     const n = Number(props.getProperty(key) || 0);
     if (n + pedir > limit) return { ok: false, error: 'LIMITE_DIARIO', limit: limit, used: n };
     if (semanal || mensual) {
@@ -227,18 +230,23 @@ function rfCuota_() {
 
 /* lo cobrado hoy al terminar la petición, después de devolver la reserva no utilizada */
 function rfUsoOcrHoy_() {
-  return Number(PropertiesService.getScriptProperties().getProperty(RF_WEB.counterPrefix + rfToday_()) || 0);
+  try {
+    return Number(PropertiesService.getScriptProperties().getProperty(RF_WEB.counterPrefix + rfToday_()) || 0);
+  } catch (error) {
+    console.warn('rfUsoOcrHoy_: no se pudo consultar el uso.');
+    return null; // un fallo informativo no invalida una lectura ya terminada
+  }
 }
 
 /* ---------- OCR ---------- */
-function rfOcr_(p) {
+function rfOcr_(p, started) {
   if (!rfOcrReady_()) return { ok: false, error: 'OCR_NO_CONFIGURADO', message: 'Falta RINDE_FACIL_GCP_PROJECT_ID o CloudOcrAdapter.gs.' };
   if (RF_WEB.okMime.indexOf(String(p.mimeType || '').toLowerCase()) < 0) return { ok: false, error: 'TIPO_NO_PERMITIDO' };
   if (!rfIsBase64_(p.base64)) return { ok: false, error: 'BASE64_INVALIDO' };
   if (rfBase64Bytes_(p.base64) > RF_WEB.ocrMaxBytes) return { ok: false, error: 'ARCHIVO_MUY_GRANDE' };
   /* diseño de Sol: primero se reserva una página; el resto se reserva cuando Cloud Vision informa el total del archivo */
   const fecha = rfToday_();
-  const cnt = rfCountOcr_(1, fecha);
+  const cnt = rfCountOcr_(1, fecha, p.t);
   if (!cnt.ok) return cnt;
   let reservadas = 1;
   let r;
@@ -247,8 +255,9 @@ function rfOcr_(p) {
     const blob = Utilities.newBlob(bytes, String(p.mimeType).toLowerCase(), String(p.fileName || 'comprobante').slice(0, 120));
     r = callCloudVision_(blob, {
       file_name: String(p.fileName || '').slice(0, 120),
+      started_at_ms: started == null ? Date.now() : started,
       reservar: function (paginas) {
-        const reserva = rfCountOcr_(paginas, fecha);
+        const reserva = rfCountOcr_(paginas, fecha, p.t);
         if (reserva.ok) reservadas += paginas;
         return reserva;
       }
@@ -267,7 +276,8 @@ function rfOcr_(p) {
     pages: ok && r.pages_layout ? r.pages_layout : [],
     total_pages: r && r.total_pages || null,
     document_coverage: r && r.document_coverage || null,
-    used_today: rfUsoOcrHoy_(), limit: cnt.limit,
+    used_today: rfUsoOcrHoy_(), limit: r && r.limit || cnt.limit,
+    used: r && r.used != null ? r.used : undefined,
     pages_without_text: r && r.pages_without_text || [],
     error: ok ? null : (r && r.error) || (completo ? 'OCR_SIN_TEXTO' : 'PDF_COVERAGE_INCOMPLETE: no se procesaron todas las páginas.')
   };
@@ -346,7 +356,7 @@ function rfSaveState_(p) {
     const base = rfBaseRev_(p.baseRev);
     const esperada = base === null ? (rev === 0 ? 0 : null) : base;
     if (Number.isNaN(base) || esperada === null) return { ok: false, error: 'CONFLICTO', rev: rev };
-    if (esperada !== rev && !p.force) return { ok: false, error: 'CONFLICTO', rev: rev };
+    if (esperada !== rev && p.force !== true) return { ok: false, error: 'CONFLICTO', rev: rev };
     const dir = rfSub_(rfRoot_(), RF_WEB.backupsName);
     const it = dir.getFilesByName(RF_WEB.stateFile);
     const stamp = Utilities.formatDate(new Date(), 'America/Santiago', 'yyyyMMdd-HHmmss');
@@ -354,8 +364,9 @@ function rfSaveState_(p) {
       const old = it.next();
       dir.createFile('estado-' + stamp + '.json', old.getBlob().getDataAsString(), 'application/json');
       old.setContent(text);
-      rfPrune_(dir);
       rfProps_().setProperty(RF_AUTH.revProp, String(rev + 1));
+      /* La limpieza es secundaria: el contenido y su revisión ya se guardaron. */
+      try { rfPrune_(dir); } catch (error) { console.warn('rfSaveState_: no se pudieron podar los respaldos.'); }
       return { ok: true, savedAt: stamp, rev: rev + 1, fileId: old.getId(), url: rfUrl_(old) };
     }
     const f = dir.createFile(RF_WEB.stateFile, text, 'application/json');
@@ -371,11 +382,15 @@ function rfPrune_(dir) {
   files.sort(function (a, b) { return a.getName() < b.getName() ? 1 : -1; });
   files.slice(RF_WEB.keepBackups).forEach(function (f) { f.setTrashed(true); });
 }
-function rfLoadState_() {
-  const dir = rfSub_(rfRoot_(), RF_WEB.backupsName);
-  const it = dir.getFilesByName(RF_WEB.stateFile);
-  if (!it.hasNext()) return { ok: false, error: 'SIN_COPIA' };
-  return { ok: true, state: it.next().getBlob().getDataAsString(), rev: Number(rfProps_().getProperty(RF_AUTH.revProp) || 0) };
+function rfLoadState_(p) {
+  return rfWithLock_(function () {
+    if (!rfSessionValid_(p && p.t)) return { ok: false, error: 'SESION_INVALIDA' };
+    /* El contenido y la revisión forman una sola lectura frente a saveState. */
+    const dir = rfSub_(rfRoot_(), RF_WEB.backupsName);
+    const it = dir.getFilesByName(RF_WEB.stateFile);
+    if (!it.hasNext()) return { ok: false, error: 'SIN_COPIA' };
+    return { ok: true, state: it.next().getBlob().getDataAsString(), rev: Number(rfProps_().getProperty(RF_AUTH.revProp) || 0) };
+  });
 }
 
 /* ---------- archivar documentos ---------- */
@@ -554,9 +569,18 @@ function rfDevice_(p) {
   return d;
 }
 function rfAudit_(ev, ok, p) {
-  const log = rfGetJson_(RF_AUTH.auditProp, []);
-  log.push({ t: new Date(rfNow_()).toISOString(), e: ev, ok: !!ok, d: rfDevice_(p) });
-  rfSetJson_(RF_AUTH.auditProp, log.slice(-RF_AUTH.auditKeep));
+  try {
+    let log = rfGetJson_(RF_AUTH.auditProp, []);
+    if (!Array.isArray(log)) log = [];
+    log.push({ t: new Date(rfNow_()).toISOString(), e: ev, ok: !!ok, d: rfDevice_(p) });
+    log = log.slice(-RF_AUTH.auditKeep);
+    /* Los campos generados son ASCII. 8.000 caracteres dejan margen bajo los 9 KB por propiedad. */
+    while (JSON.stringify(log).length > 8000 && log.length) log.shift();
+    rfSetJson_(RF_AUTH.auditProp, log);
+  } catch (error) {
+    /* La cuenta o sus sesiones pueden haber cambiado ya: el registro no debe ocultar su resultado. */
+    console.warn('rfAudit_: no se pudo guardar el registro de accesos.');
+  }
 }
 
 /* ---- equipos conocidos ----
@@ -593,9 +617,9 @@ function rfPurgeSessions_() {
   props.getKeys().forEach(function (k) {
     if (k.indexOf(RF_AUTH.sessPrefix) !== 0) return;
     const s = rfGetJson_(k, null);
-    if (!s || s.exp < now) rfDeleteSessionProp_(props, k); else live.push({ k: k, at: s.at });
+    if (!s || !Number.isFinite(s.exp) || s.exp <= now) rfDeleteSessionProp_(props, k); else live.push({ k: k, at: s.at });
   });
-  live.sort(function (a, b) { return a.at - b.at; });
+  live.sort(function (a, b) { return (Number(a.at) || 0) - (Number(b.at) || 0); });
   while (live.length > RF_AUTH.maxSessions) rfDeleteSessionProp_(props, live.shift().k);
 }
 function rfKillSessions_(exceptHash) {
@@ -614,7 +638,7 @@ function rfSessionValid_(token) {
   if (typeof token !== 'string' || !/^[0-9a-f]{64}$/.test(token)) return false;
   const k = RF_AUTH.sessPrefix + rfSessHash_(token), s = rfGetJson_(k, null);
   if (!s) return false;
-  if (s.exp < rfNow_()) { rfDeleteSessionProp_(rfProps_(), k); return false; }
+  if (!Number.isFinite(s.exp) || s.exp <= rfNow_()) { rfDeleteSessionProp_(rfProps_(), k); return false; }
   return true;
 }
 
