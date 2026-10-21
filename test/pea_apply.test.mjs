@@ -10,6 +10,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = path.join(here, '..', 'js');
 const ctx = { TextDecoder, DataView, Uint8Array, console, Promise };
 vm.createContext(ctx);
+for (const file of ['01-util.js', '02-store.js']) vm.runInContext(fs.readFileSync(path.join(jsDir, file), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(jsDir, '23-read-docx.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(jsDir, '24-pea-extract.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(jsDir, '25-pea-screen.js'), 'utf8'), ctx);
@@ -27,7 +28,7 @@ function model() {
         gantt: { stages: [{ name: 'Etapa A', acts: [{ name: 'Actividad 1', start: '2026-01-01', end: '2026-02-01', result: 'Resultado 1' }] }] } },
       { name: 'Proyecto Dos', code: '', start: null, end: null, source: 'PEA: proyecto 2',
         budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: 0 }, budgetLines: [], gantt: { stages: [] } },
-      { name: 'Gastos de administración', code: null, start: null, end: null, source: 'PEA: consolidados de costos',
+      { name: 'Gastos administrativos', code: null, start: null, end: null, source: 'PEA: consolidados de costos',
         budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: 50 }, budgetLines: [], gantt: { stages: [] } }
     ],
     warnings: ['aviso sintético']
@@ -63,14 +64,14 @@ test('no duplica un proyecto con el mismo nombre (sin distinguir mayúsculas) y 
   assert.deepEqual(clone(twice), clone(once), 'aplicar dos veces da lo mismo');
 });
 
-test('«Gastos de administración» se crea una sola vez, con auto true y el monto del modelo', () => {
+test('«Gastos administrativos» se crea una sola vez, con auto true y el monto del modelo', () => {
   const s = P.applyToState({ community: {}, projects: [], activeProjectId: null }, model(), { rut: '11.111.111-1' });
-  const adm = s.projects.filter(p => p.name === 'Gastos de administración');
+  const adm = s.projects.filter(p => p.name === 'Gastos administrativos');
   assert.equal(adm.length, 1);
   assert.equal(adm[0].auto, true);
   assert.equal(adm[0].budgetApproved.administracion, 50);
   const again = P.applyToState(s, model(), { rut: '11.111.111-1' });
-  assert.equal(again.projects.filter(p => p.name === 'Gastos de administración').length, 1);
+  assert.equal(again.projects.filter(p => p.name === 'Gastos administrativos').length, 1);
 });
 
 test('el RUT de opts reemplaza al del modelo; sin opts se usa el del modelo', () => {
@@ -197,7 +198,7 @@ test('las fuentes y los datos llegan a cada proyecto; el automático no lleva da
   assert.equal(uno.peaDatos[0].k, 'Fila A');
   assert.deepEqual(clone(dos.fuentes), { aia30: 0, aia70: null, otras: 1000 });
   assert.equal(dos.peaDatos.length, 1);
-  const adm = s.projects.find(p => p.name === 'Gastos de administración');
+  const adm = s.projects.find(p => p.name === 'Gastos administrativos');
   assert.equal(adm.peaDatos, undefined);
 });
 
@@ -215,9 +216,9 @@ test('OCR: el modelo de un PEA escaneado se aplica una sola vez y no duplica pro
   const m = P.extractFromOcr({ ok: true, raw_text: texto, pages: [] });
   const once = P.applyToState({ community: {}, projects: [] }, m, { rut: '11.111.111-1', legalRep: null });
   const twice = P.applyToState(once, m, { rut: '11.111.111-1', legalRep: null });
-  assert.equal(once.projects.length, 1);
+  assert.equal(once.projects.length, 2);
   assert.equal(once.projects[0].name, 'PROYECTO OCR SINTÉTICO');
   assert.equal(once.projects[0].start, '2026-03-01');
-  assert.equal(twice.projects.length, 1, 'aplicar otra vez no duplica el proyecto');
+  assert.equal(twice.projects.length, 2, 'aplicar otra vez no duplica los proyectos');
   assert.deepEqual(clone(twice.projects[0].budgetLines), []);
 });

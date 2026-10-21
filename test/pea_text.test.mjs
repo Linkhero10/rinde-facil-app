@@ -11,6 +11,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = path.join(here, '..', 'js');
 const ctx = { TextDecoder, DataView, Uint8Array, console, Promise };
 vm.createContext(ctx);
+for (const file of ['01-util.js', '02-store.js']) vm.runInContext(fs.readFileSync(path.join(jsDir, file), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(jsDir, '23-read-docx.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(jsDir, '24-pea-extract.js'), 'utf8'), ctx);
 const P = ctx.RF.pea;
@@ -110,7 +111,7 @@ test('proyecto con el rótulo partido: nombre en mayúsculas («RESPUESTA» no c
   assert.equal(p.name, 'PROYECTO SINTÉTICO UNO');
   assert.equal(p.start, '2022-07-01');
   assert.equal(p.end, '2023-02-28');
-  assert.equal(m.projects.length, 1);
+  assert.equal(m.projects.length, 2);
 });
 
 test('fecha de término inexistente (31 de abril) queda vacía con aviso', () => {
@@ -130,7 +131,7 @@ test('consolidado: 5 montos en orden; administración al proyecto automático; s
   ].join('\n');
   const ok = P.extractFromText(texto('$6.500.000.-'));
   assert.deepEqual(plain(ok.projects[0].budgetApproved), { rrhh: 1000000, operacion: 3000000, inversion: 2000000, administracion: 0 });
-  assert.equal(ok.projects.find(x => x.name === 'Gastos de administración').budgetApproved.administracion, 500000);
+  assert.equal(ok.projects.find(x => x.name === 'Gastos administrativos').budgetApproved.administracion, 500000);
   assert.equal(ok.warnings.some(w => /no cuadra/.test(w)), false);
   const mal = P.extractFromText(texto('$6.000.000.-'));
   assert.match(mal.warnings.join(' | '), /el consolidado no cuadra: la suma de cuentas es \$6\.500\.000 y el total declarado \$6\.000\.000/);
@@ -192,7 +193,7 @@ test('monto total recibido (30 % del AIA) y saldo del 30 % quedan en community.a
 test('administración: el total de la tabla de antecedentes se avisa si los consolidados dan otro monto', () => {
   const m = P.extractFromText(['Total de gastos administrativos: $31.600.000.-', 'Proyecto N°1', 'Nombre del proyecto', 'PROYECTO SINTÉTICO SIETE', 'CONSOLIDADO DE COSTOS DEL PROYECTO', '$1.000.000.-', '$0', '$0', '$0', '$1.000.000.-', 'A continuación, se presentan dos tablas.'].join('\n'));
   assert.match(m.warnings.join(' | '), /indica gastos administrativos totales por \$31\.600\.000, pero los consolidados suman \$0/);
-  assert.equal(m.projects.find(x => x.name === 'Gastos de administración').budgetApproved.administracion, 0);
+  assert.equal(m.projects.find(x => x.name === 'Gastos administrativos').budgetApproved.administracion, 0);
 });
 
 test('texto del Word: sin los avisos propios del escaneado (dirección, apoyo, Gantt)', () => {

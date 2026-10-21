@@ -113,10 +113,9 @@ test('cuota disponible considera semana y mes incluso sin mensual configurado', 
 
 test('pestaña Administración reutiliza el proyecto administrativo y conserva sus líneas', () => {
   const RF = app(), s = RF.store.get(), original = RF.store.project();
-  const adm = RF.store.newProject('Gastos de administración'); adm.tipo = 'administracion';
+  const adm = RF.store.get().projects.find(p => RF.store.esAdmin(p));
   adm.budgetApproved.administracion = 450;
   adm.budgetLines.push({ id: 'adm-sintetico', cuenta: 'administracion', item: 'Servicios', fuente: 'propio', monto: 20 });
-  s.projects.push(adm);
   const view = RF.tools.pea.render();
   const general = RF.forms.getSingle(original, 'peaGeneral');
   assert.equal(general.presupuestoAdmin, 450);
@@ -135,9 +134,9 @@ test('pestaña Administración reutiliza el proyecto administrativo y conserva s
 
 test('pestañas de proyecto seleccionan su presupuesto y descarga incluye administración una vez', () => {
   const RF = app(), s = RF.store.get(), first = RF.store.project(), second = RF.store.newProject('Segundo sintético');
-  const adm = RF.store.newProject('Gastos de administración'); adm.tipo = 'administracion';
+  const adm = RF.store.get().projects.find(p => RF.store.esAdmin(p));
   adm.budgetLines.push({ cuenta: 'administracion', item: 'Administración sintética', monto: 70 });
-  s.projects.push(second, adm);
+  s.projects.push(second);
   const view = RF.tools.pea.render();
   botonPorTexto(view, second.name).dispatch('click');
   assert.equal(RF.store.project().id, second.id);
@@ -167,7 +166,7 @@ test('PEA General reutiliza RUT del representante y sincroniza datos y presupues
   p.forms.peaGeneral = { data: { comunidad: 'Comunidad sintética', resumen: 'Texto histórico' } };
   const d = RF.forms.getSingle(p, 'peaGeneral');
   assert.equal(d.repRut, s.community.repRut);
-  const adm = RF.store.newProject('Gastos de administración'); adm.tipo = 'administracion'; s.projects.push(adm);
+  const adm = RF.store.get().projects.find(p => RF.store.esAdmin(p));
   d.presupuestoAdmin = 210;
   RF.forms.SCHEMAS.peaGeneral.onChange('presupuestoAdmin', d);
   assert.equal(adm.budgetApproved.administracion, 210);
@@ -215,15 +214,15 @@ test('OCR de documento mantiene los tres errores de cuota sobre cobertura parcia
   }
 });
 
-test('abrir la pestaña Administración no crea el proyecto; se crea al agregar un gasto', () => {
+test('abrir Administración y agregar un gasto reutilizan el proyecto por defecto', () => {
   const RF = app();
   const view = RF.tools.pea.render();
   const antes = RF.store.get().projects.length;
   botonPorTexto(view, 'Administración').dispatch('click');
   assert.equal(RF.store.get().projects.length, antes);
   botonPorTexto(view, 'Agregar gasto de administración').dispatch('click');
-  assert.equal(RF.store.get().projects.length, antes + 1);
-  assert.equal(RF.store.get().projects.at(-1).name, 'Gastos de administración');
+  assert.equal(RF.store.get().projects.length, antes);
+  assert.equal(RF.store.get().projects.at(-1).name, 'Gastos administrativos');
 });
 
 test('el PEA general nuevo parte del formulario con más datos y no lo pisa con vacíos', () => {

@@ -150,9 +150,9 @@ test('la copia lleva solo un extracto del texto del OCR y no toca el original', 
   RF.store.reset();
   const largo = 'LINEA DEL COMPROBANTE 123456\n'.repeat(200);
   RF.store.update(s => { const p = RF.store.newProject('P'); p.expenses.push({ id: 'g1', ocr: { raw: largo, engine: 'cloud_vision' } }); s.projects.push(p); });
-  const copia = JSON.parse(RF.store.exportJSON()).projects[0].expenses[0].ocr;
+  const copia = JSON.parse(RF.store.exportJSON()).projects.find(p => p.name === 'P').expenses[0].ocr;
   assert.equal(copia.raw.length, 2000); assert.equal(copia.cortado, true);
-  assert.equal(RF.store.get().projects[0].expenses[0].ocr.raw.length, largo.length, 'en el equipo queda completo');
+  assert.equal(RF.store.get().projects.find(p => p.name === 'P').expenses[0].ocr.raw.length, largo.length, 'en el equipo queda completo');
 });
 
 test('voucher de tarjeta: el nombre del local es el que va antes del RUT, no el ruido que el OCR deja después («A3 BTASS»)', () => {

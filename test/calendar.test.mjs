@@ -19,7 +19,7 @@ test('junta fechas de plazos, actividades, boletas, reuniones y las que anotó l
   const ev = RF.calendar.collect(state, project);
   const has = (d, t) => ev.some(e => e.date === d && e.title.includes(t));
   assert.ok(has('2026-07-01', 'Empieza el proyecto'), 'inicio del proyecto');
-  assert.ok(ev.some(e => e.title.includes('plazo del PEA')), 'plazo del PEA: ' + JSON.stringify(ev.filter(e => /PEA/.test(e.title))));
+  assert.ok(!ev.some(e => /plazo del PEA|prórroga del PEA/.test(e.title)), 'sin vencimientos del PEA');
   assert.ok(has('2026-09-01', 'Empieza: Taller de artesanía'), 'actividad');
   assert.ok(has('2026-09-05', 'Ferretería Sur'), 'boleta');
   assert.ok(has('2026-10-20', 'Reunión: Sede'), 'acta');
@@ -34,10 +34,10 @@ test('ignora fechas inválidas', () => {
 });
 
 test('enlace de Google Calendar: día completo y texto codificado', () => {
-  const u = RF.calendar.googleUrl({ date: '2026-10-30', title: 'Vence el plazo del PEA', note: 'Pide la prórroga' });
+  const u = RF.calendar.googleUrl({ date: '2026-10-30', title: 'Reunión de seguimiento', note: 'Revisar antecedentes' });
   assert.ok(u.startsWith('https://calendar.google.com/calendar/render?action=TEMPLATE'));
   assert.ok(u.includes('dates=20261030/20261031'));
-  assert.ok(u.includes('text=Vence%20el%20plazo%20del%20PEA'));
+  assert.ok(u.includes('text=Reuni%C3%B3n%20de%20seguimiento'));
 });
 
 test('archivo .ics válido: fechas de día completo, comas y punto y coma escapados, saltos CRLF', () => {

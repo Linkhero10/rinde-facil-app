@@ -408,7 +408,7 @@
       apoyo: unir(rawOf(findRowAnywhere(tables, /^INDICAR SI RECIBIO APOYO/))) || null,
       peaDatos: filasDatos(tGen, false).concat(filasDatos(tPlan, true))
     };
-    if (!enc.encargado) warnings.push('El encargado del convenio no aparece en el PEA.');
+    if (!enc.encargado) warnings.push('El encargado del acuerdo no aparece en el PEA.');
     if (!fechaCorfo) warnings.push('La fecha de entrega del proyecto a CORFO no aparece o no es válida; queda vacía.');
     else if (fechaCorfo.precision === 'mes') warnings.push('La fecha de entrega a CORFO sólo tiene mes y año; se usó el día 1.');
     if (!asamblea) warnings.push('La fecha de validación por la Asamblea no aparece o no es válida; queda vacía.');
@@ -416,7 +416,7 @@
     if (!community.name) warnings.push('No se encontró el nombre de la comunidad.');
     if (!community.rut) warnings.push('No se encontró el RUT de la comunidad.');
     if (!community.address) warnings.push('La dirección de la comunidad no aparece en el PEA.');
-    if (!community.legalRep) warnings.push('El representante legal no aparece en el PEA (el encargado del convenio no es lo mismo).');
+    if (!community.legalRep) warnings.push('El representante legal no aparece en el PEA (el encargado del acuerdo no es lo mismo).');
     warnings.push('El organismo colaborador no aparece con nombre en el PEA (sólo se marcan opciones); queda vacío.');
 
     /* proyectos: cada tabla "Nombre del proyecto" abre un proyecto */
@@ -781,7 +781,7 @@
     return null;
   }
 
-  /* administración: no se reparte entre proyectos; va a un proyecto automático «Gastos de administración».
+  /* administración: no se reparte entre proyectos; va a un proyecto automático «Gastos administrativos».
    * items: [{ pfx, budget, presentes }]. En cada proyecto budget.administracion queda en 0 (o null si no se pudo leer). */
   function cierreAdmin(items, antTotal, base, warnings) {
     var hay = false, suma = 0, nulo = false;
@@ -790,26 +790,26 @@
       hay = true;
       if (it.budget.administracion === null) nulo = true;
       else suma += it.budget.administracion;
-      if (it.budget.administracion) warnings.push(it.pfx + 'los gastos de administración ($' + fmt(it.budget.administracion) + ') no se reparten entre proyectos; van a "Gastos de administración".');
+      if (it.budget.administracion) warnings.push(it.pfx + 'los gastos de administración ($' + fmt(it.budget.administracion) + ') no se reparten entre proyectos; van a "Gastos administrativos".');
       it.budget.administracion = it.budget.administracion === null ? null : 0;
     });
     if (!hay && antTotal === null) {
       warnings.push('El documento no separa gastos de administración (ni en los consolidados ni en la tabla de antecedentes).');
-      return null;
     }
     var monto = hay ? (nulo ? null : suma) : antTotal;
-    if (!hay) {
-      warnings.push('Los consolidados no separan gastos de administración; el proyecto "Gastos de administración" toma el total de la tabla de antecedentes ($' + fmt(antTotal) + '). Verificar.');
+    if (!hay && antTotal !== null) {
+      warnings.push('Los consolidados no separan gastos de administración; el proyecto "Gastos administrativos" toma el total de la tabla de antecedentes ($' + fmt(antTotal) + '). Verificar.');
     } else if (antTotal !== null && monto !== null && antTotal !== monto) {
       warnings.push('La tabla de antecedentes indica gastos administrativos totales por $' + fmt(antTotal) + ', pero los consolidados suman $' + fmt(monto) + '; se usó el consolidado. Verificar cuál corresponde.');
     }
-    return {
-      name: 'Gastos de administración', code: null, start: null, end: null,
+    var admin = {
+      name: NOMBRE_ADMIN, code: null, start: null, end: null,
       budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: monto },
       budgetLines: [], gantt: { stages: [] }, peaDatos: [],
       fuentes: { aia30: null, aia70: null, otras: null },
       source: hay ? base + 'consolidados de costos' : base + 'tabla de antecedentes'
     };
+    return RF.store.ensureAdminProject({ projects: [admin] }, monto == null ? 0 : monto);
   }
 
   /* lo que leen las tablas del Word frente a lo que lee su texto: sólo avisa cuando ambos traen valor y no coinciden */
@@ -823,13 +823,13 @@
     var mailKey = function (arr) { return (arr || []).map(function (x) { return String(x).toLowerCase(); }).sort().join('|'); };
     if (com.name && tc.name && clave(com.name) !== clave(tc.name)) msg('el nombre de la comunidad', com.name, tc.name);
     if (com.rut && tc.rut && clave(com.rut) !== clave(tc.rut)) msg('el RUT de la comunidad', com.rut, tc.rut);
-    if (ce.encargado && te.encargado && clave(ce.encargado) !== clave(te.encargado)) msg('el encargado del convenio', ce.encargado, te.encargado);
+    if (ce.encargado && te.encargado && clave(ce.encargado) !== clave(te.encargado)) msg('el encargado del acuerdo', ce.encargado, te.encargado);
     if (ce.secretaria && te.secretaria && ce.secretaria.rut && te.secretaria.rut && clave(ce.secretaria.rut) !== clave(te.secretaria.rut)) msg('el RUT de la secretaria', ce.secretaria.rut, te.secretaria.rut);
     if (telKey(ce.telefonos) && telKey(te.telefonos) && telKey(ce.telefonos) !== telKey(te.telefonos)) msg('los teléfonos de contacto', (ce.telefonos || []).join(' | '), (te.telefonos || []).join(' | '));
     if (mailKey(ce.correos) && mailKey(te.correos) && mailKey(ce.correos) !== mailKey(te.correos)) msg('los correos de contacto', (ce.correos || []).join(' | '), (te.correos || []).join(' | '));
     if (com.fechaEntrega && tc.fechaEntrega && com.fechaEntrega !== tc.fechaEntrega) msg('la fecha de entrega a CORFO', com.fechaEntrega, tc.fechaEntrega);
     if (com.asambleaValidacion && tc.asambleaValidacion && com.asambleaValidacion !== tc.asambleaValidacion) msg('la fecha de validación por la Asamblea', com.asambleaValidacion, tc.asambleaValidacion);
-    var esAdm = function (p) { return p.name === 'Gastos de administración'; };
+    var esAdm = esAdministracion;
     var mias = projects.filter(function (p) { return !esAdm(p); }), suyos = tx.projects.filter(function (p) { return !esAdm(p); });
     if (mias.length !== suyos.length) {
       warnings.push('Word: las tablas traen ' + mias.length + ' proyecto(s) y el texto ' + suyos.length + '; no se comparan los proyectos.');
@@ -867,8 +867,8 @@
 
   /* ---------- filas «lo que dice el PEA» ----------
    * Se arman desde los campos del modelo: el extractor de texto las escribe y la pantalla las rehace al corregir un campo. */
-  var NOMBRE_ADMIN = 'Gastos de administración';
-  function esAdministracion(p) { return norm(p && p.name) === norm(NOMBRE_ADMIN); }
+  var NOMBRE_ADMIN = 'Gastos administrativos';
+  function esAdministracion(p) { return RF.store.esAdmin(p); }
   function pesos(n) { return n === null || n === undefined ? null : '$' + fmt(n) + '.-'; }
   function filasDeComunidad(c) {
     var ct = c.contacto || {}, sec = ct.secretaria || null, out = [];
@@ -1029,7 +1029,7 @@
 
     if (!nombre) warnings.push('No se encontró el nombre de la comunidad.');
     if (!rut) warnings.push('No se encontró el RUT de la comunidad.');
-    if (!encargado) warnings.push('El encargado del convenio no aparece en el ' + (esW ? 'PEA.' : 'PEA escaneado.'));
+    if (!encargado) warnings.push('El encargado del acuerdo no aparece en el ' + (esW ? 'PEA.' : 'PEA escaneado.'));
     if (!fechaEntrega) warnings.push('La fecha de entrega del proyecto a CORFO no aparece o no es válida; queda vacía.');
     if (asm && !fAsm) warnings.push('La fecha de validación por la Asamblea no es válida ("' + asm[1] + '"); queda vacía.');
     if (!asambleaTexto && !fAsm) warnings.push('La validación por la Asamblea no aparece en el PEA; queda vacía.');

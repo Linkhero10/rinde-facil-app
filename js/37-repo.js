@@ -19,7 +19,7 @@
     { id: 'obs_rend', name: 'Observaciones de CORFO a la rendición', folder: 'Rendiciones - observaciones y respuestas', from: 'corfo', pea: 'no' },
     { id: 'resp_obs', name: 'Respuesta de la comunidad a las observaciones', folder: 'Rendiciones - observaciones y respuestas', from: 'comunidad', pea: 'no' },
     { id: 'transferencia', name: 'Comprobante de transferencia', folder: 'Transferencias', from: 'novandina', pea: 'no' },
-    { id: 'convenio', name: 'Acuerdo', folder: 'Convenio', from: 'corfo', pea: 'no' },
+    { id: 'convenio', name: 'Acuerdo', folder: 'Acuerdo', from: 'corfo', pea: 'no' },
     { id: 'correo', name: 'Correo o carta oficial', folder: 'Correos y cartas', from: 'corfo', pea: 'nose' },
     { id: 'otro', name: 'Otro documento', folder: 'Otros', from: 'otro', pea: 'nose' }
   ];

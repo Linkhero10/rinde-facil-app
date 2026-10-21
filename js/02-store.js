@@ -30,9 +30,63 @@
       ui: { theme: 'system', open: {}, idleMinutes: 15 }
     };
   }
+  function esAdmin(p) {
+    var name = String(p && p.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    return !!p && (p.tipo === 'administracion' || name === 'gastos administrativos' || name === 'gastos de administracion' || name === 'gastos administrativos o indirectos');
+  }
+  /* Una administración por comunidad. Se conservan registros de proyectos antiguos duplicados. */
+  function ensureAdminProject(s, presupuestoAdmin, createProject) {
+    s.projects = Array.isArray(s.projects) ? s.projects : [];
+    var presupuestoExplicito = presupuestoAdmin !== undefined && presupuestoAdmin !== null && presupuestoAdmin !== '';
+    var admins = s.projects.filter(esAdmin), admin = admins[0];
+    if (!admin) { admin = (createProject || newProject)('Gastos administrativos'); s.projects.push(admin); }
+    function completar(dst, src) {
+      Object.keys(src || {}).forEach(function (k) {
+        if (Array.isArray(src[k])) {
+          if (!Array.isArray(dst[k])) dst[k] = [];
+          src[k].forEach(function (x) {
+            if (dst[k].some(function (y) { return equalData(x, y); })) return;
+            if (x && x.id && dst[k].some(function (y) { return y && y.id === x.id; })) x = Object.assign({}, x, { id: U.uid('adm') });
+            dst[k].push(x);
+          });
+        } else if (src[k] && typeof src[k] === 'object') { dst[k] = dst[k] || {}; completar(dst[k], src[k]); }
+        else if (dst[k] === undefined || dst[k] === null || dst[k] === '' || dst[k] === 0 || dst[k] === false) dst[k] = src[k];
+      });
+    }
+    admins.slice(1).forEach(function (p) {
+      var datos = Object.assign({}, p); delete datos.id; delete datos.name; delete datos.tipo;
+      completar(admin, datos);
+      if (s.activeProjectId === p.id) s.activeProjectId = admin.id;
+      (s.repo && s.repo.docs || []).forEach(function (d) { if (d.projectId === p.id) d.projectId = admin.id; });
+    });
+    s.projects = s.projects.filter(function (p) { return !esAdmin(p); }); s.projects.push(admin);
+    admin.name = 'Gastos administrativos'; admin.tipo = 'administracion'; admin.auto = true;
+    var generalComunidad = s.community && s.community.forms && s.community.forms.peaGeneral && s.community.forms.peaGeneral.data;
+    if (presupuestoAdmin == null && generalComunidad && generalComunidad.presupuestoAdmin !== '') presupuestoAdmin = generalComunidad.presupuestoAdmin;
+    if (presupuestoAdmin === undefined || presupuestoAdmin === null || presupuestoAdmin === '') {
+      s.projects.some(function (p) {
+        var general = p.forms && p.forms.peaGeneral && p.forms.peaGeneral.data;
+        var value = general && general.presupuestoAdmin;
+        if (value === undefined || value === null || value === '') return false;
+        presupuestoAdmin = value; return true;
+      });
+    }
+    admin.budgetApproved = admin.budgetApproved || { rrhh: 0, operacion: 0, inversion: 0, administracion: 0 };
+    if (presupuestoAdmin !== undefined && presupuestoAdmin !== null && presupuestoAdmin !== '') admin.budgetApproved.administracion = U.parseCLP(presupuestoAdmin);
+    else if (admin.budgetApproved.administracion == null) admin.budgetApproved.administracion = 0;
+    /* Un importe recién leído no debe retroceder al volver a abrir formularios antiguos. */
+    if (presupuestoExplicito) {
+      if (generalComunidad) generalComunidad.presupuestoAdmin = admin.budgetApproved.administracion;
+      s.projects.forEach(function (p) {
+        var general = p.forms && p.forms.peaGeneral && p.forms.peaGeneral.data;
+        if (general && Object.prototype.hasOwnProperty.call(general, 'presupuestoAdmin')) general.presupuestoAdmin = admin.budgetApproved.administracion;
+      });
+    }
+    return admin;
+  }
   function migrate(s) {
     var d = defaults();
-    if (!s || typeof s !== 'object') return d;
+    if (!s || typeof s !== 'object') { ensureAdminProject(d); return d; }
     var out = Object.assign({}, d, s);
     out.community = Object.assign({}, d.community, s.community || {});
     out.community.desembolsos = Array.isArray(out.community.desembolsos) ? out.community.desembolsos : [];
@@ -57,6 +111,7 @@
       ['needsAdded', 'needsCustom'].forEach(function (k) { if (!Array.isArray(np[k])) np[k] = []; });
       return np;
     });
+    ensureAdminProject(out);
     if (!out.projects.some(function (p) { return p.id === out.activeProjectId; })) {
       out.activeProjectId = out.projects.length ? out.projects[0].id : null;
     }
@@ -143,12 +198,14 @@
   function onStorageStatus(fn) { storageListeners.push(fn); return function () { storageListeners = storageListeners.filter(function (l) { return l !== fn; }); }; }
   function addProject(name) {
     var p = newProject(name);
-    update(function (s) { s.projects.push(p); s.activeProjectId = p.id; });
+    update(function (s) { s.projects.push(p); s.activeProjectId = p.id; ensureAdminProject(s); });
+    if (esAdmin(p)) return get().projects.filter(esAdmin)[0];
     return p;
   }
   function removeProject(id) {
     update(function (s) {
       s.projects = s.projects.filter(function (p) { return p.id !== id; });
+      ensureAdminProject(s);
       if (s.activeProjectId === id) s.activeProjectId = s.projects.length ? s.projects[0].id : null;
     });
   }
@@ -178,7 +235,7 @@
     listeners.slice().forEach(function (l) { l(state); });
     return state;
   }
-  function reset() { state = defaults(); stateVersion++; dirty = true; persistNow(); listeners.slice().forEach(function (l) { l(state); }); }
+  function reset() { state = migrate(null); stateVersion++; dirty = true; persistNow(); listeners.slice().forEach(function (l) { l(state); }); }
   /* si otra pestaña (u otra ventana de la app) guarda cambios, esta se pone al día en vez de pisarlos */
   if (typeof root.addEventListener === 'function') {
     root.addEventListener('storage', function (e) {
@@ -320,6 +377,7 @@
       var sg = unionById(s.signatures, r.signatures, base, 'sig|'); s.signatures = sg.list; added += sg.added;
       var ac = unionById(s.activity, r.activity, base, 'act|'); s.activity = ac.list.sort(function (a, b) { return a.t < b.t ? -1 : a.t > b.t ? 1 : 0; }).slice(-400); /* el historial se une sin contarlo como cambio */
     })();
+    ensureAdminProject(s);
     update(function (current) { current.projects = s.projects; current.repo = s.repo; current.events = s.events; current.activity = s.activity; current.signatures = s.signatures; current.community = s.community; current.holidays = s.holidays; });
     return added;
   }
@@ -333,7 +391,7 @@
 
   RF.store = {
     KEY: KEY, load: load, get: get, project: project, update: update, subscribe: subscribe,
-    addProject: addProject, removeProject: removeProject, newProject: newProject, defaults: defaults,
+    addProject: addProject, removeProject: removeProject, newProject: newProject, defaults: defaults, ensureAdminProject: ensureAdminProject, esAdmin: esAdmin,
     exportJSON: exportJSON, importJSON: importJSON, reset: reset, migrate: migrate,
     version: function () { return stateVersion; }, isDone: isDone, setDone: setDone, persistNow: persistNow, storageOk: function () { return storageOk; }, storageError: function () { return storageError; }, onStorageStatus: onStorageStatus,
     onChange: onChange, mergeRemote: mergeRemote, snapshotBase: snapshotBase, fingerprint: fp, useVault: useVault, attach: attach, detach: detach, flush: flush

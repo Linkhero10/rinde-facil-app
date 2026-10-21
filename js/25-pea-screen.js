@@ -8,7 +8,7 @@
   var P = RF.pea = RF.pea || {};
   var TOOLS = RF.tools = RF.tools || {};
 
-  var ADMIN = 'Gastos de administración';
+  var ADMIN = 'Gastos administrativos';
   var DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   var CUENTAS = ['rrhh', 'operacion', 'inversion', 'administracion'];
   /* cuentas que se presupuestan en un proyecto; la de administración va al proyecto automático */
@@ -45,11 +45,8 @@
     return null;
   }
   /* el proyecto de administración (automático) y los proyectos que se aplican */
-  function esAdmin(p) { return !!p && sameName(p.name, ADMIN); }
-  /* el de administración solo se aplica si trae un monto mayor que cero: no se crea uno vacío ni en $0 */
-  function aplicables(m) {
-    return (m.projects || []).filter(function (p) { return p && !(esAdmin(p) && !((p.budgetApproved || {}).administracion > 0)); });
-  }
+  function esAdmin(p) { return RF.store.esAdmin(p); }
+  function aplicables(m) { return (m.projects || []).filter(function (p) { return !!p; }); }
   /* nombre con el que se crea el proyecto; si el PEA no trae nombre no se inventa uno */
   P.nameOf = function (mp) { return clean(mp && mp.name) || ('Proyecto ' + ((mp && mp.code) || 'sin nombre')); };
   function lineSig(cuenta, item, monto, fuente) { return [cuenta, nrm(item), monto, fuente].join('|'); }
@@ -80,7 +77,7 @@
    * - un proyecto con el mismo nombre se reutiliza (no se duplica); sus datos del PEA reemplazan los campos del PEA
    *   solo cuando el PEA trae un valor (un campo vacío en el PEA no borra lo que hubiera);
    * - las líneas de presupuesto y las actividades que ya existen (mismo contenido) no se repiten;
-   * - «Gastos de administración» se crea o actualiza una sola vez, con auto: true, y solo si trae un monto mayor que cero;
+   * - «Gastos administrativos» existe una sola vez, con auto: true, incluso sin monto;
    * - opts.rut y opts.legalRep, si vienen, reemplazan los del modelo (opts.rut undefined = usar el del modelo). */
   P.applyToState = function (state, model, opts) {
     opts = opts || {};
@@ -162,17 +159,8 @@
     });
 
     var admin = (m.projects || []).filter(function (x) { return x && esAdmin(x); })[0];
-    if (admin) {
-      var monto = admin.budgetApproved && admin.budgetApproved.administracion;
-      var ap = findNamed(s.projects, ADMIN);
-      /* el proyecto automático solo nace con un monto mayor que cero: ninguna comunidad recibe uno vacío por defecto */
-      if (!ap && monto > 0) { ap = makeProject(ADMIN, opts); s.projects.push(ap); }
-      if (ap) {
-        ap.auto = true;
-        ap.budgetApproved = Object.assign({ rrhh: 0, operacion: 0, inversion: 0, administracion: 0 }, ap.budgetApproved || {});
-        if (monto != null) ap.budgetApproved.administracion = monto;
-      }
-    }
+    var monto = admin && admin.budgetApproved && admin.budgetApproved.administracion;
+    RF.store.ensureAdminProject(s, monto == null ? undefined : monto, function (name) { return makeProject(name, opts); });
     return s;
   };
 
@@ -608,7 +596,7 @@
 
       kids.push(UI.section('Contacto y fechas', [
         h('div', { class: 'form-grid' },
-          UI.field('Encargado del convenio', ct, 'encargado', { cls: 'wide', ph: noLeido }),
+          UI.field('Encargado del acuerdo', ct, 'encargado', { cls: 'wide', ph: noLeido }),
           UI.field('RUT del encargado', ct.secretaria, 'rut', { type: 'rut', ph: noLeido }),
           listaEditable(ct.telefonos, 'Teléfono', noLeido),
           listaEditable(ct.correos, 'Correo electrónico', noLeido),
@@ -667,7 +655,7 @@
         m.projects.push(adm);
       }
       kids.push(UI.section('Proyecto automático «' + ADMIN + '»', [
-        h('p', { class: 'hint' }, 'Los gastos de administración no se reparten entre proyectos. Se crea o actualiza una sola vez; si lo dejas vacío no se crea.'),
+        h('p', { class: 'hint' }, 'Los gastos de administración no se reparten entre proyectos. Existe una sola vez para toda la comunidad; sin monto, su presupuesto es $0.'),
         h('div', { class: 'form-grid' }, UI.field('Monto de gastos de administración', adm.budgetApproved, 'administracion', { type: 'money', ph: noLeido }))
       ]));
 

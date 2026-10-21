@@ -10,6 +10,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = path.join(here, '..', 'js');
 const ctx = { TextDecoder, DataView, Uint8Array, console, Promise };
 vm.createContext(ctx);
+for (const file of ['01-util.js', '02-store.js']) vm.runInContext(fs.readFileSync(path.join(jsDir, file), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(jsDir, '23-read-docx.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(jsDir, '24-pea-extract.js'), 'utf8'), ctx);
 const P = ctx.RF.pea;
@@ -137,20 +138,21 @@ test('administración separada: se lleva a un proyecto automático y los proyect
   const m = P.extractFromStructure(s);
   assert.equal(m.projects.length, 2);
   const admin = m.projects[1];
-  assert.equal(admin.name, 'Gastos de administración');
+  assert.equal(admin.name, 'Gastos administrativos');
   assert.equal(admin.budgetApproved.administracion, 500000);
   assert.equal(m.projects[0].budgetApproved.administracion, 0);
   assert.equal(m.projects[0].budgetApproved.operacion, 2000000);
   assert.match(m.warnings.join(' | '), /no se reparten entre proyectos/);
 });
 
-test('si el documento no separa administración: advertencia y sin proyecto automático', () => {
+test('si el documento no separa administración: advertencia y proyecto automático en cero', () => {
   const s = doc([
     info('Proyecto de prueba D', null, null),
     consolidado('$0', '$0', '$0', undefined, '$0')
   ]);
   const m = P.extractFromStructure(s);
-  assert.equal(m.projects.length, 1, 'sólo el proyecto');
+  assert.equal(m.projects.length, 2, 'proyecto y administración por defecto');
+  assert.equal(m.projects[1].budgetApproved.administracion, 0);
   assert.match(m.warnings.join(' | '), /no separa gastos de administración/);
 });
 
@@ -293,7 +295,7 @@ test('OCR: se lee el texto (raw_text) y las posiciones de la página no cambian 
   assert.equal(base.projects[0].start, '2026-03-01');
   assert.equal(base.projects[0].end, '2026-12-31');
   assert.deepEqual(base.projects[0].budgetApproved, { rrhh: 1000000, operacion: 2000000, inversion: 0, administracion: 0 });
-  assert.equal(base.projects[1].name, 'Gastos de administración');
+  assert.equal(base.projects[1].name, 'Gastos administrativos');
   assert.equal(base.projects[1].budgetApproved.administracion, 500000);
   const conPosiciones = { ok: true, raw_text: OCR_TEXTO, pages_layout: [{ number: 1, angle: 90, paragraphs: [{ text: 'otra cosa', box: { x0: 0.9, y0: 0.9, x1: 0.1, y1: 0.1 } }] }] };
   assert.deepEqual(plain(P.extractFromOcr(conPosiciones)), base);

@@ -31,12 +31,7 @@
       add(p.end, 'Termina el proyecto', 'plazo', { tool: 'proyecto' });
       add(p.periodoInicio, 'Empieza el período de esta rendición', 'proyecto', { tool: 'proyecto' });
       add(p.periodoFin, 'Termina el período de esta rendición', 'plazo', { tool: 'proyecto' });
-      var pd = L.peaDeadline(p, '');
-      if (pd) {
-        add(pd.inicio, 'Primer pago del 30 %', 'proyecto', { tool: 'proyecto' });
-        add(pd.fin, 'Vence el plazo del PEA (90 días)', 'plazo', { tool: 'pea', note: 'Si lo necesitas, pide la prórroga antes de esta fecha.' });
-        add(pd.finProrroga, 'Vence la prórroga del PEA', 'plazo', { tool: 'pea' });
-      }
+      add(p.desembolso1, 'Primer pago del 30 %', 'proyecto', { tool: 'proyecto' });
       (p.observations || []).forEach(function (o) {
         if (!o || !valid(o.recibida)) return;
         add(o.recibida, 'CORFO comunicó una observación', 'plazo', { tool: 'observaciones' });

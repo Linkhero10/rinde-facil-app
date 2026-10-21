@@ -5,7 +5,7 @@
 
   var ACTORS = [
     { id: 'corfo', name: 'CORFO', full: 'Corporación de Fomento de la Producción' },
-    { id: 'comunidad', name: 'Comunidad', full: 'Titular del convenio' },
+    { id: 'comunidad', name: 'Comunidad', full: 'Titular del acuerdo' },
     { id: 'novandina', name: 'Novandino (ex SQM)', full: 'Transfiere el dinero del AIA' },
     { id: 'smi', name: 'Organismo Colaborador', full: 'Apoya a la comunidad si ella lo pide' }
   ];
@@ -87,8 +87,6 @@
     GLOSA_MAX: 200,                /* SGP / piloto: máximo 200 caracteres */
     GLOSA_AVISO: 180,
     TOLERANCIA_IVA: 1,             /* pesos de diferencia por redondeo (criterio del piloto) */
-    PEA_DIAS: 90,                  /* flujograma paso 8: días corridos desde el primer desembolso */
-    PEA_PRORROGA: 30,
     ACLARACION_DIAS_HABILES: 10,   /* Manual p.10 */
     PASAJE_ANTICIPACION: 15,       /* Manual p.15 */
     IVA: 0.19
@@ -97,7 +95,7 @@
   /* ---------- convenios y fondos: cada uno con SUS reglas, para que un cambio de Manual o un fondo nuevo no toque los datos de nadie ----------
      REGLAS (arriba) es el juego vigente; useConvenio() copia en él las reglas del convenio del proyecto. Hoy hay uno solo. */
   var CONVENIOS = {
-    'corfo-2026-09': { id: 'corfo-2026-09', nombre: 'Convenio CORFO – Novandino (ex SQM)', fuente: 'Manual de rendición y flujograma del convenio, con la página citada en cada aviso', reglas: Object.assign({}, REGLAS) }
+    'corfo-2026-09': { id: 'corfo-2026-09', nombre: 'Acuerdo CORFO – Novandino (ex SQM)', fuente: 'Manual de rendición y flujograma del acuerdo, con la página citada en cada aviso', reglas: Object.assign({}, REGLAS) }
   };
   /* feriados nacionales de Chile en días de semana o fin de semana, sin los regionales; cambian por ley: confirma con el calendario oficial */
   var FERIADOS_CL = {
