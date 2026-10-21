@@ -218,7 +218,7 @@ function parseCloudVisionPayload_(payload, metadata = {}) {
     duration_ms: metadata.duration_ms || 0,
     confidence: confidenceStats.mean,
     confidence_sample_count: confidenceStats.count,
-    page_count: pageResponses.length,
+    page_count: pageResponses.filter(response => !response.error).length,
     total_pages: Number(fileResponse.totalPages) || null,
     ocr_quality: cloudVisionQuality_({ pages: allPages }, rawText),
     pages_layout: cloudVisionLayout_(annotations, pageResponses.map(response => response.context && response.context.pageNumber)),
@@ -261,15 +261,23 @@ function callCloudVisionRequest_(blob, metadata, pages) {
     ? CLOUD_OCR_CONFIG.fileVisionEndpoint
     : CLOUD_OCR_CONFIG.visionEndpoint;
   const started = Date.now();
-  const response = UrlFetchApp.fetch(endpoint, {
+  const options = {
     method: 'post', contentType: 'application/json',
     payload: JSON.stringify(buildCloudVisionRequest_(blob, { pages: pages })),
     headers: {
       Authorization: 'Bearer ' + ScriptApp.getOAuthToken(),
       'x-goog-user-project': scriptProperty_(CLOUD_OCR_CONFIG.projectProperty)
     }, muteHttpExceptions: true
-  });
-  const codigo = response.getResponseCode();
+  };
+  let response;
+  let codigo;
+  for (let intento = 0; intento < 3; intento++) {
+    if (intento > 0 && typeof Utilities.sleep === 'function') Utilities.sleep(1500 * intento);
+    response = UrlFetchApp.fetch(endpoint, options);
+    codigo = response.getResponseCode();
+    const transitorio = codigo === 408 || codigo === 429 || (codigo >= 500 && codigo < 600);
+    if (!transitorio) break;
+  }
   const meta = Object.assign({}, metadata, { duration_ms: Date.now() - started });
   let payload;
   try {
@@ -286,6 +294,7 @@ function callCloudVisionRequest_(blob, metadata, pages) {
   const result = parseCloudVisionPayload_(payload, meta);
   if (codigo < 200 || codigo >= 300) {
     result.status = 'ERROR';
+    result.page_count = 0;
     result.error = result.error || 'Cloud Vision HTTP ' + codigo;
   }
   return result;
@@ -299,6 +308,18 @@ function demasiadasPaginas_(metadata, started, paginas, maximo) {
     duration_ms: Date.now() - started, document_coverage: 'UNKNOWN_OR_PARTIAL', pages_requested: [], pages_returned: 0,
     error: 'PDF_DEMASIADAS_PAGINAS: la petición pide ' + paginas + ' páginas y el máximo por petición es ' + maximo + '.'
   };
+}
+
+/* pide los lotes en orden y se detiene en el primero que falla: el documento ya no puede salir completo, y las páginas
+   que no se piden quedan en la reserva que rfOcr_ devuelve */
+function cloudVisionRunBatches_(batches, request) {
+  const out = [];
+  for (const pages of batches) {
+    const result = request(pages);
+    out.push(result);
+    if (result.status !== 'SUCCESS') break;
+  }
+  return out;
 }
 
 function callCloudVision_(blob, metadata = {}) {
@@ -315,11 +336,17 @@ function callCloudVision_(blob, metadata = {}) {
   const fileRequest = isCloudVisionFileMime_(mimeType);
   const started = Date.now();
   let requestedPages = [];
+  let pagesReturned = 0;
+  const request = function (pages) {
+    const result = callCloudVisionRequest_(blob, metadata, pages);
+    pagesReturned += result.page_count || 0;
+    return result;
+  };
   try {
     let results = [];
     let expectedPageCount = null;
     if (!fileRequest) {
-      results = [callCloudVisionRequest_(blob, metadata, null)];
+      results = [request(null)];
     } else {
       const explicitPages = Array.isArray(metadata.pages) && metadata.pages.length > 0;
       const configuredPageCount = Number(metadata.page_count);
@@ -332,23 +359,22 @@ function callCloudVision_(blob, metadata = {}) {
         requestedPages = metadata.pages.map(Number);
         if (requestedPages.length > maximoPeticion) return demasiadasPaginas_(metadata, started, requestedPages.length, maximoPeticion);
         const batches = cloudVisionPageBatches_(requestedPages);
-        results = batches.map(pages => callCloudVisionRequest_(blob, metadata, pages));
+        results = cloudVisionRunBatches_(batches, request);
         expectedPageCount = hasConfiguredPageCount ? configuredPageCount : null;
       } else if (hasConfiguredPageCount) {
         expectedPageCount = configuredPageCount;
         if (expectedPageCount > maximoPeticion) return demasiadasPaginas_(metadata, started, expectedPageCount, maximoPeticion);
         requestedPages = Array.from({ length: expectedPageCount }, (_, index) => index + 1);
-        results = cloudVisionPageBatches_(requestedPages)
-          .map(pages => callCloudVisionRequest_(blob, metadata, pages));
+        results = cloudVisionRunBatches_(cloudVisionPageBatches_(requestedPages), request);
       } else {
         // Diseño de Sol (hallazgos 2 y 3): el descubrimiento pide solo la página 1. Vision devuelve totalPages del archivo aunque
         // se pida una sola página. Antes de leer más se valida el total, se aplica el máximo por petición y se reserva el resto
         // de las páginas (metadata.reservar). Un rechazo cuesta, como mucho, una página.
-        const discovery = callCloudVisionRequest_(blob, metadata, [1]);
+        const discovery = request([1]);
         if (discovery.status !== 'SUCCESS' || !Number.isInteger(discovery.total_pages) || discovery.total_pages < 1) {
           return Object.assign({}, discovery, {
             status: 'ERROR', raw_text: '', duration_ms: Date.now() - started,
-            document_coverage: 'UNKNOWN_OR_PARTIAL', pages_requested: [], pages_returned: 0,
+            document_coverage: 'UNKNOWN_OR_PARTIAL', pages_requested: [], pages_returned: pagesReturned,
             error: discovery.error || 'PDF_PAGE_COUNT_UNKNOWN: Cloud Vision no confirmó el número total de páginas y su cobertura.'
           });
         }
@@ -375,8 +401,7 @@ function callCloudVision_(blob, metadata = {}) {
         results = [discovery];
         if (total > 1) {
           const restantes = Array.from({ length: total - 1 }, (_, index) => index + 2);
-          results = results.concat(cloudVisionPageBatches_(restantes)
-            .map(pages => callCloudVisionRequest_(blob, metadata, pages)));
+          results = results.concat(cloudVisionRunBatches_(cloudVisionPageBatches_(restantes), request));
         }
       }
     }
@@ -444,6 +469,7 @@ function callCloudVision_(blob, metadata = {}) {
       file_hash_sha256: metadata.file_hash_sha256 || null,
       duration_ms: Date.now() - started,
       pages_requested: requestedPages,
+      pages_returned: pagesReturned,
       error: error.message || String(error)
     };
   }
@@ -495,6 +521,7 @@ function runCloudVisionSmokeTest() {
 }
 
 function parseDocumentAiPayload_(payload, metadata = {}) {
+  const providerError = payload && payload.error;
   const document = payload && payload.document || {};
   const rawText = String(document.text || '').trim();
   const qualityScores = [];
@@ -506,7 +533,7 @@ function parseDocumentAiPayload_(payload, metadata = {}) {
     ? qualityScores.reduce((sum, value) => sum + value, 0) / qualityScores.length
     : null;
   return {
-    status: rawText ? 'SUCCESS' : 'ERROR', raw_text: rawText,
+    status: providerError || !rawText ? 'ERROR' : 'SUCCESS', raw_text: providerError ? '' : rawText,
     ocr_engine: 'document_ai', cloud_model: 'processor',
     file_id: metadata.file_id || null, file_name: metadata.file_name || null,
     file_hash_sha256: metadata.file_hash_sha256 || null,
@@ -517,7 +544,8 @@ function parseDocumentAiPayload_(payload, metadata = {}) {
       confidence_basis: 'document_ai_quality_plus_human_review',
       mean_image_quality: meanQuality, text_detected: Boolean(rawText),
       reasons: rawText ? ['HUMAN_VISUAL_ATTESTATION_REQUIRED'] : ['OCR_TEXT_UNAVAILABLE']
-    }, error: rawText ? null : 'Document AI no devolvió texto.'
+    }, error: providerError ? (providerError.message || JSON.stringify(providerError)) :
+      (rawText ? null : 'Document AI no devolvió texto.')
   };
 }
 
@@ -553,8 +581,10 @@ function callDocumentAi_(blob, metadata = {}) {
     }
     const result = parseDocumentAiPayload_(payload, Object.assign({}, metadata, { duration_ms: Date.now() - started }));
     if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
+      /* el mensaje del proveedor si lo trae; si no, el código HTTP (parseDocumentAiPayload_ ya habría puesto «no devolvió texto») */
+      const mensaje = payload && payload.error && (payload.error.message || JSON.stringify(payload.error));
       result.status = 'ERROR';
-      result.error = result.error || 'Document AI HTTP ' + response.getResponseCode();
+      result.error = mensaje || 'Document AI HTTP ' + response.getResponseCode();
     }
     return result;
   } catch (error) {

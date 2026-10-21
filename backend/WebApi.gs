@@ -178,10 +178,10 @@ function rfResumenLecturas_(leer, hoy) {
 }
 /* límite de lecturas: el diario siempre; el semanal y el mensual solo si están configurados */
 /* reserva `paginas` páginas (una por defecto) con todos los límites. Bajo el candado: o caben todas o no se reserva ninguna */
-function rfCountOcr_(paginas) {
+function rfCountOcr_(paginas, fecha) {
   const pedir = paginas || 1;
   const props = PropertiesService.getScriptProperties();
-  const hoy = rfToday_();
+  const hoy = fecha || rfToday_();
   const key = RF_WEB.counterPrefix + hoy;
   const leer = function (nombre) { return props.getProperty(nombre); };
   const limit = rfLimiteProp_(leer, RF_WEB.limitProp) || 200;
@@ -201,6 +201,23 @@ function rfCountOcr_(paginas) {
     return { ok: true, used: n + pedir, limit: limit };
   } finally { lock.releaseLock(); }
 }
+/* devuelve solo la reserva no utilizada de esta petición, sin pisar lecturas concurrentes */
+function rfDevolverOcr_(paginas, fecha) {
+  if (!(paginas > 0)) return;
+  /* sin candado no se devuelve, y ningún error de servicio debe tapar el resultado de la lectura: la reserva queda cobrada */
+  try {
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(5000)) return;
+    try {
+      const props = PropertiesService.getScriptProperties();
+      const key = RF_WEB.counterPrefix + (fecha || rfToday_());
+      const usadas = Number(props.getProperty(key) || 0);
+      props.setProperty(key, String(Math.max(0, usadas - paginas)));
+    } finally { lock.releaseLock(); }
+  } catch (error) {
+    console.warn('rfDevolverOcr_ no devolvió la reserva: ' + (error && error.message ? error.message : error));
+  }
+}
 /* acción «cuota» (con sesión): lo leído hoy, esta semana y este mes, y los límites configurados */
 function rfCuota_() {
   const props = PropertiesService.getScriptProperties();
@@ -214,7 +231,7 @@ function rfMaxPaginas_(valor) {
   if (!Number.isInteger(n) || n < 1) return { error: 'MAX_PAGINAS_INVALIDO' };
   return { valor: Math.min(n, RF_WEB.maxPagesPorPeticion) };
 }
-/* lo cobrado hoy al terminar la petición (cuenta lo que realmente se reservó) */
+/* lo cobrado hoy al terminar la petición, después de devolver la reserva no utilizada */
 function rfUsoOcrHoy_() {
   return Number(PropertiesService.getScriptProperties().getProperty(RF_WEB.counterPrefix + rfToday_()) || 0);
 }
@@ -229,15 +246,27 @@ function rfOcr_(p) {
   const maxPaginas = rfMaxPaginas_(p.maxPages);
   if (maxPaginas.error) return { ok: false, error: maxPaginas.error };
   /* diseño de Sol: primero se reserva una página; el resto se reserva cuando Cloud Vision informa el total del archivo */
-  const cnt = rfCountOcr_(1);
+  const fecha = rfToday_();
+  const cnt = rfCountOcr_(1, fecha);
   if (!cnt.ok) return cnt;
-  const bytes = Utilities.base64Decode(p.base64);
-  const blob = Utilities.newBlob(bytes, String(p.mimeType).toLowerCase(), String(p.fileName || 'comprobante').slice(0, 120));
-  const r = callCloudVision_(blob, {
-    file_name: String(p.fileName || '').slice(0, 120),
-    max_pages: maxPaginas.valor,
-    reservar: function (paginas) { return rfCountOcr_(paginas); }
-  });
+  let reservadas = 1;
+  let r;
+  try {
+    const bytes = Utilities.base64Decode(p.base64);
+    const blob = Utilities.newBlob(bytes, String(p.mimeType).toLowerCase(), String(p.fileName || 'comprobante').slice(0, 120));
+    r = callCloudVision_(blob, {
+      file_name: String(p.fileName || '').slice(0, 120),
+      max_pages: maxPaginas.valor,
+      reservar: function (paginas) {
+        const reserva = rfCountOcr_(paginas, fecha);
+        if (reserva.ok) reservadas += paginas;
+        return reserva;
+      }
+    });
+  } finally {
+    const leidas = r && Number.isInteger(r.pages_returned) ? r.pages_returned : (r && r.page_count || 0);
+    rfDevolverOcr_(Math.max(0, reservadas - leidas), fecha);
+  }
   /* solo es lectura válida si Cloud Vision confirmó todas las páginas: el cliente de PDF rechaza una cobertura parcial (js/33-cloud.js) */
   const completo = !r || !r.document_coverage || r.document_coverage === 'COMPLETE';
   const ok = !!r && r.status === 'SUCCESS' && !!r.raw_text && completo;
