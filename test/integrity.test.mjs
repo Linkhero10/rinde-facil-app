@@ -186,7 +186,7 @@ test('cotizaciones anotadas antes de comprar se vinculan solas a la boleta del p
 test('un trámite opcional no cuenta en el avance ni frena la fase', () => {
   const RF = app(), p = state(RF).projects[0];
   assert.equal(RF.logic.itemProgress(p, 'TRM-028').optional, true);
-  assert.equal(RF.logic.itemProgress(p, 'TRM-030').optional, true);
+  assert.equal(RF.tramites.byId['TRM-030'], undefined);
   const before = RF.logic.progress(p).porFase.F2;
   ['TRM-027:0', 'TRM-027:1', 'TRM-027:2'].forEach(k => { p.done[k] = true; });
   assert.equal(RF.logic.progress(p).porFase.F2.complete, true, 'con el PEA hecho, la fase queda completa aunque no se use lo opcional');

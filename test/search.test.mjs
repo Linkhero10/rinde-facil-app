@@ -34,10 +34,10 @@ test('«gasto» encuentra la herramienta y dice dónde está: Herramientas → R
   same(tool.item.path, ['Herramientas', 'Rendir']);
   assert.equal(tool.item.href, '#/h/gastos');
   assert.ok(r.indexOf(tool) === 0, 'es el primer resultado');
-  assert.ok(r.some(x => x.item.kind === 'Fase' && /Gastos y respaldos/.test(x.item.title)), 'también la fase');
+  assert.ok(r.some(x => x.item.kind === 'Fase' && /Gastos: configuración y rendición/.test(x.item.title)), 'también la fase');
 });
 test('busca dentro de los pasos de los trámites y muestra el fragmento con su número de paso', () => {
-  const r = S('llena proyectos', 40).filter(x => x.item.kind === 'Trámite' || x.item.kind === 'Paso');
+  const r = S('completa el presupuesto', 40).filter(x => x.item.kind === 'Trámite' || x.item.kind === 'Paso');
   assert.ok(r.length > 0);
   assert.ok(r.some(x => /^Paso \d/.test(x.snippetLabel) && x.snippetSegs.some(s => s.m)), 'fragmento con la palabra marcada');
   assert.ok(r.every(x => x.item.href.startsWith('#/t/')));
@@ -45,7 +45,7 @@ test('busca dentro de los pasos de los trámites y muestra el fragmento con su n
 test('busca en los campos de las herramientas y en el mapa de quién hace qué', () => {
   const campo = S('dias de viaje', 10).find(x => x.item.kind === 'Herramienta');
   assert.equal(campo.item.title, 'Anexo 4'); same(campo.item.path, ['Herramientas', 'Anexos y formularios']); assert.equal(campo.snippetLabel, 'Campo');
-  const mapa = S('componente 3', 20).find(x => x.item.kind === 'Mapa');
+  const mapa = S('revisa el PEA', 20).find(x => x.item.kind === 'Mapa');
   assert.ok(mapa && mapa.item.path[0] === 'Quién hace qué');
 });
 test('varias palabras: todas deben aparecer; sin coincidencias no devuelve nada', () => {

@@ -178,7 +178,7 @@
   }
   /* getDoc: función que devuelve el documento actual. extras: [{label, icon, run}] */
   function exportBar(getDoc, base, extras) {
-    var bar = h('div', { class: 'export-bar', role: 'group', 'aria-label': 'Sacar el documento' });
+    var bar = h('div', { class: 'export-bar', role: 'group', 'aria-label': 'Descargar el documento' });
     function run(kind) {
       var d;
       try { d = getDoc(); } catch (e) { toast('No se pudo armar el documento: ' + e.message, 'bad'); return; }
@@ -195,7 +195,7 @@
         RF.drive.saveDoc(d, base, 'xlsx').then(function (r) { if (kind === 'drive' && r && r.unchanged) toast('Ya está en el Drive y no ha cambiado desde la última vez.', 'ok'); }).catch(function () { });
       }
     }
-    bar.appendChild(h('span', { class: 'export-label' }, 'Sacar documento:'));
+    bar.appendChild(h('span', { class: 'export-label' }, 'Descargar documento:'));
     bar.appendChild(btn('Excel', { icon: 'excel', onclick: function () { run('xlsx'); } }));
     bar.appendChild(btn('Word', { icon: 'word', onclick: function () { run('doc'); } }));
     bar.appendChild(btn('PDF', { icon: 'pdf', onclick: function () { run('pdf'); } }));

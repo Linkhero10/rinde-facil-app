@@ -238,7 +238,7 @@
       root.appendChild(UI.section('Tus gastos', [p.expenses.length ? chips : null, p.expenses.length ? h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid list-grid' }, h('thead', null, h('tr', null, ['Estado', 'Fecha del documento', 'Subido', 'Proveedor', 'Documento', 'Cuenta', 'A rendir', 'Problemas'].map(function (x, i) { return h('th', { class: i === 6 ? 'r' : '' }, x); }))), h('tbody', null, rows))) : UI.empty('Aún no anotas gastos. Saca una foto al primer comprobante o anótalo a mano.')]));
       /* totales por cuenta */
       root.appendChild(UI.section('Por cuenta', [h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid' }, h('thead', null, h('tr', null, ['Cuenta', 'Gastos', 'Rendido', 'Presupuesto'].map(function (x, i) { return h('th', { class: i ? 'r' : '' }, x); }))), h('tbody', null, D.CUENTAS.map(function (cu) { var x = totals[cu.id], tope = x.presupuestado > 0 ? x.presupuestado : x.aprobado; return h('tr', { class: tope > 0 && x.rendido > tope ? 'row-bad' : '' }, h('th', { scope: 'row' }, cu.name), h('td', { class: 'r' }, String(x.cantidad)), h('td', { class: 'r' }, U.fmtCLP(x.rendido)), h('td', { class: 'r' }, tope ? U.fmtCLP(tope) : '—')); }))))]));
-      root.appendChild(UI.section('Sacar la rendición', [UI.exportBar(function () { return rendicionDoc(p, c.community); }, 'rendicion-gastos'), h('div', { class: 'row-actions' }, UI.btn('Carpeta de respaldos por gasto', { icon: 'list', onclick: function () { RF.exp.printDoc(expedienteDoc(p, c.community)); } }), UI.btn('Ver el cuadre completo', { icon: 'check', onclick: function () { location.hash = '#/h/revision'; } }))]));
+      root.appendChild(UI.section('Descargar la rendición', [UI.exportBar(function () { return rendicionDoc(p, c.community); }, 'rendicion-gastos'), h('div', { class: 'row-actions' }, UI.btn('Carpeta de respaldos por gasto', { icon: 'list', onclick: function () { RF.exp.printDoc(expedienteDoc(p, c.community)); } }), UI.btn('Ver el cuadre completo', { icon: 'check', onclick: function () { location.hash = '#/h/revision'; } }))]));
     }
 
     /* foto con zoom al pasar el cursor (o al tocar en el celular), dentro del mismo marco */
@@ -406,7 +406,7 @@
       }));
       root.appendChild(UI.section(g.title, [list]));
     });
-    root.appendChild(UI.section('Antes de enviar', [h('div', { class: 'row-actions' }, UI.btn('Sacar la rendición', { icon: 'download', onclick: function () { location.hash = '#/h/gastos'; } }), UI.btn('Ver el resumen por cuentas', { icon: 'list', onclick: function () { location.hash = '#/h/resumen'; } }))]));
+    root.appendChild(UI.section('Antes de enviar', [h('div', { class: 'row-actions' }, UI.btn('Descargar la rendición', { icon: 'download', onclick: function () { location.hash = '#/h/gastos'; } }), UI.btn('Ver el resumen por cuentas', { icon: 'list', onclick: function () { location.hash = '#/h/resumen'; } }))]));
     return page('Revisión: ¿cuadra todo?', 'Cruza lo que anotaste en cada trámite para encontrar diferencias antes de que las encuentre CORFO.', root);
   } };
 
@@ -423,7 +423,7 @@
     }
     var rows = D.CUENTAS.map(function (cu) { var x = t[cu.id], tope = x.presupuestado || x.aprobado, over = tope > 0 && x.rendido > tope; return h('tr', { class: over ? 'row-bad' : '' }, h('th', { scope: 'row' }, cu.name), h('td', { class: 'r' }, x.aprobado ? U.fmtCLP(x.aprobado) : '—'), h('td', { class: 'r' }, x.presupuestado ? U.fmtCLP(x.presupuestado) : '—'), h('td', { class: 'r' }, U.fmtCLP(x.rendido)), h('td', { class: 'r' }, tope ? U.fmtCLP(tope - x.rendido) : '—'), h('td', { class: 'r' }, tope ? Math.round(x.rendido * 100 / tope) + ' %' : '—')); });
     root.appendChild(UI.section('Por cuenta', [h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid' }, h('thead', null, h('tr', null, ['Cuenta', 'Aprobado', 'Presupuestado', 'Rendido', 'Saldo', '% rendido'].map(function (x, i) { return h('th', { class: i ? 'r' : '' }, x); }))), h('tbody', null, rows)))]));
-    root.appendChild(UI.section('Sacar el resumen', [UI.exportBar(docModel, 'resumen-por-cuentas')]));
+    root.appendChild(UI.section('Descargar el resumen', [UI.exportBar(docModel, 'resumen-por-cuentas')]));
     return page('Resumen por cuentas', 'Debe calzar con el menú «Resumen por Cuentas» de SGP antes de enviar.', root);
   } };
 

@@ -13,6 +13,7 @@
     var chips = [];
     if (s[3]) chips.push(h('span', { class: 'chip-t' + (/sin plazo/.test(s[3]) ? ' warn' : '') }, s[3]));
     if (s[4]) chips.push(h('span', { class: 'chip-t loop' }, '↺ ' + s[4]));
+    if (id === 'D1') chips.push(h('span', { class: 'chip-t' }, '→ Sí, lo aprueba: paso 19'));
     return h('button', { type: 'button', class: 'fstep' + (dec ? ' decision' : '') + (here ? ' here' : ''), 'data-id': id, 'data-actor': actor, 'aria-pressed': 'false',
       style: { '--c': 'var(--' + actor + ')', gridColumn: String(col) }, 'aria-label': (dec ? 'Decisión' : 'Paso ' + id) + ': ' + s[1] + '. Le toca a ' + NAME[actor] },
       h('span', { class: 'who-tag' }, NAME[actor]), dec ? null : h('span', { class: 'step-num' }, id), h('span', { class: 'step-title' }, s[1]), chips);
@@ -32,10 +33,20 @@
       var a = block.querySelector('[data-id="' + e[0] + '"]'), b = block.querySelector('[data-id="' + e[1] + '"]'); if (!a || !b) return;
       var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
       var x1 = ra.left + ra.width / 2 - br.left, y1 = ra.bottom - br.top, x2 = rb.left + rb.width / 2 - br.left, y2 = rb.top - br.top - 1, d, lx, ly;
-      if (Math.abs(x1 - x2) < 2) { d = 'M' + x1 + ' ' + y1 + 'V' + y2; lx = x1 + 8; ly = y1 + 16; }
+      /* La aprobación salta la corrección: rodea los nodos intermedios por el carril derecho. */
+      if (e[0] === 'D1' && e[1] === '19') {
+        var side = br.width - 12;
+        x1 = ra.right != null ? ra.right - br.left : ra.left + ra.width - br.left;
+        y1 = ra.top + ra.height / 2 - br.top;
+        x2 = rb.right != null ? rb.right - br.left : rb.left + rb.width - br.left;
+        y2 = rb.top + rb.height / 2 - br.top;
+        d = 'M' + x1 + ' ' + y1 + 'H' + side + 'V' + y2 + 'H' + (x2 + 1);
+        lx = side - 8; ly = y1 + 20;
+      }
+      else if (Math.abs(x1 - x2) < 2) { d = 'M' + x1 + ' ' + y1 + 'V' + y2; lx = x1 + 8; ly = y1 + 16; }
       else { var ym = y1 + (y2 - y1) / 2, r = 8, dir = x2 > x1 ? 1 : -1; d = 'M' + x1 + ' ' + y1 + 'V' + (ym - r) + 'Q' + x1 + ' ' + ym + ' ' + (x1 + dir * r) + ' ' + ym + 'H' + (x2 - dir * r) + 'Q' + x2 + ' ' + ym + ' ' + x2 + ' ' + (ym + r) + 'V' + y2; lx = (x1 + x2) / 2; ly = ym - 5; }
       var p = document.createElementNS(NS, 'path'); p.setAttribute('d', d); p.setAttribute('marker-end', 'url(#arr)'); svg.appendChild(p);
-      if (e[2]) { var t = document.createElementNS(NS, 'text'); t.setAttribute('x', lx); t.setAttribute('y', ly); t.setAttribute('class', 'lbl'); t.setAttribute('text-anchor', Math.abs(x1 - x2) < 2 ? 'start' : 'middle'); t.textContent = e[2]; svg.appendChild(t); }
+      if (e[2]) { var t = document.createElementNS(NS, 'text'); t.setAttribute('x', lx); t.setAttribute('y', ly); t.setAttribute('class', 'lbl'); t.setAttribute('text-anchor', e[0] === 'D1' && e[1] === '19' ? 'end' : Math.abs(x1 - x2) < 2 ? 'start' : 'middle'); t.textContent = e[2]; svg.appendChild(t); }
     });
   }
 

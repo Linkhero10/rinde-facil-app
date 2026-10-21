@@ -96,7 +96,7 @@
     proyecto: ['Datos del proyecto', 'Código del proyecto', 'Presupuesto aprobado', 'Fecha de inicio y de término', 'Primer desembolso', 'Nombre de la comunidad', 'RUT de la comunidad', 'Representante legal', 'Situación de IVA', 'Crear otro proyecto', 'Varios proyectos', 'Mi comunidad'],
     gantt: ['Etapas', 'Actividades', 'Meses', 'Fechas de inicio y término', 'Excel', 'Copiar para SGP', 'Guardar en Drive'],
     presupuesto: ['Líneas por cuenta', 'Recursos humanos', 'Gastos operacionales', 'Inversión', 'Administración', 'Presupuesto aprobado', 'Supera lo aprobado', 'Copiar para SGP'],
-    pea: ['Plan Estratégico Anual', 'PEA general', 'PEA por proyecto', 'Todo el PEA en un solo documento', 'Plazo de 90 días', 'Prórroga de 30 días'],
+    pea: ['Programa de Ejecución de Actividades', 'PEA General', 'PEA por proyecto', 'Administración', 'Todo el PEA en un solo documento'],
     reitem: ['Actualización de proyecto', 'Reitemización', 'Mover plata entre cuentas', 'Motivo del cambio', 'Cambio de presupuesto', 'Cambio de actividades', 'Cambio de plazos'],
     cotizaciones: ['Cotizaciones', 'Cuadro comparativo', 'Sobre $10.000.000 netos', 'Dos proveedores distintos', 'Autorización previa de CORFO', 'Servicio técnico-profesional'],
     gastos: ['Subir foto o PDF', 'Sacar foto al comprobante', 'Anotar a mano', 'Leer con la nube (OCR)', 'Boleta', 'Factura', 'Boleta de honorarios', 'Monto neto', 'IVA', 'Total del documento', 'Monto a rendir', 'Glosa', 'Viático', 'Pago en efectivo', 'Comparé cada dato con el documento original', 'Rendición en formato SGP', 'Carpeta de respaldos por gasto', 'Gastos por cuenta', 'Proveedor', 'RUT del proveedor', 'Número (folio)', 'Foto del comprobante'],
@@ -123,7 +123,7 @@
     { t: 'Cotizaciones: sobre $10.000.000 netos se piden 2 cotizaciones de proveedores distintos', d: 'Manual, p. 8. Salvo servicios técnico-profesionales; requiere autorización previa de CORFO.', tool: 'cotizaciones' },
     { t: 'Gastos de administración: hasta $3.000.000 al mes', d: 'Manual, p. 20. Los gastos compartidos se reparten con el Anexo 5.', tool: 'cuentas' },
     { t: 'Glosa del gasto: máximo 200 caracteres', d: 'SGP no acepta más. La app avisa al llegar a 180.', tool: 'gastos' },
-    { t: 'PEA: 90 días corridos desde el primer desembolso y una prórroga única de 30', d: 'Flujograma, paso 8. La prórroga se pide con solicitud fundada antes de que venza.', tool: 'plazos' },
+    { t: 'Calculadora de plazos', d: 'Calcula cuánto tiempo te queda para entregar cada documento.', tool: 'plazos' },
     { t: 'Aclarar observaciones de la rendición: 10 días hábiles, por única vez', d: 'Manual, p. 10. El plazo se cuenta desde que CORFO comunica las observaciones.', tool: 'observaciones' },
     { t: 'IVA de 19 % y diferencia permitida de $1 por redondeo', d: 'Si la comunidad recupera el IVA, se rinde el neto; si no, el total.', tool: 'gastos' },
     { t: 'Pasajes: comprarlos con 15 días de anticipación', d: 'Manual, p. 15.', tool: 'gastos' },
@@ -149,7 +149,6 @@
     });
     D.AYUDA.forEach(function (id) { addTramite(byId[id], ['¿Tienes una duda?']); });
     /* La prórroga se consulta aparte: no es un paso de la ruta vigente. */
-    addTramite(byId['TRM-030'], ['Ayudas', 'Plazos']);
     function addTramite(t, path) {
       if (!t) return;
       var fields = [{ text: t.why, label: 'Por qué' }, { text: 'Quién: ' + actorName(t.who), label: '' }, { text: 'Cuándo: ' + (t.when || ''), label: '' }];
