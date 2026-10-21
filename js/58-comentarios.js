@@ -10,7 +10,7 @@
   var SERVICIO = root.RF_COMENTARIOS_URL || 'https://script.google.com/macros/s/AKfycbxGzAkr4fgzeIQbqPXdkkRAguUZEblncalVcpL0LMh8Ig8_8sJoNPj3yhQEUlYmOM5e0Q/exec';
   var MAX_TEXTO = 1500, MAX_NOMBRE = 60;
   /* la misma versión que sw.js (lo comprueba test/publicar-safety.test.mjs): quien revisa la ve al pie de la lista, para saber qué copia usa */
-  var VERSION_REVISION = 'rf-v3-59';
+  var VERSION_REVISION = 'rf-v3-60';
   var est = { seleccionando: false, comentarios: [], conDatos: false, cargando: false, fallo: false, panelTipo: null, botonContador: null, pinesPorClave: {}, resaltado: null, etiqueta: null, panel: null, menu: null, principal: null, banner: null, aviso: null, objetivo: null, marcas: [], activo: null, vista: null };
 
   function estilos() {
