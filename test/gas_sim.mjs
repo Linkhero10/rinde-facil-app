@@ -42,7 +42,7 @@ export function makeEnv(props = {}, visionResult, opts = {}) {
       base64EncodeWebSafe: b => Buffer.from(b.map(x => x & 255)).toString('base64url') + '=',
       base64Decode: b => Array.from(Buffer.from(b, 'base64')),
       newBlob: (bytes, mime, name) => ({ bytes, mime, name, getBytes: () => bytes, getContentType: () => mime }),
-      computeDigest: (alg, s) => Array.from(crypto.createHash('sha256').update(s).digest()).map(x => (x > 127 ? x - 256 : x)),
+      computeDigest: (alg, s) => Array.from(crypto.createHash('sha256').update(Array.isArray(s) ? Buffer.from(s) : s).digest()).map(x => (x > 127 ? x - 256 : x)),
       formatDate: (d, tz, pat) => (pat === 'yyyyMMdd-HHmmss' ? '20260929-101500' : '2026-09-29')
     },
     DriveApp: { getFolderById: id => rootHolder.folders.find(f => f.id === id) || makeFolder('byid'), getFoldersByName: n => rootHolder.getFoldersByName(n), createFolder: n => rootHolder.createFolder(n) },

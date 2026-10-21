@@ -51,13 +51,14 @@ const RF_WEB = {
   weeklyLimitProp: 'RINDE_FACIL_OCR_WEEKLY_LIMIT',
   monthlyLimitProp: 'RINDE_FACIL_OCR_MONTHLY_LIMIT',
   counterPrefix: 'RINDE_FACIL_OCR_COUNT_',
+  pendingPrefix: 'RF_OCR_PEND_',
   googleFreeUnitsMonth: 1000, /* referencia de Google Cloud Vision: unidades gratis al mes (cada página cuenta una) */
   rootName: 'Rinde fácil',
   backupsName: 'Copias de seguridad',
   projectsName: 'Proyectos',
   stateFile: 'estado-rinde-facil.json',
   maxBytes: 8 * 1024 * 1024,
-  ocrMaxBytes: 20 * 1024 * 1024, /* PDF escaneado: límite de Cloud Vision para archivos */
+  ocrMaxBytes: 7 * 1024 * 1024, /* Vision admite 10 MB de JSON: base64 ocupa 4/3 del archivo bruto */
   dailyLimitDefault: 100, /* páginas escaneadas por día si no hay RINDE_FACIL_OCR_DAILY_LIMIT. Sin tope por petición: el diario controla el gasto */
   maxStateChars: 4 * 1024 * 1024,
   keepBackups: 5,
@@ -180,7 +181,7 @@ function rfResumenLecturas_(leer, hoy) {
 }
 /* límite de lecturas: el diario siempre; el semanal y el mensual solo si están configurados */
 /* reserva `paginas` páginas (una por defecto) con todos los límites. Bajo el candado: o caben todas o no se reserva ninguna */
-function rfCountOcr_(paginas, fecha, token) {
+function rfCountOcr_(paginas, fecha, token, hash, comprobarDuplicado) {
   const pedir = paginas || 1;
   const props = PropertiesService.getScriptProperties();
   const hoy = fecha || rfToday_();
@@ -194,6 +195,12 @@ function rfCountOcr_(paginas, fecha, token) {
   try {
     /* La sesión pudo revocarse mientras esta primera reserva esperaba el candado. */
     if (token !== undefined && !rfSessionValid_(token)) return { ok: false, error: 'SESION_INVALIDA' };
+    /* Con el candado ya tomado se aplican las devoluciones pendientes: una conciliación que no logró el candado no debe dejar el límite lleno. */
+    try { rfAplicarPendientesOcr_(props); } catch (error) { console.warn('rfCountOcr_: no se pudieron aplicar las devoluciones pendientes.'); }
+    /* D2: comprobar y registrar bajo el mismo candado evita dos reservas del mismo archivo. Solo bloquea una lectura en curso (devolver = 0); con devolver > 0 el OCR ya terminó y solo falta devolver. */
+    if (hash && comprobarDuplicado && rfPendientesOcr_(props).some(function (p) {
+      return p.valor.hash === hash && p.valor.devolver === 0 && Date.now() - p.valor.t < 6 * 60 * 1000;
+    })) return { ok: false, error: 'OCR_EN_CURSO' };
     const n = Number(props.getProperty(key) || 0);
     if (n + pedir > limit) return { ok: false, error: 'LIMITE_DIARIO', limit: limit, used: n };
     if (semanal || mensual) {
@@ -201,29 +208,104 @@ function rfCountOcr_(paginas, fecha, token) {
       if (semanal && resumen.semanal.usadas + pedir > semanal) return { ok: false, error: 'LIMITE_SEMANAL', limit: semanal, used: resumen.semanal.usadas };
       if (mensual && resumen.mensual.usadas + pedir > mensual) return { ok: false, error: 'LIMITE_MENSUAL', limit: mensual, used: resumen.mensual.usadas };
     }
-    props.setProperty(key, String(n + pedir));
-    return { ok: true, used: n + pedir, limit: limit };
+    const pendiente = hash ? RF_WEB.pendingPrefix + Utilities.getUuid() : null;
+    /* D1: registrar antes de cobrar; si falla el registro no se consume cuota. */
+    if (pendiente) props.setProperty(pendiente, JSON.stringify({ fecha: hoy, reservadas: pedir, t: Date.now(), hash: hash, devolver: 0 }));
+    try {
+      props.setProperty(key, String(n + pedir));
+    } catch (error) {
+      if (pendiente) props.deleteProperty(pendiente);
+      throw error;
+    }
+    return { ok: true, used: n + pedir, limit: limit, pendiente: pendiente };
   } finally { lock.releaseLock(); }
 }
-/* devuelve solo la reserva no utilizada de esta petición, sin pisar lecturas concurrentes */
-function rfDevolverOcr_(paginas, fecha) {
-  if (!(paginas > 0)) return;
-  /* sin candado no se devuelve, y ningún error de servicio debe tapar el resultado de la lectura: la reserva queda cobrada */
-  try {
-    const lock = LockService.getScriptLock();
-    if (!lock.tryLock(5000)) return;
+/* D1: un registro por reserva; las entradas dañadas no autorizan devoluciones. */
+function rfPendientesOcr_(props) {
+  return props.getKeys().filter(function (k) { return k.indexOf(RF_WEB.pendingPrefix) === 0; }).reduce(function (all, key) {
+    /* Un fallo del servicio debe impedir una reserva nueva, no ocultar un posible duplicado. */
+    const raw = props.getProperty(key);
     try {
-      const props = PropertiesService.getScriptProperties();
-      const key = RF_WEB.counterPrefix + (fecha || rfToday_());
-      const usadas = Number(props.getProperty(key) || 0);
-      props.setProperty(key, String(Math.max(0, usadas - paginas)));
-    } finally { lock.releaseLock(); }
+      const valor = JSON.parse(raw);
+      if (valor && Number.isFinite(valor.t)) all.push({ key: key, valor: valor });
+    } catch (error) {
+      /* Un registro ilegible no puede devolver nada: se borra sin devolución (cobro conservador). */
+      try { props.deleteProperty(key); } catch (ignorar) { /* se reintentará en la siguiente conciliación */ }
+    }
+    return all;
+  }, []);
+}
+/* Releer bajo candado: dos conciliaciones concurrentes nunca devuelven la misma entrada. */
+function rfConciliarPendienteOcr_(pendiente) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return;
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const raw = props.getProperty(pendiente);
+    if (!raw) return;
+    rfAplicarEntradaOcr_(props, pendiente, JSON.parse(raw));
+  } finally { lock.releaseLock(); }
+}
+/* Con el candado ya tomado: devuelve la reserva no usada o borra la entrada extinguida. */
+function rfAplicarEntradaOcr_(props, pendiente, p) {
+  if (p.devolver > 0) {
+    const key = RF_WEB.counterPrefix + p.fecha;
+    const usadas = Number(props.getProperty(key) || 0);
+    /* Borrar antes de restar evita repetir la devolución si falla el borrado.
+       Si falla la escritura del contador, restaurar la deuda para el siguiente intento. */
+    props.deleteProperty(pendiente);
+    try {
+      props.setProperty(key, String(Math.max(0, usadas - p.devolver)));
+    } catch (error) {
+      props.setProperty(pendiente, JSON.stringify(p));
+      throw error;
+    }
+  } else if (p.devolver === 0 && Date.now() - p.t > 10 * 60 * 1000) {
+    props.deleteProperty(pendiente); // ejecución extinguida: conservar el cobro, nunca adivinar páginas leídas
+  }
+}
+/* Con el candado de la cuenta ya tomado (rfCountOcr_): aplica todas las entradas que ya pueden conciliarse. */
+function rfAplicarPendientesOcr_(props) {
+  rfPendientesOcr_(props).forEach(function (pend) { rfAplicarEntradaOcr_(props, pend.key, pend.valor); });
+}
+function rfConciliarOcr_() {
+  try {
+    rfPendientesOcr_(PropertiesService.getScriptProperties()).forEach(function (p) {
+      if (!(p.valor.devolver > 0 || (p.valor.devolver === 0 && Date.now() - p.valor.t > 10 * 60 * 1000))) return;
+      try { rfConciliarPendienteOcr_(p.key); }
+      catch (error) { console.warn('rfConciliarOcr_: la entrada sigue pendiente.'); }
+    });
+  } catch (error) { console.warn('rfConciliarOcr_: no se pudieron consultar las entradas.'); }
+}
+/* Devuelve solo la reserva no utilizada de esta petición, sin pisar lecturas concurrentes. */
+function rfDevolverOcr_(paginas, fecha, pendiente) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    if (pendiente) {
+      const raw = props.getProperty(pendiente);
+      if (!raw) return;
+      if (!(paginas > 0)) { props.deleteProperty(pendiente); return; }
+      const p = JSON.parse(raw);
+      p.devolver = paginas;
+      /* Persistir antes de pedir candado: aun si está ocupado queda trabajo reintentable. */
+      props.setProperty(pendiente, JSON.stringify(p));
+      rfConciliarPendienteOcr_(pendiente);
+    } else if (paginas > 0) {
+      /* Compatibilidad con llamadas sin registro; rfOcr_ siempre entrega una entrada. */
+      const lock = LockService.getScriptLock();
+      if (!lock.tryLock(5000)) return;
+      try {
+        const key = RF_WEB.counterPrefix + (fecha || rfToday_());
+        props.setProperty(key, String(Math.max(0, Number(props.getProperty(key) || 0) - paginas)));
+      } finally { lock.releaseLock(); }
+    }
   } catch (error) {
     console.warn('rfDevolverOcr_ no devolvió la reserva: ' + (error && error.message ? error.message : error));
   }
 }
 /* acción «cuota» (con sesión): lo leído hoy, esta semana y este mes, y los límites configurados */
 function rfCuota_() {
+  rfConciliarOcr_();
   const props = PropertiesService.getScriptProperties();
   return Object.assign({ ok: true }, rfResumenLecturas_(function (nombre) { return props.getProperty(nombre); }, rfToday_()));
 }
@@ -238,33 +320,45 @@ function rfUsoOcrHoy_() {
   }
 }
 
-/* ---------- OCR ---------- */
+/* ---------- OCR ----------
+ * D6: el cliente de PEA lee página por página y guarda cada resultado,
+ * así que no necesita reanudación en el servidor.
+ */
 function rfOcr_(p, started) {
+  rfConciliarOcr_();
   if (!rfOcrReady_()) return { ok: false, error: 'OCR_NO_CONFIGURADO', message: 'Falta RINDE_FACIL_GCP_PROJECT_ID o CloudOcrAdapter.gs.' };
   if (RF_WEB.okMime.indexOf(String(p.mimeType || '').toLowerCase()) < 0) return { ok: false, error: 'TIPO_NO_PERMITIDO' };
   if (!rfIsBase64_(p.base64)) return { ok: false, error: 'BASE64_INVALIDO' };
   if (rfBase64Bytes_(p.base64) > RF_WEB.ocrMaxBytes) return { ok: false, error: 'ARCHIVO_MUY_GRANDE' };
   /* diseño de Sol: primero se reserva una página; el resto se reserva cuando Cloud Vision informa el total del archivo */
   const fecha = rfToday_();
-  const cnt = rfCountOcr_(1, fecha, p.t);
+  const bytes = Utilities.base64Decode(p.base64);
+  const hash = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes).map(function (b) {
+    return ('0' + (b & 255).toString(16)).slice(-2);
+  }).join('');
+  const cnt = rfCountOcr_(1, fecha, p.t, hash, true);
   if (!cnt.ok) return cnt;
-  let reservadas = 1;
+  const reservas = [{ paginas: 1, pendiente: cnt.pendiente }];
   let r;
   try {
-    const bytes = Utilities.base64Decode(p.base64);
     const blob = Utilities.newBlob(bytes, String(p.mimeType).toLowerCase(), String(p.fileName || 'comprobante').slice(0, 120));
     r = callCloudVision_(blob, {
       file_name: String(p.fileName || '').slice(0, 120),
+      file_hash_sha256: hash,
       started_at_ms: started == null ? Date.now() : started,
       reservar: function (paginas) {
-        const reserva = rfCountOcr_(paginas, fecha, p.t);
-        if (reserva.ok) reservadas += paginas;
+        const reserva = rfCountOcr_(paginas, fecha, p.t, hash, false);
+        if (reserva.ok) reservas.push({ paginas: paginas, pendiente: reserva.pendiente });
         return reserva;
       }
     });
   } finally {
-    const leidas = r && Number.isInteger(r.pages_returned) ? r.pages_returned : (r && r.page_count || 0);
-    rfDevolverOcr_(Math.max(0, reservadas - leidas), fecha);
+    let leidas = r && Number.isInteger(r.pages_returned) ? r.pages_returned : (r && r.page_count || 0);
+    reservas.forEach(function (reserva) {
+      const usadas = Math.min(reserva.paginas, Math.max(0, leidas));
+      leidas -= usadas;
+      rfDevolverOcr_(reserva.paginas - usadas, fecha, reserva.pendiente);
+    });
   }
   /* solo es lectura válida si Cloud Vision confirmó todas las páginas: el cliente de PDF rechaza una cobertura parcial (js/33-cloud.js) */
   const completo = !r || !r.document_coverage || r.document_coverage === 'COMPLETE';
@@ -458,6 +552,8 @@ function rfSaveFile_(p) {
  * Con la clave correcta se entrega un token de sesión aleatorio que vence a las 12 horas; el servidor guarda solo su hash.
  * Defensas: bloqueo progresivo de acceso (5 fallos iniciales, luego 3; pausa de 1, 2, 5, 10, 20 y hasta 30 min), comparaciones en tiempo constante,
  * mismo mensaje para usuario o clave incorrectos, registro de accesos y cierre de todas las sesiones al cambiar la contraseña.
+ * D5: el bloqueo global de acceso nunca dura más de 30 minutos; los equipos conocidos tienen su propio contador.
+ * La protección frente a agotamiento masivo depende de las cuotas de Google.
  */
 const RF_AUTH = {
   accountProp: 'RF_ACCOUNT', pepperProp: 'RF_PEPPER', sessPrefix: 'RF_SESS_', lockProp: 'RF_LOCK', changeLockPrefix: 'RF_CHANGELOCK_', recLockProp: 'RF_RECLOCK', setupLockProp: 'RF_SETUPLOCK',
@@ -702,9 +798,12 @@ function rfResetPassword_(p) {
     a.saltP = p.saltP; a.hashAuth = rfHash_(p.authKey); a.recSalt = p.recSalt; a.hashRec = rfHash_(p.authKeyR2); a.it = RF_AUTH.iterations;
     a.devices = []; // se revocan todos los equipos conocidos
     const device = rfAddDevice_(a);
+    /* D3: revocar todas las sesiones ANTES de guardar. Si la revocación falla, no se escribe;
+       si falla el guardado, la cuenta anterior sigue válida y las sesiones ya están cerradas. */
+    rfKillSessions_('');
     rfSetJson_(RF_AUTH.accountProp, a);
     rfClearFails_(RF_AUTH.lockProp);
-    rfKillSessions_(''); rfAudit_('reset', true, p);
+    rfAudit_('reset', true, p);
     const s = rfNewSession_();
     return { ok: true, token: s.token, exp: s.exp, device: device };
   });
@@ -725,10 +824,12 @@ function rfChangePassword_(p) {
     if (!rfIsB64Field_(p.saltP, 16, 64) || !rfIsB64Field_(p.authKey, 40, 48)) return { ok: false, error: 'DATOS_INVALIDOS' };
     a.saltP = p.saltP; a.hashAuth = rfHash_(p.authKey);
     if (rfIsB64Field_(p.recSalt, 16, 64) && rfIsB64Field_(p.authKeyR, 40, 48)) { a.recSalt = p.recSalt; a.hashRec = rfHash_(p.authKeyR); }
+    /* D3: revocar las demás sesiones ANTES de guardar. Si falla la revocación no se escribe;
+       si falla el guardado, la sesión actual conserva solo la cuenta y contraseña anteriores. */
+    rfKillSessions_(rfSessHash_(String(p.t)));
     rfSetJson_(RF_AUTH.accountProp, a);
     rfClearFails_(changeLockProp);
     rfClearFails_(RF_AUTH.lockProp);
-    rfKillSessions_(rfSessHash_(String(p.t))); // se cierran las demás sesiones
     rfAudit_('change_password', true, p);
     return { ok: true };
   });
