@@ -204,6 +204,9 @@
   }
   function removeProject(id) {
     update(function (s) {
+      /* La administración es transversal: no se borra con sus gastos; ensureAdminProject la volvería a crear vacía. */
+      var borrar = s.projects.filter(function (p) { return p.id === id; })[0];
+      if (borrar && esAdmin(borrar)) return;
       s.projects = s.projects.filter(function (p) { return p.id !== id; });
       ensureAdminProject(s);
       if (s.activeProjectId === id) s.activeProjectId = s.projects.length ? s.projects[0].id : null;

@@ -150,3 +150,26 @@ test('D3: etiquetas propias dicen Acuerdo y el Word sigue leyendo la etiqueta of
   assert.doesNotMatch(JSON.stringify(RF.pea.extractFromText('Texto sintético').warnings), /convenio/i);
   assert.match(JSON.stringify(RF.forms.SCHEMAS.anexo1.doc(RF.forms.SCHEMAS.anexo1.defaults({ community: {}, project: p }), { community: {}, project: p })), /Convenio suscrito con Corfo/);
 });
+
+test('D1: el proyecto de administración no se borra y conserva sus gastos', () => {
+  const RF = app();
+  RF.store.addProject('Proyecto sintético');
+  const adm = admins(RF.store.get())[0];
+  adm.budgetLines.push({ id: 'b-adm-sintetica', cuenta: 'administracion', item: 'Luz sintetica', glosa: '', fuente: 'corfo', monto: 1000, actId: '' });
+  RF.store.removeProject(adm.id);
+  const s = RF.store.get();
+  assert.equal(admins(s).length, 1);
+  assert.equal(admins(s)[0].id, adm.id);
+  assert.equal(admins(s)[0].budgetLines.length, 1);
+});
+
+test('D1: el presupuesto de administración corregido en el PEA general sobrevive a migrar', () => {
+  const RF = app();
+  RF.store.addProject('Proyecto sintético');
+  const adm = admins(RF.store.get())[0];
+  const general = RF.forms.getSingle(adm, 'peaGeneral');
+  general.presupuestoAdmin = 800;
+  RF.store.update(function (st) { RF.store.ensureAdminProject(st, 800); }, { silent: true });
+  const migrado = RF.store.migrate(JSON.parse(JSON.stringify(RF.store.get())));
+  assert.equal(admins(migrado)[0].budgetApproved.administracion, 800);
+});

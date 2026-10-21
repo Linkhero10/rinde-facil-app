@@ -46,9 +46,16 @@
         UI.field('Fecha de aprobación del PEA', p, 'peaAprobadoAt', { type: 'date' }),
         UI.field('Período que estás rindiendo: desde', p, 'periodoInicio', { type: 'date' }), UI.field('hasta', p, 'periodoFin', { type: 'date' }));
       root.appendChild(UI.section('Datos de «' + (p.name || 'tu proyecto') + '»', [f]));
-      var bud = h('div', { class: 'form-grid' }, D.CUENTAS.filter(function (cu) { return cu.id !== 'administracion' || RF.store.esAdmin(p); }).map(function (cu) { return UI.field(cu.name, p.budgetApproved, cu.id, { type: 'money', hint: 'Lo aprobado por CORFO' }); }));
+      var bud = h('div', { class: 'form-grid' }, D.CUENTAS.filter(function (cu) { return cu.id !== 'administracion' || RF.store.esAdmin(p); }).map(function (cu) {
+        /* El presupuesto de administración vive en el PEA general: esta casilla escribe ahí y sincroniza el proyecto. */
+        if (cu.id === 'administracion') {
+          var gen = RF.forms.getSingle(p, 'peaGeneral');
+          return UI.field(cu.name, gen, 'presupuestoAdmin', { type: 'money', hint: 'Lo aprobado por CORFO. Se corrige en el PEA general.', onChange: function () { RF.store.update(function (st) { RF.store.ensureAdminProject(st, gen.presupuestoAdmin); }, { silent: true }); } });
+        }
+        return UI.field(cu.name, p.budgetApproved, cu.id, { type: 'money', hint: 'Lo aprobado por CORFO' });
+      }));
       root.appendChild(UI.section('Presupuesto aprobado por cuenta', [bud]));
-      if (s.projects.length > 1 || true) root.appendChild(h('div', { class: 'row-actions' }, UI.btn('Borrar este proyecto', { icon: 'trash', cls: 'ghost danger', onclick: function () { UI.confirmBox('¿Borrar «' + (p.name || 'este proyecto') + '» y todos sus datos? No se puede deshacer.', 'Borrar').then(function (ok) { if (ok) RF.store.removeProject(p.id); }); } })));
+      if (!RF.store.esAdmin(p)) root.appendChild(h('div', { class: 'row-actions' }, UI.btn('Borrar este proyecto', { icon: 'trash', cls: 'ghost danger', onclick: function () { UI.confirmBox('¿Borrar «' + (p.name || 'este proyecto') + '» y todos sus datos? No se puede deshacer.', 'Borrar').then(function (ok) { if (ok) RF.store.removeProject(p.id); }); } })));
     }
     return page('Mi comunidad y proyectos', 'Estos datos se usan para rellenar solos los anexos y revisar tus fechas.', root);
   } };
