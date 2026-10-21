@@ -165,7 +165,7 @@ for (const tool of ['documentos', 'necesidades']) {
     if (tool === 'documentos') descendants(page).find(n => n.tagName === 'button' && n.textContent === 'Agregar un documento').click();
     const buttons = descendants(page).filter(n => n.tagName === 'button' && n.textContent.includes('Actualización de proyecto'));
     assert.equal(buttons.length, 1);
-    assert.equal(buttons[0].textContent, 'Ver el trámite «Actualización de proyecto»');
+    assert.equal(buttons[0].textContent, 'Ver el paso «Actualización de proyecto»');
     buttons[0].click();
     assert.equal(loadApp.lastCtx.location.hash, '#/t/TRM-028');
   });

@@ -148,7 +148,6 @@
       f.items.forEach(function (id) { addTramite(byId[id], ['Mi ruta', 'Fase ' + f.n + ' · ' + f.name]); });
     });
     D.AYUDA.forEach(function (id) { addTramite(byId[id], ['¿Tienes una duda?']); });
-    /* La prórroga se consulta aparte: no es un paso de la ruta vigente. */
     function addTramite(t, path) {
       if (!t) return;
       var fields = [{ text: t.why, label: 'Por qué' }, { text: 'Quién: ' + actorName(t.who), label: '' }, { text: 'Cuándo: ' + (t.when || ''), label: '' }];

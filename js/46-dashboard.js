@@ -51,7 +51,7 @@
     /* --- cifras --- */
     function tile(label, big, small, tone) { return h('div', { class: 'dash-tile' + (tone ? ' ' + tone : '') }, h('span', { class: 'dt-l' }, label), h('span', { class: 'dt-n' }, big), h('span', { class: 'dt-s' }, small)); }
     var stats = h('div', { class: 'dash-tiles' },
-      tile('Ruta', prog.tramTotal ? Math.round(prog.tramDone * 100 / prog.tramTotal) + ' %' : '0 %', prog.tramDone + ' de ' + prog.tramTotal + ' trámites listos'),
+      tile('Ruta', prog.tramTotal ? Math.round(prog.tramDone * 100 / prog.tramTotal) + ' %' : '0 %', prog.tramDone + ' de ' + prog.tramTotal + ' pasos listos'),
       tile('Rendido', money(rendidoTotal), aprobadoTotal ? 'de ' + money(aprobadoTotal) + ' aprobados (' + Math.round(rendidoTotal * 100 / aprobadoTotal) + ' %)' : 'anota lo aprobado en cada cuenta'),
       tile('Gastos anotados', String(expenses.length), porRevisar ? porRevisar + ' por revisar' : 'todos listos', porRevisar ? 'warn' : 'ok'),
       tile('Revisión', errors ? errors + (errors === 1 ? ' error' : ' errores') : flagged.length ? flagged.length + ' avisos' : 'Sin problemas', errors ? 'corrígelos antes de enviar' : flagged.length ? 'conviene revisarlos' : 'todo calza', errors ? 'bad' : flagged.length ? 'warn' : 'ok'));
@@ -60,7 +60,7 @@
     var phases = h('div', { class: 'dash-phases', role: 'list', 'aria-label': 'Avance por fase' }, D.FASES.map(function (f) {
       var pf = prog.porFase[f.id], pct = pf.tramTotal ? Math.round(pf.tramDone * 100 / pf.tramTotal) : 0;
       var a = h('a', { class: 'dash-phase' + (f.id === prog.faseActual ? ' now' : '') + (pf.complete ? ' done' : ''), href: '#/f/' + f.id, role: 'listitem', 'aria-label': 'Fase ' + f.n + ' ' + f.name + ': ' + pf.tramDone + ' de ' + pf.tramTotal }, h('span', { class: 'dp-n' }, String(f.n)), h('span', { class: 'dp-t' }, f.short), h('span', { class: 'dp-bar' }, h('i', { style: { width: pct + '%' } })), h('span', { class: 'dp-c' }, pf.tramDone + '/' + pf.tramTotal));
-      a.addEventListener('mousemove', function (ev) { showTip(ev, ['Fase ' + f.n + ': ' + f.name, pf.tramDone + ' de ' + pf.tramTotal + ' trámites listos', 'Toca para abrirla']); }); a.addEventListener('mouseleave', hideTip); a.addEventListener('focus', function (ev) { showTip(ev, ['Fase ' + f.n + ': ' + f.name, pf.tramDone + ' de ' + pf.tramTotal + ' trámites listos']); }); a.addEventListener('blur', hideTip);
+      a.addEventListener('mousemove', function (ev) { showTip(ev, ['Fase ' + f.n + ': ' + f.name, pf.tramDone + ' de ' + pf.tramTotal + ' pasos listos', 'Toca para abrirla']); }); a.addEventListener('mouseleave', hideTip); a.addEventListener('focus', function (ev) { showTip(ev, ['Fase ' + f.n + ': ' + f.name, pf.tramDone + ' de ' + pf.tramTotal + ' trámites listos']); }); a.addEventListener('blur', hideTip);
       return a;
     }));
 

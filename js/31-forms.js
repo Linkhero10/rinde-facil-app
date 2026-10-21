@@ -448,7 +448,7 @@
       var c = RF.store.get().community;
       var keys = { comunidad: 'name', rut: 'rut', direccion: 'address', repLegal: 'legalRep', repRut: 'repRut', correo: 'email', telefono: 'phone', oc: 'oc' };
       if (keys[k]) c[keys[k]] = d[k];
-      if (k === 'presupuestoAdmin') RF.store.get().projects.forEach(function (p) { if (p.tipo === 'administracion' || p.name === 'Gastos de administración') p.budgetApproved.administracion = num(d[k]); });
+      if (k === 'presupuestoAdmin') RF.store.get().projects.forEach(function (p) { if (p.tipo === 'administracion' || p.name === 'Gastos de administración') { p.budgetApproved = p.budgetApproved || {}; p.budgetApproved.administracion = num(d[k]); } });
     },
     doc: function (d, ctx) { return { title: 'PEA General', subtitle: 'Borrador de información para presentar a CORFO', sheet: 'PEA general', footer: 'Borrador generado con Rinde Fácil. No es el formulario oficial de CORFO: sirve para reunir y copiar la información. Confirma el formato vigente con tu ejecutivo técnico o con el Organismo Colaborador.', blocks: [{ t: 'kv', rows: [['Comunidad', d.comunidad], ['RUT', d.rut], ['Dirección', d.direccion], ['Representante legal', d.repLegal], ['RUT del representante', d.repRut], ['Presupuesto de administración', U.fmtCLP(num(d.presupuestoAdmin))], ['Contacto', [d.correo, d.telefono].filter(Boolean).join(' · ')], ['Organismo Colaborador', d.oc], ['Fecha del primer pago', d.fechaPrimerPago ? U.fmtDate(d.fechaPrimerPago) : ''], ['Objetivos del programa', d.objetivos], ['Beneficiarios', d.beneficiarios], ['Territorio', d.territorio]] }] }; }
   };
@@ -541,12 +541,19 @@
       var s = RF.store.get(), c = s.community;
       c.forms = c.forms || {};
       if (!c.forms[id] || !c.forms[id].data) {
-        /* Copiar el primer formulario guardado; los originales por proyecto se conservan. */
-        var saved = [project].concat(s.projects || []).filter(function (p) { return p && p.forms && p.forms[id] && p.forms[id].data; })[0];
-        c.forms[id] = { data: Object.assign(sc.defaults({ project: project, community: c }), saved ? JSON.parse(JSON.stringify(saved.forms[id].data)) : {}) };
+        /* Partir del formulario guardado con más datos escritos (de cualquier proyecto); los originales por proyecto se conservan.
+           Un valor vacío guardado no pisa lo que ya trae la comunidad. */
+        var base = sc.defaults({ project: project, community: c }), mejor = null, mejorN = -1;
+        [project].concat(s.projects || []).forEach(function (p) {
+          var d = p && p.forms && p.forms[id] && p.forms[id].data;
+          var n = d ? Object.keys(d).filter(function (k) { return d[k] !== '' && d[k] != null; }).length : -1;
+          if (n > mejorN) { mejor = d; mejorN = n; }
+        });
+        if (mejor) Object.keys(mejor).forEach(function (k) { if (mejor[k] !== '' && mejor[k] != null) base[k] = JSON.parse(JSON.stringify(mejor[k])); });
+        c.forms[id] = { data: base };
       }
-      if (c.forms[id].data.repRut == null) c.forms[id].data.repRut = v(c.repRut);
-      if (c.forms[id].data.presupuestoAdmin == null) c.forms[id].data.presupuestoAdmin = presupuestoAdmin();
+      if (!c.forms[id].data.repRut) c.forms[id].data.repRut = v(c.repRut);
+      if (c.forms[id].data.presupuestoAdmin === '' || c.forms[id].data.presupuestoAdmin == null) c.forms[id].data.presupuestoAdmin = presupuestoAdmin();
       return c.forms[id].data;
     }
     if (!project.forms[id] || !project.forms[id].data) project.forms[id] = { data: sc.defaults({ project: project, community: RF.store.get().community }) };
