@@ -117,6 +117,7 @@
     return shell(legacy ? 'Protege los datos de tu comunidad' : 'Crea la cuenta de tu comunidad',
       legacy ? 'Tus datos de antes se van a guardar cifrados con una contraseña. Elige una que puedas recordar; sin ella nadie podrá abrirlos, ni siquiera nosotros.' : 'La contraseña protege lo que guardas en este equipo: gastos, fotos y documentos. Nadie más puede abrirlo sin ella.',
       [form, h('p', { class: 'hint' }, 'Los datos se guardan cifrados en este equipo y, si conectas el servicio de tu comunidad, en el Drive de tu comunidad.'),
+        legacy ? null : h('p', { class: 'hint' }, 'Si ya creaste la cuenta de tu comunidad en otro navegador o equipo, esa cuenta no aparece aquí: cada equipo guarda la suya. Para no duplicarla, usa el equipo donde la creaste.'),
         legacy ? null : h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('device'); } }, 'Iniciar sesión (ya tengo la cuenta de mi comunidad)')]);
   }
 

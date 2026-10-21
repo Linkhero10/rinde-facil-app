@@ -48,6 +48,16 @@ test('crear la bóveda: nada legible en el almacenamiento, y se abre solo con la
   assert.equal(ok.state.marca, 'guardado'); assert.equal(RF.vault.status(), 'open');
   assert.match(ok.authKey, /^[A-Za-z0-9+/]{43}=$/, 'clave de acceso de 256 bits para el servicio');
 });
+test('no crea una segunda bóveda en el mismo equipo: la existente queda igual y se rechaza con YA_EXISTE', async () => {
+  reset();
+  await RF.vault.create('Comunidad Atacameña de Prueba', PW, STATE, { iterations: 2000 });
+  const antes = dump();
+  await assert.rejects(RF.vault.create('Otra comunidad larga', 'otra frase larga 2026', { v: 2, community: { name: 'Otra' }, projects: [] }, { iterations: 2000 }), e => e.code === 'YA_EXISTE');
+  assert.equal(dump(), antes, 'la bóveda existente no cambia');
+  RF.vault.lock();
+  const ok = await RF.vault.unlock('Comunidad Atacameña de Prueba', PW);
+  assert.equal(ok.state.community.name, 'Comunidad Atacameña de Prueba', 'sigue abriendo con su contraseña');
+});
 test('un dato alterado se detecta (no se abre)', async () => {
   reset(); await RF.vault.create('Comunidad X larga', PW, STATE, { iterations: 2000 }); RF.vault.lock();
   const m = RF.vault.meta(); const ct = RF.crypto.ub64(m.state.ct); ct[3] ^= 1; m.state.ct = RF.crypto.b64(ct);
