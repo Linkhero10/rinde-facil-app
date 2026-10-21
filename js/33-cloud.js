@@ -336,7 +336,6 @@
   /* una foto o un PDF de gasto. Si ya se leyó, se devuelve esa lectura (desdeCache) sin llamar al servicio;
      con forzar («Leer de nuevo») sí se vuelve a leer y se cobra. RF.ocr.recognize solo se llama si hay que leer. */
   function recognizeCached(file, onStage, forzar) {
-    if (file && file.size > OCR_MAX_BYTES) return Promise.reject(archivoGrande());
     return identidad(file).then(function (idn) {
       var leerYGuardar = function () {
         return RF.ocr.recognize(file, onStage).then(function (res) {

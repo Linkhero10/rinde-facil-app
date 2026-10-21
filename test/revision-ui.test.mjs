@@ -214,3 +214,26 @@ test('OCR de documento mantiene los tres errores de cuota sobre cobertura parcia
     assert.equal(r.error, code);
   }
 });
+
+test('abrir la pestaña Administración no crea el proyecto; se crea al agregar un gasto', () => {
+  const RF = app();
+  const view = RF.tools.pea.render();
+  const antes = RF.store.get().projects.length;
+  botonPorTexto(view, 'Administración').dispatch('click');
+  assert.equal(RF.store.get().projects.length, antes);
+  botonPorTexto(view, 'Agregar gasto de administración').dispatch('click');
+  assert.equal(RF.store.get().projects.length, antes + 1);
+  assert.equal(RF.store.get().projects.at(-1).name, 'Gastos de administración');
+});
+
+test('el PEA general nuevo parte del formulario con más datos y no lo pisa con vacíos', () => {
+  const RF = app(), p = RF.store.project();
+  const p2 = RF.store.newProject('Otro proyecto sintético');
+  RF.store.get().projects.push(p2);
+  p.forms.peaGeneral = { data: { objetivos: '', territorio: '' } };
+  p2.forms.peaGeneral = { data: { objetivos: 'Objetivo sintético', territorio: 'Territorio sintético', beneficiarios: 'Familias sintéticas' } };
+  const g = RF.forms.getSingle(p, 'peaGeneral');
+  assert.equal(g.objetivos, 'Objetivo sintético');
+  assert.equal(g.territorio, 'Territorio sintético');
+  assert.equal(g.beneficiarios, 'Familias sintéticas');
+});

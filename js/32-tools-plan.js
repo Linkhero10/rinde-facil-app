@@ -121,7 +121,7 @@
     root.appendChild(UI.section('Descargar la Carta Gantt', [UI.exportBar(function () { return ganttDoc(p, c.community); }, 'carta-gantt', [{ label: 'Copiar para SGP', icon: 'copy', run: function () {
       var rows = L.allActivities(p).map(function (x) { return [x.stage.name, x.act.name, U.fmtDateShort(x.act.start), U.fmtDateShort(x.act.end)]; });
       U.copyText(sgpTsv(rows, ['Etapa', 'Actividad', 'Inicio', 'Término'])).then(function (ok) { UI.toast(ok ? 'Copiado en el orden en que SGP pide los datos (etapa, actividad, inicio y término, con fechas día-mes-año). SGP no recibe pegados: cópialos de a uno en cada campo.' : 'No se pudo copiar.', ok ? 'ok' : 'bad'); }); } }])]));
-    return page('Carta Gantt', 'Ordena tu proyecto en etapas y actividades. Después la puedes sacar en Excel, PDF o texto, ordenada como la pide SGP, para ir llenándola campo por campo.', root);
+    return page('Carta Gantt', 'Ordena tu proyecto en etapas y actividades. Después la puedes descargar en Excel, PDF o texto, ordenada como la pide SGP, para ir llenándola campo por campo.', root);
   } };
 
   /* ================= Presupuesto ================= */
@@ -192,7 +192,11 @@
   }
 
   TOOLS.pea = { title: 'PEA: los 3 documentos', icon: 'form', desc: 'Información general, un formulario por proyecto y presupuesto con Carta Gantt.', render: function () {
-    var c = ctx(), p = c.project; if (!p) return page('PEA', '', needProject(c));
+    var c = ctx(), p = c.project;
+    var esAdmin = function (x) { return x.tipo === 'administracion' || x.name === 'Gastos de administración'; };
+    /* Tras registrar la rendición de administración, el proyecto activo puede ser ese: el PEA parte de un proyecto real. */
+    if (p && esAdmin(p)) { var primero = c.state.projects.filter(function (x) { return !esAdmin(x); })[0]; if (primero) { p = primero; c.project = primero; RF.store.update(function (s) { s.activeProjectId = primero.id; }, { silent: true }); } }
+    if (!p) return page('PEA', '', needProject(c));
     var root = h('div'), tabs = h('div', { class: 'chips', role: 'tablist', 'aria-label': 'PEA' }), content = h('div', { role: 'tabpanel', id: 'pea-panel' });
     var selected = 'general';
     root.appendChild(UI.callout('info', 'Ojo:', ' estos documentos son un borrador para reunir y copiar tu información. No tenemos el formulario oficial del PEA, así que confirma el formato vigente con tu ejecutivo técnico o con el Organismo Colaborador (Componente 3).'));
@@ -214,20 +218,20 @@
         content.appendChild(h('p', { class: 'hint' }, 'Escribe el RUT de la comunidad y confirma los datos del PEA general. El PEA general son 3 documentos; cada proyecto tiene 2: Excel y Word.'));
         content.appendChild(RF.forms.renderSingle('peaGeneral', c));
       } else if (key === 'admin') {
-        var adm = adminProject(true);
+        var adm = adminProject(false);
         content.appendChild(h('p', { class: 'hint' }, 'Los gastos de administración se registran una sola vez en el PEA general.'));
         var general = RF.forms.getSingle(p, 'peaGeneral');
         content.appendChild(UI.field('Presupuesto de administración', general, 'presupuestoAdmin', { type: 'money', onChange: function () { RF.forms.SCHEMAS.peaGeneral.onChange('presupuestoAdmin', general); RF.store.update(function () {}, { silent: true }); } }));
         var body = h('div');
         function paintAdmin() {
           U.clear(body);
-          adm.budgetLines.forEach(function (line, i) {
+          (adm ? adm.budgetLines : []).forEach(function (line, i) {
             body.appendChild(h('div', { class: 'form-grid' }, UI.field('Gasto de administración', line, 'item', { type: 'text' }), UI.field('Monto', line, 'monto', { type: 'money' }), UI.btn('Quitar', { cls: 'ghost small', onclick: function () { adm.budgetLines.splice(i, 1); RF.store.update(function () {}, { silent: true }); paintAdmin(); } })));
           });
-          body.appendChild(UI.btn('Agregar gasto de administración', { icon: 'plus', onclick: function () { adm.budgetLines.push({ id: U.uid('b'), cuenta: 'administracion', item: '', glosa: '', fuente: 'corfo', monto: '', actId: '' }); RF.store.update(function () {}, { silent: true }); paintAdmin(); } }));
+          body.appendChild(UI.btn('Agregar gasto de administración', { icon: 'plus', onclick: function () { adm = adm || adminProject(true); adm.budgetLines.push({ id: U.uid('b'), cuenta: 'administracion', item: '', glosa: '', fuente: 'corfo', monto: '', actId: '' }); RF.store.update(function () {}, { silent: true }); paintAdmin(); } }));
         }
         paintAdmin(); content.appendChild(body);
-        content.appendChild(UI.btn('Registrar rendición de administración', { cls: 'primary', onclick: function () { RF.store.update(function (s) { s.activeProjectId = adm.id; }, { silent: true }); location.hash = '#/h/gastos'; } }));
+        content.appendChild(UI.btn('Registrar rendición de administración', { cls: 'primary', onclick: function () { adm = adm || adminProject(true); RF.store.update(function (s) { s.activeProjectId = adm.id; }, { silent: true }); location.hash = '#/h/gastos'; } }));
       } else {
         var pr = c.state.projects.filter(function (x) { return x.id === key; })[0];
         p = pr; c.project = pr;

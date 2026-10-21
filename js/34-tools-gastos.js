@@ -407,7 +407,7 @@
       root.appendChild(UI.section(g.title, [list]));
     });
     root.appendChild(UI.section('Antes de enviar', [h('div', { class: 'row-actions' }, UI.btn('Descargar la rendición', { icon: 'download', onclick: function () { location.hash = '#/h/gastos'; } }), UI.btn('Ver el resumen por cuentas', { icon: 'list', onclick: function () { location.hash = '#/h/resumen'; } }))]));
-    return page('Revisión: ¿cuadra todo?', 'Cruza lo que anotaste en cada trámite para encontrar diferencias antes de que las encuentre CORFO.', root);
+    return page('Revisión: ¿cuadra todo?', 'Cruza lo que anotaste en cada paso para encontrar diferencias antes de que las encuentre CORFO.', root);
   } };
 
   /* ================= Resumen por cuentas ================= */

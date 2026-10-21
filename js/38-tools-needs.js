@@ -95,7 +95,7 @@
           h('p', null, 'Los aumentos de presupuesto se aprueban en asamblea y se envían a CORFO con el acta de asamblea o extracto; después, con la aprobación de CORFO, se configuran en SGP.'),
           h('div', { class: 'row-actions' },
             UI.btn('Preparar la solicitud de cambio', { icon: 'edit', cls: 'primary', onclick: function () { location.hash = '#/h/reitem?from=TRM-028'; } }),
-            UI.btn('Ver el trámite «Actualización de proyecto»', { icon: 'route', onclick: function () { location.hash = '#/t/TRM-028'; } }),
+            UI.btn('Ver el paso «Actualización de proyecto»', { icon: 'route', onclick: function () { location.hash = '#/t/TRM-028'; } }),
             UI.btn('Guardar el acta o la respuesta de CORFO', { icon: 'file', onclick: function () { location.hash = '#/h/documentos'; } }))));
       }
 
