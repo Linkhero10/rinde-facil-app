@@ -152,7 +152,7 @@ test('si el documento no separa administración: advertencia y proyecto automát
   ]);
   const m = P.extractFromStructure(s);
   assert.equal(m.projects.length, 2, 'proyecto y administración por defecto');
-  assert.equal(m.projects[1].budgetApproved.administracion, 0);
+  assert.equal(m.projects[1].budgetApproved.administracion, null, 'sin dato: no se muestra como cero'); assert.equal(m.projects[1].sinMonto, true);
   assert.match(m.warnings.join(' | '), /no separa gastos de administración/);
 });
 

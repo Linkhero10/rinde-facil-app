@@ -173,3 +173,15 @@ test('D1: el presupuesto de administración corregido en el PEA general sobreviv
   const migrado = RF.store.migrate(JSON.parse(JSON.stringify(RF.store.get())));
   assert.equal(admins(migrado)[0].budgetApproved.administracion, 800);
 });
+
+test('D1: un PEA sin monto de administración no borra el presupuesto que la comunidad ya tenía', () => {
+  const RF = app();
+  const existente = RF.store.newProject('Gastos administrativos');
+  existente.tipo = 'administracion';
+  existente.budgetApproved.administracion = 700;
+  const estado = { community: {}, projects: [existente] };
+  const modelo = { projects: [{ name: 'Gastos administrativos', tipo: 'administracion', budgetApproved: { administracion: null }, sinMonto: true, budgetLines: [], gantt: { stages: [] } }] };
+  const s = RF.pea.applyToState(estado, modelo);
+  assert.equal(admins(s).length, 1);
+  assert.equal(admins(s)[0].budgetApproved.administracion, 700);
+});

@@ -807,9 +807,12 @@
       budgetApproved: { rrhh: 0, operacion: 0, inversion: 0, administracion: monto },
       budgetLines: [], gantt: { stages: [] }, peaDatos: [],
       fuentes: { aia30: null, aia70: null, otras: null },
-      source: hay ? base + 'consolidados de costos' : base + 'tabla de antecedentes'
+      source: hay ? base + 'consolidados de costos' : base + 'tabla de antecedentes',
+      tipo: 'administracion', auto: true,
+      /* sin monto leído: no se fija presupuesto y al aplicar el PEA no se sobrescribe el que ya tuviera la comunidad */
+      sinMonto: monto == null
     };
-    return RF.store.ensureAdminProject({ projects: [admin] }, monto == null ? 0 : monto);
+    return admin;
   }
 
   /* lo que leen las tablas del Word frente a lo que lee su texto: sólo avisa cuando ambos traen valor y no coinciden */

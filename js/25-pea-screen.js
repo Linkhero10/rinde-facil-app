@@ -159,7 +159,7 @@
     });
 
     var admin = (m.projects || []).filter(function (x) { return x && esAdmin(x); })[0];
-    var monto = admin && admin.budgetApproved && admin.budgetApproved.administracion;
+    var monto = admin && !admin.sinMonto && admin.budgetApproved ? admin.budgetApproved.administracion : undefined;
     RF.store.ensureAdminProject(s, monto == null ? undefined : monto, function (name) { return makeProject(name, opts); });
     return s;
   };
