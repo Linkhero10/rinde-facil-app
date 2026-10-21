@@ -116,7 +116,9 @@
     } }, name.node, p1.node, hints.node, p2.node, err, h('button', { type: 'submit', class: 'btn primary big' }, legacy ? 'Proteger mis datos' : 'Crear cuenta'));
     return shell(legacy ? 'Protege los datos de tu comunidad' : 'Crea la cuenta de tu comunidad',
       legacy ? 'Tus datos de antes se van a guardar cifrados con una contraseña. Elige una que puedas recordar; sin ella nadie podrá abrirlos, ni siquiera nosotros.' : 'La contraseña protege lo que guardas en este equipo: gastos, fotos y documentos. Nadie más puede abrirlo sin ella.',
-      [form, h('p', { class: 'hint' }, 'Los datos se guardan cifrados en este equipo y, si conectas el servicio de tu comunidad, en el Drive de tu comunidad.')]);
+      [form, h('p', { class: 'hint' }, 'Los datos se guardan cifrados en este equipo y, si conectas el servicio de tu comunidad, en el Drive de tu comunidad.'),
+        legacy ? null : h('p', { class: 'hint' }, 'Si ya creaste la cuenta de tu comunidad en otro navegador o equipo, esa cuenta no aparece aquí: cada equipo guarda la suya. Para no duplicarla, usa el equipo donde la creaste.'),
+        legacy ? null : h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('device'); } }, 'Iniciar sesión (ya tengo la cuenta de mi comunidad)')]);
   }
 
   /* ---------- entrar ---------- */
@@ -128,14 +130,21 @@
     var name = textField('Comunidad', { value: device ? '' : (m.display || '') });
     var pw = passField('Contraseña');
     var err = errBox();
+    /* sin servicio aprobado no hay de dónde traer la cuenta: se dice antes de pedir la contraseña, no después */
+    var sinServicio = device && !approvedList().length;
     var form = h('form', { class: 'auth-form', onsubmit: function (ev) {
       ev.preventDefault(); showErr(err, '');
+      if (sinServicio) return showErr(err, 'Esta versión no tiene un servicio aprobado para traer la cuenta desde otro equipo. Crea la cuenta de tu comunidad en este equipo.');
       var job = device ? A.connectDevice(approvedList()[0], name.input.value, pw.input.value) : A.unlock(name.input.value, pw.input.value);
       work(job, device ? 'Conectando…' : 'Abriendo…').catch(function (e) { showErr(err, device && RF.cloud && RF.cloud.humanError ? RF.cloud.humanError(e) : e.message, e); pw.input.value = ''; pw.input.focus(); });
     } }, name.node, pw.node, err, h('button', { type: 'submit', class: 'btn primary big' }, 'Entrar'));
     setTimeout(function () { (name.input.value ? pw.input : name.input).focus(); }, 30);
-    return shell('Entra a Rinde Fácil', reason === 'inactividad' ? 'La sesión se cerró porque estuvo un rato sin usarse. Tus datos siguen guardados.' : 'Escribe el nombre de tu comunidad y tu contraseña.',
-      [form, device ? null : h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('recover'); } }, 'Olvidé mi contraseña')]);
+    if (!device) return shell('Entra a Rinde Fácil', reason === 'inactividad' ? 'La sesión se cerró porque estuvo un rato sin usarse. Tus datos siguen guardados.' : 'Escribe el nombre de tu comunidad y tu contraseña.',
+      [form, h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto('recover'); } }, 'Olvidé mi contraseña')]);
+    return shell('Inicia sesión', 'Usa el nombre de tu comunidad y la contraseña que tenías en el otro equipo.',
+      [sinServicio ? h('p', { class: 'hint' }, 'Esta versión no tiene un servicio aprobado, así que no puede traer tu cuenta desde otro equipo. Por ahora, crea la cuenta de tu comunidad en este equipo.') : null,
+        form,
+        h('button', { type: 'button', class: 'linklike', onclick: function () { A.goto(''); } }, 'Crear la cuenta de tu comunidad en este equipo')]);
   }
 
   /* ---------- recuperar ---------- */
@@ -180,7 +189,7 @@
     if (view === 'recover' && phase === 'locked') return recoverScreen();
     if (view === 'lock' && phase === 'locked') return lockScreen(A.reason());
     if (phase === 'locked') return lockScreen(A.reason());
-    if (phase === 'none' && approvedList().length) return lockScreen('', true); /* equipo nuevo: entra con su usuario y contraseña */
+    if (phase === 'none' && view === 'device') return lockScreen('', true); /* equipo nuevo: iniciar sesión con una cuenta que ya existe */
     return createScreen(phase === 'legacy' ? V.legacyState() : null, function (r) { view = 'recovery'; arg = r.recoveryCode; RF.app.render(); });
   }
   A.goto = function (v, a) { view = v; arg = a || null; RF.app.render(); };

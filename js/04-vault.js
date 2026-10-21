@@ -47,10 +47,12 @@
     return C.encJson(dek.key || dek, state, 'state').then(function (enc) { meta.state = enc; meta.savedAt = new Date().toISOString(); writeMeta(meta); });
   }
 
-  /* crea la bóveda con el estado inicial (o el que había sin cifrar) y la deja abierta */
+  /* crea la bóveda con el estado inicial (o el que había sin cifrar) y la deja abierta.
+     Si ya hay una bóveda en este equipo no se reemplaza: otra pestaña pudo haberla creado mientras esta mostraba la pantalla de crear */
   function create(user, password, initialState, opts) {
     var problems = C.passwordProblems(password, user);
     if (problems.length && !(opts && opts.skipPolicy)) return Promise.reject(Object.assign(fail('POLITICA', problems[0]), { problems: problems }));
+    if (readMeta()) return Promise.reject(fail('YA_EXISTE', 'Ya hay una cuenta en este equipo. Entra con ella; no se creó otra.'));
     var it = (opts && opts.iterations) || C.ITERATIONS;
     return buildMeta(user, password, it, opts).then(function (b) {
       return put(b.meta, b.dek, initialState).then(function () {
