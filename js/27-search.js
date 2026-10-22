@@ -98,8 +98,7 @@
     presupuesto: ['Líneas por cuenta', 'Recursos humanos', 'Gastos operacionales', 'Inversión', 'Administración', 'Presupuesto aprobado', 'Supera lo aprobado', 'Copiar para SGP'],
     pea: ['Programa de Ejecución de Actividades', 'PEA General', 'PEA por proyecto', 'Administración', 'Todo el PEA en un solo documento'],
     reitem: ['Actualización de proyecto', 'Reitemización', 'Mover plata entre cuentas', 'Motivo del cambio', 'Cambio de presupuesto', 'Cambio de actividades', 'Cambio de plazos'],
-    cotizaciones: ['Cotizaciones', 'Cuadro comparativo', 'Sobre $10.000.000 netos', 'Dos proveedores distintos', 'Autorización previa de CORFO', 'Servicio técnico-profesional'],
-    gastos: ['Subir foto o PDF', 'Sacar foto al comprobante', 'Anotar a mano', 'Leer con la nube (OCR)', 'Boleta', 'Factura', 'Boleta de honorarios', 'Monto neto', 'IVA', 'Total del documento', 'Monto a rendir', 'Glosa', 'Viático', 'Pago en efectivo', 'Comparé cada dato con el documento original', 'Rendición en formato SGP', 'Carpeta de respaldos por gasto', 'Gastos por cuenta', 'Proveedor', 'RUT del proveedor', 'Número (folio)', 'Foto del comprobante'],
+    gastos: ['Segunda cotización', 'Cotizaciones de proveedores distintos y no relacionados', 'Autorización previa de CORFO', 'Servicio técnico-profesional', 'Sobre $10.000.000 netos', 'Subir foto o PDF', 'Sacar foto al comprobante', 'Anotar a mano', 'Leer con la nube (OCR)', 'Boleta', 'Factura', 'Boleta de honorarios', 'Monto neto', 'IVA', 'Total del documento', 'Monto a rendir', 'Glosa', 'Viático', 'Pago en efectivo', 'Comparé cada dato con el documento original', 'Rendición en formato SGP', 'Carpeta de respaldos por gasto', 'Gastos por cuenta', 'Proveedor', 'RUT del proveedor', 'Número (folio)', 'Foto del comprobante'],
     revision: ['Cuadre entre trámites', 'Qué falta', 'Arreglar', 'Diferencias entre anexos y gastos', 'Fases saltadas', 'Si los números cuadran'],
     resumen: ['Resumen por cuentas', 'Rendido y presupuestado', 'Totales por cuenta'],
     observaciones: ['Observaciones de CORFO', '10 días hábiles', 'Aclarar las observaciones', 'Plazo para responder', 'Por única vez'],
@@ -120,7 +119,7 @@
     nube: ['Dirección del servicio', 'Código de instalación', 'Crear la cuenta del servicio', 'Combinar las copias', 'Probar conexión', 'Guardar copia en la nube', 'Traer la copia de la nube', 'Carpeta Rinde fácil en tu Drive', 'Descargar copia', 'Cargar una copia', 'Borrar todo', 'Google Drive', 'Google Cloud Vision', 'Lectura automática de fotos']
   };
   var REGLAS = [
-    { t: 'Cotizaciones: sobre $10.000.000 netos se piden 2 cotizaciones de proveedores distintos', d: 'Manual, p. 8. Salvo servicios técnico-profesionales; requiere autorización previa de CORFO.', tool: 'cotizaciones' },
+    { t: 'Segunda cotización dentro del gasto: sobre $10.000.000 netos se piden 2 cotizaciones de proveedores distintos', d: 'Manual, p. 8. Salvo servicios técnico-profesionales; requiere autorización previa de CORFO.', tool: 'gastos' },
     { t: 'Gastos de administración: hasta $3.000.000 al mes', d: 'Manual, p. 20. Los gastos compartidos se reparten con el Anexo 5.', tool: 'cuentas' },
     { t: 'Glosa del gasto: máximo 200 caracteres', d: 'SGP no acepta más. La app avisa al llegar a 180.', tool: 'gastos' },
     { t: 'Calculadora de plazos', d: 'Calcula cuánto tiempo te queda para entregar cada documento.', tool: 'plazos' },
@@ -217,7 +216,8 @@
       items.push({ kind: 'Tus datos', title: p.name || 'Proyecto sin nombre', path: ['Tus datos', 'Proyectos'], fields: [{ text: strings({ code: p.code, notes: p.notes }) }], href: '#/h/proyecto', open: open });
       (p.expenses || []).forEach(function (e) {
         var t = (e.proveedor || 'Gasto sin proveedor') + (e.folio ? ' N° ' + e.folio : '');
-        var fields = [{ text: e.glosa || '', label: 'Glosa' }, { text: e.nombreComercial || '', label: 'Local' }, { text: e.item || '', label: 'Ítem' }, { text: e.rutProveedor || '', label: 'RUT' }, { text: e.fecha || '', label: 'Fecha' }, { text: String(e.total || '') + ' ' + (e.total ? U.fmtCLP(e.total) : ''), label: 'Total' }, { text: (RF.data.DOC_BY_ID[e.docType] || {}).name || '', label: 'Documento' }];
+        var ofertas = RF.logic.cotizacionesGasto(e, p).map(function (cq) { return strings(cq, 400) + ' ' + (cq.cots || []).map(function (x) { return strings(x, 300); }).join(' '); }).join(' ');
+        var fields = [{ text: strings(e.segundaCotizacion || {}, 400) + ' ' + ofertas, label: 'Segunda cotización' }, { text: e.glosa || '', label: 'Glosa' }, { text: e.nombreComercial || '', label: 'Local' }, { text: e.item || '', label: 'Ítem' }, { text: e.rutProveedor || '', label: 'RUT' }, { text: e.fecha || '', label: 'Fecha' }, { text: String(e.total || '') + ' ' + (e.total ? U.fmtCLP(e.total) : ''), label: 'Total' }, { text: (RF.data.DOC_BY_ID[e.docType] || {}).name || '', label: 'Documento' }];
         items.push({ kind: 'Tu gasto', title: t, path: base.concat(['Gastos y rendición']), fields: fields, href: '#/h/gastos', open: function () { open(); if (RF.app) RF.app.pendingEdit = e.id; } });
       });
       var acts = []; try { acts = RF.logic.allActivities(p) || []; } catch (er) { acts = []; }
@@ -225,7 +225,6 @@
       var gen = function (arr, kind, sub, tool) { (arr || []).forEach(function (o) { var t = o.name || o.proveedor || o.title || o.nombre || o.texto || o.item || o.motivo || ''; var txt = strings(o, 400); if (t || txt) items.push({ kind: kind, title: String(t || txt).slice(0, 80), path: base.concat([sub]), fields: [{ text: txt }], href: '#/h/' + tool, open: open }); }); };
       gen(p.budgetLines, 'Tu presupuesto', 'Presupuesto', 'presupuesto');
       gen(p.observations, 'Tu observación', 'Observaciones', 'observaciones');
-      gen(p.cotizaciones, 'Tu cotización', 'Cotizaciones', 'cotizaciones');
     });
     return items;
   }

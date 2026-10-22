@@ -1,4 +1,4 @@
-/* Rinde Fácil — herramientas de planificación: proyecto, Carta Gantt, presupuesto, PEA, cambios, cotizaciones y ayudas. */
+/* Rinde Fácil — herramientas de planificación: proyecto, Carta Gantt, presupuesto, PEA, cambios y ayudas. */
 (function (root) {
   'use strict';
   var RF = root.RF = root.RF || {};
@@ -135,7 +135,7 @@
   function budgetDoc(project, community) {
     var lines = project.budgetLines || [], totals = L.totalsByCuenta(project);
     var rows = lines.map(function (l) { var a = L.allActivities(project).filter(function (x) { return x.act.id === l.actId; })[0]; return [D.CUENTA_BY_ID[l.cuenta] ? D.CUENTA_BY_ID[l.cuenta].name : '', l.item, l.glosa, a ? a.act.name : '', num(l.monto)]; });
-    var pivot = D.CUENTAS.map(function (cu) { var corfo = 0, propio = 0; lines.forEach(function (l) { if (l.cuenta === cu.id) { if (l.fuente === 'propio') propio += num(l.monto); else corfo += num(l.monto); } }); return [cu.name, corfo + propio, totals[cu.id].aprobado]; });
+    var pivot = D.CUENTAS.filter(function (cu) { return cu.id !== 'administracion' || RF.store.esAdmin(project); }).map(function (cu) { var corfo = 0, propio = 0; lines.forEach(function (l) { if (l.cuenta === cu.id) { if (l.fuente === 'propio') propio += num(l.monto); else corfo += num(l.monto); } }); return [cu.name, corfo + propio, totals[cu.id].aprobado]; });
     return { title: 'Presupuesto por cuenta', subtitle: (project.name || 'Proyecto') + (project.code ? ' · ' + project.code : ''), sheet: 'Presupuesto', footer: 'Generado con Rinde Fácil. Sirve para cargar la «Vista Pivot de Presupuesto» en SGP o para el PEA.', blocks: [
       { t: 'h', text: 'Detalle' }, { t: 'table', head: ['Cuenta', 'Ítem', 'Glosa', 'Actividad', 'Monto ($)'], types: ['text', 'text', 'text', 'text', 'money'], rows: rows, foot: ['Total', '', '', '', 'SUM'] },
       { t: 'h', text: 'Resumen por cuenta' }, { t: 'table', head: ['Cuenta', 'Total presupuestado ($)', 'Aprobado por CORFO ($)'], types: ['text', 'money', 'money'], rows: pivot, foot: ['Total', 'SUM', 'SUM'] }
@@ -147,7 +147,7 @@
     function paintSummary() {
       U.clear(sum);
       var t = L.totalsByCuenta(p), months = U.monthsRange(p.start, p.end).length || 0;
-      var rows = D.CUENTAS.map(function (cu) {
+      var rows = D.CUENTAS.filter(function (cu) { return cu.id !== 'administracion' || RF.store.esAdmin(p); }).map(function (cu) {
         var x = t[cu.id]; var over = x.aprobado > 0 && x.corfo > x.aprobado;
         return h('tr', { class: over ? 'row-bad' : '' }, h('th', { scope: 'row' }, cu.name), h('td', { class: 'r' }, U.fmtCLP(x.presupuestado)), h('td', { class: 'r' }, x.aprobado ? U.fmtCLP(x.aprobado) : '—'), h('td', { class: 'r' }, x.aprobado ? U.fmtCLP(x.aprobado - x.corfo) : '—'));
       });
@@ -163,7 +163,7 @@
       var tb = h('tbody');
       p.budgetLines.forEach(function (l, i) {
         tb.appendChild(h('tr', null,
-          h('td', { 'data-label': 'Cuenta' }, UI.bind(l, 'cuenta', { type: 'select', options: D.CUENTAS.map(function (x) { return { id: x.id, name: x.name }; }), aria: 'Cuenta', onChange: paintSummary })),
+          h('td', { 'data-label': 'Cuenta' }, UI.bind(l, 'cuenta', { type: 'select', options: D.CUENTAS.filter(function (x) { return x.id !== 'administracion' || RF.store.esAdmin(p); }).map(function (x) { return { id: x.id, name: x.name }; }), aria: 'Cuenta', onChange: paintSummary })),
           h('td', { 'data-label': 'Ítem' }, UI.bind(l, 'item', { type: 'text', ph: 'Ej: Materiales', aria: 'Ítem' })),
           h('td', { 'data-label': 'Glosa' }, (function () { var gi = UI.bind(l, 'glosa', { type: 'text', ph: 'Qué es y para qué', max: 200, aria: 'Glosa' }), cnt = h('small', { class: 'muted' }, String((l.glosa || '').length) + ' / 200'); gi.addEventListener('input', function () { cnt.textContent = gi.value.length + ' / 200' + (gi.value.length >= 200 ? ' · llegaste al máximo' : ''); }); return [gi, cnt]; })()),
           h('td', { 'data-label': 'Actividad' }, UI.bind(l, 'actId', { type: 'select', noEmpty: true, options: acts, aria: 'Actividad' })),
@@ -202,7 +202,7 @@
     var c = ctx(), p = c.project;
     var esAdmin = function (x) { return RF.store.esAdmin(x); };
     /* Tras registrar la rendición de administración, el proyecto activo puede ser ese: el PEA parte de un proyecto real. */
-    if (p && esAdmin(p)) { var primero = c.state.projects.filter(function (x) { return !esAdmin(x); })[0]; p = primero || null; if (primero) { c.project = primero; RF.store.update(function (s) { s.activeProjectId = primero.id; }, { silent: true }); } }
+    if (p && esAdmin(p)) { var primero = c.state.projects.filter(function (x) { return !esAdmin(x); })[0]; p = primero || p; if (primero) { c.project = primero; RF.store.update(function (s) { s.activeProjectId = primero.id; }, { silent: true }); } }
     if (!p) return page('PEA', '', needProject(c));
     var root = h('div'), tabs = h('div', { class: 'chips', role: 'tablist', 'aria-label': 'PEA' }), content = h('div', { role: 'tabpanel', id: 'pea-panel' });
     var selected = 'general';
@@ -298,95 +298,6 @@
     return page('Cambios al PEA', 'Si necesitas mover plata entre cuentas o cambiar fechas, se pide antes de gastar.', root);
   } };
 
-  /* estado de una compra respecto de las cotizaciones; lo usan la pantalla y el documento */
-  function cotStatus(cq) {
-    var neto = num(cq.neto);
-    if (neto <= D.REGLAS.COTIZACION_UMBRAL) return { kind: 'info', msg: 'No llega a $10.000.000 netos: no se exigen 2 cotizaciones, pero guarda el respaldo del precio.' };
-    if (cq.servicioTecnico) return { kind: 'ok', msg: 'Servicio técnico-profesional: no se exigen cotizaciones.' };
-    if (L.cotizacionOk(cq)) return { kind: 'ok', msg: 'Cumple: 2 o más proveedores distintos.' };
-    if (cq.autorizacion) return { kind: 'ok', msg: 'Tienes autorización previa de CORFO para comprar con menos cotizaciones.' };
-    return { kind: 'bad', msg: 'Faltan cotizaciones: necesitas 2 proveedores distintos o la autorización previa de CORFO.' };
-  }
-  function cotDoc(p) {
-
-      var blocks = [];
-      p.cotizaciones.forEach(function (cq, i) { blocks.push({ t: 'h', text: (i + 1) + '. ' + (cq.descripcion || 'Compra') + ' · neto ' + U.fmtCLP(num(cq.neto)) }); blocks.push({ t: 'table', head: ['Proveedor', 'Monto neto ($)', 'Fecha'], types: ['text', 'money', 'date'], rows: (cq.cots || []).map(function (x) { return [x.proveedor, num(x.monto), x.fecha]; }) }); blocks.push({ t: 'p', text: 'Elección y motivo: ' + (cq.justificacion || '') + ' · ' + cotStatus(cq).msg }); });
-      return { title: 'Cuadro comparativo de cotizaciones', subtitle: p.name, sheet: 'Cotizaciones', footer: 'Generado con Rinde Fácil. Guárdalo en el expediente junto con las cotizaciones originales.', blocks: blocks };
-    
-  }
-
-  /* ================= Cotizaciones ================= */
-  TOOLS.cotizaciones = { title: 'Cotizaciones', icon: 'scale', desc: 'Compara cotizaciones. Sobre $10 M netos se piden 2 de proveedores distintos.', render: function () {
-    var c = ctx(), p = c.project; if (!p) return page('Cotizaciones', '', needProject(c));
-    var root = h('div'), body = h('div');
-    function paint() {
-      U.clear(body);
-      if (!p.cotizaciones.length) body.appendChild(UI.empty('Aún no registras compras grandes. Agrega la primera.'));
-      p.cotizaciones.forEach(function (cq, i) {
-        if (!Array.isArray(cq.cots)) cq.cots = [{}, {}];
-        var st = h('div'); var refreshSt = function () { U.clear(st); var s = cotStatus(cq); st.appendChild(UI.callout(s.kind, '', s.msg)); };
-        /* el «?» va pegado al final del texto de la casilla */
-        var autoField = UI.field('Tengo autorización previa de CORFO', cq, 'autorizacion', { type: 'check', onChange: refreshSt });
-        autoField.querySelector('span').appendChild(UI.tip('Es el visto bueno de CORFO, por escrito, para comprar con una sola cotización o con ninguna. Si no lo tienes guardado en tu expediente, no lo tienes: pídelo antes de comprar con «Consultar una duda a CORFO».', 'Cómo saber si tengo la autorización'));
-        var otro = h('div'); function paintOtro() { U.clear(otro); if (cq.gastoId === '__otro') otro.appendChild(h('p', { class: 'hint' }, 'Anota ese gasto en «Gastos y rendición» y vuelve a elegirlo aquí. ', h('a', { href: '#/h/gastos' }, 'Ir a anotar el gasto'))); else if (!cq.gastoId) otro.appendChild(h('p', { class: 'hint' }, 'Puedes dejar las cotizaciones anotadas y elegir después. Cuando anotes la boleta o factura del proveedor que elegiste, se vincula sola.')); }
-        var elegidoSel = h('select', { 'aria-label': 'Proveedor elegido' }), netoField, gastoSel;
-        /* las opciones salen de los nombres que escribes, al instante */
-        function names() { var seen = {}, out = []; (cq.cots || []).forEach(function (x) { var n = String(x.proveedor || '').trim(); if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = true; out.push(n); } }); return out; }
-        function fillElegido() {
-          var list = names(), cur = cq.elegido || '';
-          U.clear(elegidoSel);
-          elegidoSel.appendChild(h('option', { value: '' }, 'Todavía no decido'));
-          list.forEach(function (n) { elegidoSel.appendChild(h('option', { value: n }, n)); });
-          if (cur && list.map(function (n) { return n.toLowerCase(); }).indexOf(cur.toLowerCase()) < 0) { cq.elegido = ''; cur = ''; }
-          elegidoSel.value = cur;
-        }
-        function montoDe(name) { var m = 0; (cq.cots || []).forEach(function (x) { if (String(x.proveedor || '').trim().toLowerCase() === String(name || '').trim().toLowerCase() && num(x.monto) > 0) m = num(x.monto); }); return m; }
-        function matchGasto(name) { var hit = null; (p.expenses || []).forEach(function (e) { if (!hit && name && String(e.proveedor || '').trim().toLowerCase() === String(name).trim().toLowerCase()) hit = e; }); return hit; }
-        /* al elegir proveedor se rellenan el monto neto de la compra y el gasto al que corresponde */
-        function applyElegido(userPick) {
-          var name = cq.elegido || '', m = montoDe(name);
-          if (m) { cq.neto = m; if (netoField) netoField.value = U.fmtNum(m); }
-          if (userPick && name) { var g = matchGasto(name); if (g) { cq.gastoId = g.id; if (gastoSel) gastoSel.value = g.id; } }
-          RF.store.update(function () { }, { silent: true }); refreshSt(); paintOtro();
-        }
-        elegidoSel.addEventListener('change', function () { cq.elegido = elegidoSel.value; applyElegido(true); });
-        var rows = h('tbody');
-        cq.cots.forEach(function (x, j) {
-          rows.appendChild(h('tr', null,
-            h('td', { 'data-label': 'Proveedor' }, UI.bind(x, 'proveedor', { type: 'text', aria: 'Proveedor', onChange: function () { fillElegido(); if (cq.elegido) applyElegido(false); refreshSt(); } })),
-            h('td', { 'data-label': 'Monto neto' }, UI.bind(x, 'monto', { type: 'money', aria: 'Monto', onChange: function () { if (cq.elegido && String(x.proveedor || '').trim().toLowerCase() === cq.elegido.toLowerCase()) applyElegido(false); refreshSt(); } })),
-            h('td', { 'data-label': 'Fecha' }, UI.bind(x, 'fecha', { type: 'date', aria: 'Fecha' })),
-            h('td', { class: 'act' }, h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar cotización', onclick: function () { cq.cots.splice(j, 1); RF.store.update(function () { }, { silent: true }); paint(); } }, UI.icon('trash', 18)))));
-        });
-        var expOpts = [{ id: '', name: 'Todavía no compro: estoy comparando' }, { id: '__otro', name: 'Otro gasto que aún no anoté' }].concat(p.expenses.map(function (e) { return { id: e.id, name: (e.proveedor || 'Sin proveedor') + ' · ' + (e.folio || 's/n') + ' · ' + U.fmtCLP(e.total) }; }));
-        netoField = UI.bind(cq, 'neto', { type: 'money', aria: 'Monto neto de la compra', onChange: refreshSt });
-        gastoSel = UI.bind(cq, 'gastoId', { type: 'select', options: expOpts, noEmpty: true, aria: 'Gasto al que corresponde', onChange: function () { refreshSt(); paintOtro(); } });
-        body.appendChild(h('div', { class: 'stage-card' },
-          h('div', { class: 'stage-head' }, h('span', { class: 'stage-n' }, 'Compra ' + (i + 1)), UI.bind(cq, 'descripcion', { type: 'text', ph: 'Qué vas a comprar o contratar', aria: 'Descripción de la compra', onChange: function () { } }),
-            h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Quitar compra', onclick: function () { p.cotizaciones.splice(i, 1); RF.store.update(function () { }, { silent: true }); paint(); } }, UI.icon('trash', 18))),
-          h('h4', { class: 'cot-sub' }, 'Cotizaciones recibidas'),
-          h('div', { class: 'table-scroll' }, h('table', { class: 'edit-grid' }, h('thead', null, h('tr', null, ['Proveedor', 'Monto neto', 'Fecha', ''].map(function (x) { return h('th', null, x); }))), rows)),
-          UI.btn('Agregar cotización', { icon: 'plus', cls: 'ghost', onclick: function () { cq.cots.push({}); RF.store.update(function () { }, { silent: true }); paint(); } }),
-          h('h4', { class: 'cot-sub' }, 'Tu elección'),
-          h('div', { class: 'form-grid' },
-            UI.labelWrap('Proveedor elegido', elegidoSel, 'Al elegirlo se rellenan el monto de la compra y el gasto.'),
-            UI.labelWrap('Monto neto de la compra ($)', netoField, 'Se rellena solo con la cotización elegida.'),
-            h('div', { class: 'field' }, UI.labelWrap('Gasto al que corresponde', gastoSel), otro),
-            h('div', { class: 'checks wide' },
-              UI.field('Es servicio técnico-profesional (no pide cotizaciones)', cq, 'servicioTecnico', { type: 'check', onChange: refreshSt }),
-              autoField)),
-          UI.field('Por qué elegiste al proveedor', cq, 'justificacion', { type: 'textarea', rows: 2, cls: 'wide' }), st));
-        fillElegido(); refreshSt(); paintOtro();
-      });
-      body.appendChild(UI.btn('Agregar compra', { icon: 'plus', cls: 'primary', onclick: function () { p.cotizaciones.push({ id: U.uid('q'), descripcion: '', neto: '', cots: [{}, {}], gastoId: '' }); RF.store.update(function () { }, { silent: true }); paint(); } }));
-    }
-    paint();
-    root.appendChild(UI.callout('info', 'Regla (Manual p. 8):', ' Por encima del umbral, realiza las cotizaciones. Sobre $10.000.000 netos se piden al menos 2 cotizaciones de proveedores distintos y no relacionados, salvo servicios técnico-profesionales. Con una o ninguna, pide autorización a CORFO antes de comprar. No dividas la compra para evitar el umbral.'));
-    root.appendChild(UI.section('Tus compras', [body]));
-    root.appendChild(UI.section('Descargar el cuadro comparativo', [UI.exportBar(function () { return cotDoc(p); }, 'cotizaciones')]));
-    return page('Cotizaciones', 'Prueba que pagaste un precio de mercado.', root);
-  } };
-
   /* ================= Ayudas rápidas ================= */
   TOOLS.verificador = { title: '¿Entra este gasto en fecha?', icon: 'clock', desc: 'Escribe la fecha del gasto y te decimos si cae dentro de tus fechas.', render: function () {
     var c = ctx(), p = c.project; if (!p) return page('¿Entra este gasto en fecha?', '', needProject(c));
@@ -470,5 +381,5 @@
   formTool('peaGeneral', 'form', 'PEA · información general.', '');
   formTool('peaProyecto', 'form', 'PEA · un formulario por proyecto.', '');
 
-  RF.plan = { ganttDoc: ganttDoc, budgetDoc: budgetDoc, ganttMonths: ganttMonths, peaDoc: peaDoc, reitemDoc: reitemDoc, cotDoc: cotDoc };
+  RF.plan = { ganttDoc: ganttDoc, budgetDoc: budgetDoc, ganttMonths: ganttMonths, peaDoc: peaDoc, reitemDoc: reitemDoc };
 })(typeof window !== 'undefined' ? window : globalThis);

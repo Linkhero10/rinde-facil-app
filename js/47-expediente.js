@@ -19,7 +19,6 @@
       { id: 'plata', t: 'Plata por cuenta', n: D.CUENTAS.filter(function (c) { return num(p.budgetApproved && p.budgetApproved[c.id]) > 0; }).length, unit: 'cuentas con monto aprobado', done: true },
       { id: 'pea', t: 'PEA: Carta Gantt, presupuesto y formularios', n: L.allActivities(p).length + (p.budgetLines || []).length, unit: 'actividades y líneas', done: L.allActivities(p).length > 0 && (p.budgetLines || []).length > 0 },
       { id: 'gastos', t: 'Gastos y respaldos (escritos)', n: ex.length, unit: ex.length === 1 ? 'gasto' : 'gastos', done: ex.length > 0 },
-      { id: 'cot', t: 'Cotizaciones', n: (p.cotizaciones || []).length, unit: 'compras', done: true },
       { id: 'f29', t: 'Formulario 29 mes a mes', n: (p.f29 || []).length, unit: 'meses', done: true },
       { id: 'anexos', t: 'Anexos 1 a 5 y registro de viaje', n: ['anexo1', 'anexo2', 'anexo3', 'anexo4', 'anexo5', 'viaje'].reduce(function (a, k) { return a + forms(k); }, 0), unit: 'documentos', done: true },
       { id: 'informe', t: 'Informe técnico y fichas', n: forms('informe') + ['informeA', 'informeB', 'informeC', 'informeD', 'informeE'].reduce(function (a, k) { return a + forms(k); }, 0), unit: 'documentos', done: forms('informe') > 0 },
@@ -72,7 +71,7 @@
       rows: ex.map(function (e, i) { var cu = D.CUENTA_BY_ID[e.cuenta] || {}; return [i + 1, e.fecha, cu.name || '', ((D.DOC_BY_ID[e.docType] || {}).name || '') + (e.folio ? ' N° ' + e.folio : ''), e.proveedor, e.rutProveedor, num(e.neto), num(e.iva), num(e.total), num(e.montoRendir), (D.FORMAS_PAGO.filter(function (f) { return f.id === e.formaPago; })[0] || {}).name || e.formaPago || '', e.glosa]; }), foot: ['', '', '', '', '', 'TOTAL', 'SUM', 'SUM', 'SUM', 'SUM', '', ''] });
     var n = 5;
     var exp = safe(function () { return RF.rendicion.expedienteDoc(p, c); }); if (exp) { addDoc(n + '. Respaldos de cada gasto', exp); n++; }
-    if ((p.cotizaciones || []).length) { addDoc(n + '. Cotizaciones', safe(function () { return RF.plan.cotDoc(p); })); n++; }
+    blocks = blocks.concat(RF.rendicion.comparacionesGastos(ex, p, true));
     var f29 = L.f29Audit(p, c);
     if (f29.items.length) { H(n + '. Formulario 29 mes a mes'); n++; blocks.push({ t: 'table', pw: [10, 9, 18, 18, 22, 23], head: ['Mes', 'Facturas', 'IVA de las facturas ($)', 'Créditos del F29 ($)', 'Archivo', 'Resultado'], types: ['text', 'number', 'money', 'money', 'text', 'text'], rows: f29.items.map(function (it) { return [it.mes, it.n, it.iva, it.record && it.record.creditos !== '' && it.record.creditos != null ? num(it.record.creditos) : '', it.record && it.record.file ? it.record.file.name : '', it.msg]; }) }); }
     [['anexo1', 'Anexo 1 · Declaración por no utilización de IVA CF'], ['anexo2', 'Anexo 2 · IVA CF no relacionado con los proyectos'], ['anexo3', 'Anexo 3 · Declaraciones de pago en efectivo'], ['anexo4', 'Anexo 4 · Certificados de viático'], ['viaje', 'Registro de viajes'], ['anexo5', 'Anexo 5 · Memoria de cálculo de gastos de administración']].forEach(function (a) {

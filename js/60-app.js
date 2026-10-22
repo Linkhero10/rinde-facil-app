@@ -175,8 +175,20 @@
       start();
     });
   }
+  /* botón «Vista celular»: muestra la app con el ancho de un teléfono para revisarla desde el computador; al recargar vuelve a la vista normal */
+  function phoneToggle() {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'phone-view-btn'; b.textContent = 'Vista celular'; b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', function () {
+      var on = !document.documentElement.classList.contains('phone-view');
+      document.documentElement.classList.toggle('phone-view', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    document.body.appendChild(b);
+  }
   function start() {
     applyTheme();
+    phoneToggle();
     paintStorageStatus(RF.store.storageOk());
     RF.store.onStorageStatus(paintStorageStatus);
     var pending = null;

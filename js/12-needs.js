@@ -63,7 +63,6 @@
     pea: { kind: 'clave', text: 'Reúne la Carta Gantt, el presupuesto y los datos del proyecto en el documento que revisa CORFO.' },
     subirpea: { kind: 'clave', text: 'Sube el Word del proyecto para leer sus datos y guardar el archivo en el Drive. El presupuesto se completa desde el Excel.' },
     reitem: { kind: 'segun', text: 'Solo si necesitas cambiar montos o actividades de un PEA que CORFO ya aprobó.' },
-    cotizaciones: { kind: 'apoyo', text: 'Respaldo de la rendición (opcional). Puedes guardar las cotizaciones sin rellenar esta herramienta.' },
     gastos: { kind: 'clave', text: 'Aquí anotas cada gasto con su boleta o factura. Es lo que después se rinde.' },
     revision: { kind: 'clave', text: 'Antes de enviar la rendición, revisa que todo cuadre. Puedes usarla cuantas veces quieras.' },
     resumen: { kind: 'clave', text: 'Compara tus gastos con lo aprobado, cuenta por cuenta, antes de enviar.' },

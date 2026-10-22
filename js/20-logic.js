@@ -18,9 +18,30 @@
 
   /* Respaldos que ya se dan por cumplidos porque existe el anexo o las cotizaciones en la app */
   function cotizacionOk(c) {
-    var names = {};
-    (c.cots || []).forEach(function (x) { if (String(x.proveedor || '').trim() && num(x.monto) > 0) names[String(x.proveedor).trim().toLowerCase()] = true; });
+    var names = Object.create(null), ruts = Object.create(null);
+    if (c.noRelacionados === false) return false;
+    (c.cots || []).forEach(function (x) {
+      var name = String(x.proveedor || '').trim().toLowerCase(), rut = U.rutClean(x.rut || '').replace(/^0+/, '');
+      if (!name || !(num(x.monto) > 0) || names[name] || rut && ruts[rut]) return;
+      names[name] = true; if (rut) ruts[rut] = true;
+    });
     return Object.keys(names).length >= R.COTIZACIONES_MIN;
+  }
+  /* Lectura compatible: nunca se migra ni se modifica el registro histórico. */
+  function cotizacionesGasto(exp, project) {
+    return ((project && project.cotizaciones) || []).filter(function (c) {
+      return c.gastoId === exp.id || (!c.gastoId || c.gastoId === '__otro') && c.elegido && exp.proveedor && String(c.elegido).trim().toLowerCase() === String(exp.proveedor).trim().toLowerCase();
+    });
+  }
+  function cotizacionGasto(exp, project) {
+    var old = cotizacionesGasto(exp, project), second = exp.segundaCotizacion || {};
+    var servicio = !!exp.servicioTecnico || old.some(function (c) { return !!c.servicioTecnico; });
+    var autorizacion = !!(exp.has && exp.has.autorizacion) || old.some(function (c) { return !!c.autorizacion; });
+    var att = exp.attach && exp.attach.segundaCotizacion;
+    var nueva = !!(U.rutValid(second.rut || '') && second.noRelacionados === true && att && att.id && cotizacionOk({ noRelacionados: second.noRelacionados, cots: [
+      { proveedor: exp.proveedor, rut: exp.rutProveedor, monto: exp.neto }, second
+    ] }));
+    return { servicioTecnico: servicio, autorizacion: autorizacion, ok: servicio || autorizacion || nueva || old.some(cotizacionOk) };
   }
   function effectiveHas(exp, project) {
     var has = Object.assign({}, exp.has || {});
@@ -32,12 +53,9 @@
     }
     var mesGasto = String(exp.fecha || '').slice(0, 7);
     if (mesGasto && ((project && project.f29) || []).some(function (r) { return r.mes === mesGasto && (r.file || (r.creditos !== '' && r.creditos != null)); })) has.f29 = true;
-    ((project && project.cotizaciones) || []).forEach(function (c) {
-      var linked = c.gastoId === exp.id || (!c.gastoId || c.gastoId === '__otro') && c.elegido && exp.proveedor && String(c.elegido).trim().toLowerCase() === String(exp.proveedor).trim().toLowerCase();
-      if (!linked) return;
-      if (cotizacionOk(c)) has.cotizaciones = true;
-      if (c.autorizacion) has.autorizacion = true;
-    });
+    var cot = cotizacionGasto(exp, project);
+    has.cotizaciones = cot.ok;
+    if (cot.autorizacion) has.autorizacion = true;
     return has;
   }
 
@@ -53,7 +71,7 @@
     if (exp.formaPago === 'efectivo') need('anexo3', 'Pago en efectivo: declaración jurada simple (Manual p. 14).');
     if (exp.esViatico || exp.docType === 'certificado_viatico') need('anexo4', 'Los viáticos se acreditan con el certificado (Manual p. 15).');
     var netoN = num(exp.neto);
-    if (netoN > R.COTIZACION_UMBRAL && !exp.servicioTecnico) {
+    if (netoN > R.COTIZACION_UMBRAL && !cotizacionGasto(exp, project).servicioTecnico) {
       if (!has.autorizacion) need('cotizaciones', 'Sobre $10.000.000 netos se piden 2 cotizaciones (Manual p. 8).');
     }
     if (community && community.ivaModo === 'no_usa' && dt.iva) need('anexo1', 'No usas el IVA: declaración del Anexo 1 y Formularios 29 (Manual p. 7).');
@@ -279,7 +297,7 @@
   var AUTO = {
     pea_docs: function (p) { var g = forms(p, 'peaGeneral'); var ok1 = !!(g && g.data && g.data.comunidad), ok2 = listN(p, 'peaProyecto') > 0, ok3 = allActivities(p).length > 0, ok4 = (p.budgetLines || []).length > 0; return ok1 && ok2 && ok3 && ok4 ? ok('tienes la información general, ' + listN(p, 'peaProyecto') + ' formulario(s) de proyecto, la Carta Gantt y el presupuesto.') : no('Falta: ' + [!ok1 && 'información general', !ok2 && 'formulario de proyecto', !ok3 && 'Carta Gantt', !ok4 && 'presupuesto'].filter(Boolean).join(', ') + '.', 'pea'); },
     reitem_form: function (p) { return (p.reitem && ((p.reitem.rows || []).length || p.reitem.motivo)) ? ok('ya llenaste la solicitud de cambio.') : no('Llena la solicitud de cambio.', 'reitem'); },
-    cot_ok: function (p) { var big = (p.cotizaciones || []).filter(function (c) { return num(c.neto) > R.COTIZACION_UMBRAL; }); if (!big.length) return no('Todavía no registras compras sobre $10.000.000 con sus cotizaciones.', 'cotizaciones'); var bad = big.filter(function (c) { return !(c.servicioTecnico || c.autorizacion || cotizacionOk(c)); }); return bad.length ? no(bad.length + ' compra(s) grande(s) sin 2 cotizaciones ni autorización.', 'cotizaciones') : ok('las compras grandes tienen sus cotizaciones o su autorización.'); },
+    cot_ok: function (p) { var big = (p.expenses || []).filter(function (e) { return num(e.neto) > R.COTIZACION_UMBRAL; }); if (!big.length) return no('Todavía no registras gastos sobre $10.000.000 netos.', 'gastos'); var bad = big.filter(function (e) { return !cotizacionGasto(e, p).ok; }); return bad.length ? no(bad.length + ' gasto(s) grande(s) sin segunda cotización válida ni excepción. Completa el apartado del gasto.', 'gastos') : ok('los gastos grandes tienen su segunda cotización o su excepción.'); },
     resp_todos: function (p, c) { return respaldos(p, c, null, 'gastos'); },
     resp_rrhh: function (p, c) { return respaldos(p, c, ['rrhh'], 'gastos de recursos humanos'); },
     resp_inversion: function (p, c) { return respaldos(p, c, ['inversion'], 'compras de inversión'); },
@@ -556,7 +574,7 @@
   }
 
   RF.logic = {
-    expectedMontoRendir: expectedMontoRendir, requirements: requirements, evaluateExpense: evaluateExpense, effectiveHas: effectiveHas, cotizacionOk: cotizacionOk,
+    expectedMontoRendir: expectedMontoRendir, requirements: requirements, evaluateExpense: evaluateExpense, effectiveHas: effectiveHas, cotizacionOk: cotizacionOk, cotizacionesGasto: cotizacionesGasto, cotizacionGasto: cotizacionGasto,
     totalsByCuenta: totalsByCuenta, resumenPresupuesto: resumenPresupuesto, adminByMonth: adminByMonth, expensesByActivity: expensesByActivity, budgetByActivity: budgetByActivity,
     allActivities: allActivities, ganttIssues: ganttIssues, activityDays: activityDays, activityReferences: activityReferences, removeActivity: removeActivity, removeStage: removeStage,
     aclaracionDeadline: aclaracionDeadline,
