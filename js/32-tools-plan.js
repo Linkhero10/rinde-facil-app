@@ -135,7 +135,7 @@
   function budgetDoc(project, community) {
     var lines = project.budgetLines || [], totals = L.totalsByCuenta(project);
     var rows = lines.map(function (l) { var a = L.allActivities(project).filter(function (x) { return x.act.id === l.actId; })[0]; return [D.CUENTA_BY_ID[l.cuenta] ? D.CUENTA_BY_ID[l.cuenta].name : '', l.item, l.glosa, a ? a.act.name : '', num(l.monto)]; });
-    var pivot = D.CUENTAS.map(function (cu) { var corfo = 0, propio = 0; lines.forEach(function (l) { if (l.cuenta === cu.id) { if (l.fuente === 'propio') propio += num(l.monto); else corfo += num(l.monto); } }); return [cu.name, corfo + propio, totals[cu.id].aprobado]; });
+    var pivot = D.CUENTAS.filter(function (cu) { return cu.id !== 'administracion' || RF.store.esAdmin(project); }).map(function (cu) { var corfo = 0, propio = 0; lines.forEach(function (l) { if (l.cuenta === cu.id) { if (l.fuente === 'propio') propio += num(l.monto); else corfo += num(l.monto); } }); return [cu.name, corfo + propio, totals[cu.id].aprobado]; });
     return { title: 'Presupuesto por cuenta', subtitle: (project.name || 'Proyecto') + (project.code ? ' · ' + project.code : ''), sheet: 'Presupuesto', footer: 'Generado con Rinde Fácil. Sirve para cargar la «Vista Pivot de Presupuesto» en SGP o para el PEA.', blocks: [
       { t: 'h', text: 'Detalle' }, { t: 'table', head: ['Cuenta', 'Ítem', 'Glosa', 'Actividad', 'Monto ($)'], types: ['text', 'text', 'text', 'text', 'money'], rows: rows, foot: ['Total', '', '', '', 'SUM'] },
       { t: 'h', text: 'Resumen por cuenta' }, { t: 'table', head: ['Cuenta', 'Total presupuestado ($)', 'Aprobado por CORFO ($)'], types: ['text', 'money', 'money'], rows: pivot, foot: ['Total', 'SUM', 'SUM'] }
@@ -147,7 +147,7 @@
     function paintSummary() {
       U.clear(sum);
       var t = L.totalsByCuenta(p), months = U.monthsRange(p.start, p.end).length || 0;
-      var rows = D.CUENTAS.map(function (cu) {
+      var rows = D.CUENTAS.filter(function (cu) { return cu.id !== 'administracion' || RF.store.esAdmin(p); }).map(function (cu) {
         var x = t[cu.id]; var over = x.aprobado > 0 && x.corfo > x.aprobado;
         return h('tr', { class: over ? 'row-bad' : '' }, h('th', { scope: 'row' }, cu.name), h('td', { class: 'r' }, U.fmtCLP(x.presupuestado)), h('td', { class: 'r' }, x.aprobado ? U.fmtCLP(x.aprobado) : '—'), h('td', { class: 'r' }, x.aprobado ? U.fmtCLP(x.aprobado - x.corfo) : '—'));
       });
@@ -163,7 +163,7 @@
       var tb = h('tbody');
       p.budgetLines.forEach(function (l, i) {
         tb.appendChild(h('tr', null,
-          h('td', { 'data-label': 'Cuenta' }, UI.bind(l, 'cuenta', { type: 'select', options: D.CUENTAS.map(function (x) { return { id: x.id, name: x.name }; }), aria: 'Cuenta', onChange: paintSummary })),
+          h('td', { 'data-label': 'Cuenta' }, UI.bind(l, 'cuenta', { type: 'select', options: D.CUENTAS.filter(function (x) { return x.id !== 'administracion' || RF.store.esAdmin(p); }).map(function (x) { return { id: x.id, name: x.name }; }), aria: 'Cuenta', onChange: paintSummary })),
           h('td', { 'data-label': 'Ítem' }, UI.bind(l, 'item', { type: 'text', ph: 'Ej: Materiales', aria: 'Ítem' })),
           h('td', { 'data-label': 'Glosa' }, (function () { var gi = UI.bind(l, 'glosa', { type: 'text', ph: 'Qué es y para qué', max: 200, aria: 'Glosa' }), cnt = h('small', { class: 'muted' }, String((l.glosa || '').length) + ' / 200'); gi.addEventListener('input', function () { cnt.textContent = gi.value.length + ' / 200' + (gi.value.length >= 200 ? ' · llegaste al máximo' : ''); }); return [gi, cnt]; })()),
           h('td', { 'data-label': 'Actividad' }, UI.bind(l, 'actId', { type: 'select', noEmpty: true, options: acts, aria: 'Actividad' })),
@@ -202,7 +202,7 @@
     var c = ctx(), p = c.project;
     var esAdmin = function (x) { return RF.store.esAdmin(x); };
     /* Tras registrar la rendición de administración, el proyecto activo puede ser ese: el PEA parte de un proyecto real. */
-    if (p && esAdmin(p)) { var primero = c.state.projects.filter(function (x) { return !esAdmin(x); })[0]; p = primero || null; if (primero) { c.project = primero; RF.store.update(function (s) { s.activeProjectId = primero.id; }, { silent: true }); } }
+    if (p && esAdmin(p)) { var primero = c.state.projects.filter(function (x) { return !esAdmin(x); })[0]; p = primero || p; if (primero) { c.project = primero; RF.store.update(function (s) { s.activeProjectId = primero.id; }, { silent: true }); } }
     if (!p) return page('PEA', '', needProject(c));
     var root = h('div'), tabs = h('div', { class: 'chips', role: 'tablist', 'aria-label': 'PEA' }), content = h('div', { role: 'tabpanel', id: 'pea-panel' });
     var selected = 'general';
