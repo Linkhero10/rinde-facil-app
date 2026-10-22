@@ -21,14 +21,13 @@
 
   /* «Ver formato»: muestra cómo queda el documento, sin salir del trámite */
   RF.docs = {
-    hasPreview: function (tid) { return !!(RF.forms.SCHEMAS[tid] || { gantt: 1, presupuesto: 1, pea: 1, reitem: 1, cotizaciones: 1, informe: 1 }[tid]); },
+    hasPreview: function (tid) { return !!(RF.forms.SCHEMAS[tid] || { gantt: 1, presupuesto: 1, pea: 1, reitem: 1, informe: 1 }[tid]); },
     model: function (tid) {
       var ctx = RF.forms.ctxNow(), p = ctx.project; if (!p) return null;
       if (tid === 'gantt') return RF.plan.ganttDoc(p, ctx.community);
       if (tid === 'presupuesto') return RF.plan.budgetDoc(p, ctx.community);
       if (tid === 'pea') return RF.plan.peaDoc(p, ctx);
       if (tid === 'reitem') return RF.plan.reitemDoc(p, ctx);
-      if (tid === 'cotizaciones') return RF.plan.cotDoc(p);
       if (tid === 'informe') return RF.forms.informeCompleto(ctx);
       var sc = RF.forms.SCHEMAS[tid]; if (!sc) return null;
       if (sc.repeat) { var list = RF.forms.getList(p, tid); return list.length ? RF.forms.combinedDoc(tid, list, ctx) : RF.forms.docOf(tid, sc.defaults(ctx), ctx); }

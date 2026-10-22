@@ -62,11 +62,12 @@ test('campos PEA retirados, clasificación y formularios históricos conservados
   assert.doesNotMatch(view.textContent, /Plazo:|Resumen del plan|Sacar/);
 });
 
-test('necesidades no ofrece administración y las cotizaciones son respaldo opcional', () => {
+test('necesidades no ofrece administración ni una herramienta separada para la segunda cotización', () => {
   const RF = app(), t = RF.tramites.byId['TRM-006'];
   assert.equal(RF.needs.NEEDS.some(n => n.id === 'admin'), false);
   assert.equal(t.auto && t.auto[0], undefined);
-  assert.equal(RF.needs.TOOL_ROLE.cotizaciones.kind, 'apoyo');
+  assert.equal(RF.needs.TOOL_ROLE.cotizaciones, undefined);
+  assert.deepEqual(Array.from(t.stepTools[0]), ['gastos']);
   assert.match(RF.tools.necesidades.render().textContent, /La app te muestra los pasos que te tocan\. Lo puedes cambiar cuando quieras\./);
 });
 

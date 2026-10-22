@@ -61,7 +61,7 @@
     contrato_arriendo: 'Copia del contrato de arriendo',
     tasaciones: 'Dos tasaciones comerciales independientes',
     gravamenes: 'Certificado de hipotecas y gravámenes',
-    cotizaciones: 'Cotizaciones de 2 proveedores distintos',
+    cotizaciones: 'Segunda cotización de un proveedor distinto y no relacionado',
     autorizacion: 'Autorización previa de CORFO (una o ninguna cotización)',
     anexo1: 'Anexo 1 firmado (no uso de IVA CF)',
     anexo3: 'Anexo 3 firmado por quien recibió el efectivo',

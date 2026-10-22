@@ -13,7 +13,7 @@
 
   /* ---------- menú lateral ---------- */
   var TOOL_GROUPS = [
-    { id: 'G-plan', name: 'PEA', tools: ['necesidades', 'proyecto', 'gantt', 'presupuesto', 'pea', 'subirpea', 'reitem', 'cotizaciones'] },
+    { id: 'G-plan', name: 'PEA', tools: ['necesidades', 'proyecto', 'gantt', 'presupuesto', 'pea', 'subirpea', 'reitem'] },
     { id: 'G-rend', name: 'Rendir', tools: ['gastos', 'f29', 'revision', 'resumen', 'observaciones'] },
     { id: 'G-form', name: 'Anexos y formularios', tools: ['anexo1', 'anexo2', 'anexo3', 'anexo4', 'anexo5', 'informe', 'consulta', 'solicitud'] },
     { id: 'G-doc', name: 'Documentos y actas', tools: ['expediente', 'documentos', 'obras', 'actas', 'historial', 'compartir'] },
@@ -282,7 +282,7 @@
 
   /* ---------- trámite ---------- */
   /* botones bajo un paso que pide llenar un documento: «Rellenar» (por casillas) y «Ver formato» (cómo queda el documento) */
-  var FORMY = /^(anexo|informe|pea|gantt|presupuesto|cotizaciones|reitem|solicitud|consulta)/;
+  var FORMY = /^(anexo|informe|pea|gantt|presupuesto|reitem|solicitud|consulta)/;
   function stepDocs(tid, i, shown) {
     var tr = RF.tramites.byId[tid], optional = !!(tr && tr.opt && tr.opt[i]);
     var ids = (RF.needs.STEP_TOOLS[tid + ':' + i] || []).filter(function (x) { return optional || !shown[x]; }); if (!ids.length) return null;
@@ -291,7 +291,7 @@
     ids.forEach(function (x) {
       var tl = RF.tools[x]; if (!tl) return;
       kids.push(h('span', { class: 'sd' },
-        h('a', { class: 'btn small', href: '#/h/' + x + '?from=' + encodeURIComponent(tid) }, UI.icon(tl.icon || 'file', 14), x === 'cotizaciones' ? 'Respaldo de la rendición (opcional)' : (FORMY.test(x) ? 'Rellenar · ' : 'Abrir · ') + tl.title), (RF.needs.TOOL_ROLE[x] && RF.needs.TOOL_ROLE[x].kind === 'apoyo') ? h('span', { class: 'st-opt' }, 'Herramienta opcional') : null,
+        h('a', { class: 'btn small', href: '#/h/' + x + '?from=' + encodeURIComponent(tid) }, UI.icon(tl.icon || 'file', 14), (FORMY.test(x) ? 'Rellenar · ' : 'Abrir · ') + tl.title), (RF.needs.TOOL_ROLE[x] && RF.needs.TOOL_ROLE[x].kind === 'apoyo') ? h('span', { class: 'st-opt' }, 'Herramienta opcional') : null,
         RF.docs && RF.docs.hasPreview(x) ? UI.btn('Ver formato', { cls: 'ghost small', title: 'Mira cómo queda el documento', onclick: function () { RF.docs.preview(x); } }) : null));
     });
     return kids.length ? h('div', { class: 'step-docs' }, kids) : null;

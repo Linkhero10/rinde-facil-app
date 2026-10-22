@@ -26,6 +26,38 @@
   }
   function syncRendir(e, community) { if (!e._manualRendir && num(e.total) > 0) e.montoRendir = L.expectedMontoRendir(e, community); }
 
+  /* El comparativo es parte del gasto y de su rendición, sin documento separado. */
+  function comparacionHistorica(cq) {
+    return [
+      { t: 'p', text: 'Registro anterior: ' + (cq.descripcion || 'Compra') + ' · Neto: ' + U.fmtCLP(num(cq.neto)) + ' · Proveedor elegido: ' + (cq.elegido || 'Sin indicar') },
+      { t: 'table', head: ['Proveedor', 'RUT', 'Monto neto ($)', 'Fecha'], types: ['text', 'text', 'money', 'date'], rows: (cq.cots || []).map(function (x) { return [x.proveedor || '', x.rut || '', num(x.monto), x.fecha || '']; }) },
+      { t: 'p', text: 'Motivo de elección: ' + (cq.justificacion || 'Sin indicar') + (cq.servicioTecnico ? ' · Servicio técnico-profesional' : '') + (cq.autorizacion ? ' · Autorización previa de CORFO' : '') }
+    ];
+  }
+  function comparacionGasto(e, project) {
+    var old = L.cotizacionesGasto(e, project), second = e.segundaCotizacion, big = num(e.neto) > D.REGLAS.COTIZACION_UMBRAL;
+    if (!big && !second && !old.length) return [];
+    var state = L.cotizacionGasto(e, project), blocks = [{ t: 'h3', text: 'Comparación de proveedores · ' + (e.proveedor || 'Gasto') + ' · Documento ' + (e.folio || 's/n') }];
+    if (second) {
+      var att = e.attach && e.attach.segundaCotizacion;
+      blocks.push({ t: 'table', head: ['Proveedor', 'RUT', 'Monto neto ($)'], types: ['text', 'text', 'money'], rows: [[e.proveedor || '', e.rutProveedor || '', num(e.neto)], [second.proveedor || '', second.rut || '', num(second.monto)]] });
+      blocks.push({ t: 'p', text: 'Proveedores no relacionados: ' + (second.noRelacionados ? 'Declarado' : 'Sin confirmar') + ' · Respaldo alternativo: ' + (att ? att.name + (att.driveUrl ? ' · ' + att.driveUrl : '') : 'Pendiente') });
+    }
+    old.forEach(function (cq) { blocks = blocks.concat(comparacionHistorica(cq)); });
+    blocks.push({ t: 'p', text: (state.servicioTecnico ? 'Servicio técnico-profesional. ' : '') + (state.autorizacion ? 'Autorización previa de CORFO. ' : '') + (!big ? 'No exigida por el umbral actual.' : state.ok ? 'Comparación o excepción registrada.' : 'Pendiente: completa la segunda cotización o registra una excepción.') });
+    return blocks;
+  }
+  function comparacionesGastos(expenses, project, includeUnlinked) {
+    var blocks = [];
+    (expenses || []).forEach(function (e) { blocks = blocks.concat(comparacionGasto(e, project)); });
+    if (includeUnlinked) (project.cotizaciones || []).forEach(function (cq) {
+      if ((project.expenses || []).some(function (e) { return L.cotizacionesGasto(e, project).indexOf(cq) >= 0; })) return;
+      blocks.push({ t: 'h3', text: 'Comparación histórica sin gasto asociado' });
+      blocks = blocks.concat(comparacionHistorica(cq));
+    });
+    return blocks;
+  }
+
   /* ---------- rendición en formato SGP ---------- */
   function rendicionDoc(project, community) {
     var hasPeriod = project.periodoInicio || project.periodoFin;
@@ -42,7 +74,7 @@
     return { title: (bad ? 'BORRADOR · ' : '') + 'Rendición de gastos', subtitle: (project.name || '') + (project.code ? ' · ' + project.code : '') + (project.periodoInicio ? ' · período ' + U.fmtDateShort(project.periodoInicio) + ' al ' + U.fmtDateShort(project.periodoFin) : ''), sheet: 'Rendición', footer: 'Generado con Rinde Fácil. Sirve para ingresar cada gasto en SGP, uno a uno, con los datos exactos del documento.' + (bad ? ' ATENCIÓN: hay ' + bad + ' gasto(s) con errores; corrígelos antes de enviar.' : '') + ' ' + excluded + ' gasto(s) fuera del período o sin fecha excluidos; siguen guardados en el proyecto.', blocks: [
       { t: 'table', head: ['Proyecto', 'Cuenta', 'Fuente', 'Ítem', 'Período', 'Monto rendido ($)', 'Forma de pago', 'Tipo de documento', 'N° documento', 'RUT proveedor', 'Proveedor', 'Glosa', 'Estado'], types: ['text', 'text', 'text', 'text', 'date', 'money', 'text', 'text', 'text', 'text', 'text', 'text', 'text'], rows: rows, foot: ['Total', '', '', '', '', 'SUM', '', '', '', '', '', '', ''] },
       { t: 'p', text: excluded + ' gasto(s) fuera del período o sin fecha se excluyeron; siguen guardados en el proyecto.' }
-    ] };
+    ].concat(comparacionesGastos(selected, project, !hasPeriod)) };
   }
   function expedienteDoc(project, community) {
     var rows = (project.expenses || []).map(function (e, i) {
@@ -260,14 +292,81 @@
       var e = p.expenses.filter(function (x) { return x.id === st.editing; })[0];
       if (!e) { st.editing = null; paint(); return; }
       var issuesBox = h('div', { class: 'issues' }), reqBox = h('div'), calcBox = h('div');
+      var cotBox = h('div'), cotKey = null, cotStatus = h('div'), cotAttachment = h('div');
       function refresh() {
         if (!(e._manualRendir)) syncRendir(e, c.community);
         var r = L.evaluateExpense(e, p, c.community, p.expenses);
         U.clear(issuesBox);
         r.issues.forEach(function (i) { issuesBox.appendChild(UI.callout(i.level === 'error' ? 'bad' : i.level === 'warn' ? 'warn' : 'info', '', i.msg)); });
         paintReq(r);
+        paintCotizacion();
         var es = L.expectedMontoRendir(e, c.community); calcBox.textContent = num(e.total) > 0 ? 'Corresponde rendir: ' + U.fmtCLP(es) : '';
         silent();
+      }
+      function paintCotizacion() {
+        var big = num(e.neto) > D.REGLAS.COTIZACION_UMBRAL, old = L.cotizacionesGasto(e, p);
+        var key = String(big) + JSON.stringify(old);
+        if (key !== cotKey) {
+          cotKey = key; U.clear(cotBox);
+          if (big) {
+            e.segundaCotizacion = e.segundaCotizacion || {};
+            e.has = e.has || {};
+            var second = e.segundaCotizacion;
+            var auth = UI.field('Tengo autorización previa de CORFO', e.has, 'autorizacion', { type: 'check', onChange: refresh });
+            auth.querySelector('span').appendChild(UI.tip('Es el visto bueno de CORFO, por escrito, para comprar con una sola cotización o con ninguna. Pídelo antes de comprar y conserva la autorización en tu expediente.', 'Cómo saber si tengo la autorización'));
+            cotBox.appendChild(UI.section('Segunda cotización', [
+              h('p', { class: 'hint' }, 'Obligatoria sobre ' + U.fmtCLP(D.REGLAS.COTIZACION_UMBRAL) + ' netos. Las dos cotizaciones deben ser de proveedores distintos y no relacionados. El comprobante identifica al proveedor principal; registra aquí la oferta alternativa y su respaldo. Salvo servicio técnico-profesional o autorización previa de CORFO. No dividas la compra para evitar el umbral.'),
+              h('div', { class: 'form-grid' },
+                UI.field('Nombre del proveedor alternativo', second, 'proveedor', { type: 'text', onChange: refresh }),
+                UI.field('RUT del proveedor alternativo', second, 'rut', { type: 'rut', onChange: refresh }),
+                UI.field('Monto neto alternativo ($)', second, 'monto', { type: 'money', onChange: refresh })),
+              UI.field('Confirmo que los proveedores son distintos y no relacionados', second, 'noRelacionados', { type: 'check', onChange: refresh }),
+              cotAttachment,
+              h('div', { class: 'checks' }, UI.field('Es un servicio técnico-profesional', e, 'servicioTecnico', { type: 'check', onChange: refresh }), auth), cotStatus
+            ]));
+            paintCotAttachment();
+          }
+          if (old.length) {
+            var history = h('div', null, h('h4', null, 'Comparación guardada anteriormente'), h('p', { class: 'hint' }, 'Solo lectura. Se conserva el registro original y su vínculo al gasto; se aplica la regla con que fue guardado.'));
+            old.forEach(function (cq) { comparacionHistorica(cq).forEach(function (b) {
+              if (b.t === 'table') history.appendChild(h('div', { class: 'table-scroll' }, h('table', { class: 'plain-grid' }, h('thead', null, h('tr', null, b.head.map(function (v) { return h('th', null, v); }))), h('tbody', null, b.rows.map(function (row) { return h('tr', null, row.map(function (v, i) { return h('td', null, i === 2 ? U.fmtCLP(v) : v); })); })))));
+              else history.appendChild(h('p', null, b.text));
+            }); });
+            cotBox.appendChild(history);
+          }
+        }
+        U.clear(cotStatus);
+        if (big) { var state = L.cotizacionGasto(e, p); cotStatus.appendChild(UI.callout(state.ok ? 'ok' : 'bad', '', state.ok ? 'Segunda cotización o excepción registrada.' : 'Falta completar la oferta alternativa: nombre, RUT válido y distinto, monto neto positivo, respaldo y confirmación de proveedores no relacionados; o registra una excepción.')); }
+      }
+      function paintCotAttachment() {
+        U.clear(cotAttachment);
+        var att = e.attach && e.attach.segundaCotizacion;
+        var pick = h('input', { type: 'file', accept: 'image/*,application/pdf', class: 'sr-only', 'aria-label': 'Respaldo de la segunda cotización' });
+        pick.addEventListener('change', function () {
+          var f = pick.files && pick.files[0]; pick.value = ''; if (!f) return;
+          var id = U.uid('att-' + e.id + '-segunda');
+          RF.blobs.put(id, f).then(function () {
+            e.attach = e.attach || {};
+            var previous = e.attach.segundaCotizacion;
+            e.attach.segundaCotizacion = { id: id, name: f.name || 'archivo', type: f.type || '', at: new Date().toISOString() };
+            paintCotAttachment(); refresh();
+            if (previous) releaseCotBlob(previous.id);
+            if (RF.drive && RF.drive.auto() && e.fecha) RF.drive.saveAttachment(e, p, 'segundaCotizacion', 'Segunda cotización', f, false).then(function (r) {
+              if (r && r.remote && e.attach.segundaCotizacion && e.attach.segundaCotizacion.id === id) { e.attach.segundaCotizacion.driveUrl = r.url || ''; silent(); }
+            }).catch(function () {});
+          }).catch(function () { UI.toast('No se pudo guardar el respaldo nuevo. Se conserva el anterior, si había.', 'bad'); });
+        });
+        cotAttachment.appendChild(h('div', { class: 'row-actions' }, att ? h('span', null, 'Respaldo: ' + att.name) : null,
+          UI.btn(att ? 'Cambiar respaldo alternativo' : 'Adjuntar respaldo alternativo', { icon: 'file', cls: 'ghost', onclick: function () { pick.click(); } }),
+          att ? UI.btn('Quitar respaldo alternativo', { cls: 'ghost small', onclick: function () { delete e.attach.segundaCotizacion; paintCotAttachment(); refresh(); releaseCotBlob(att.id); } }) : null, pick));
+      }
+      function releaseCotBlob(id) {
+        if (!id) return;
+        /* Primero persiste el cambio. Un gasto duplicado puede compartir el archivo. */
+        RF.store.flush().then(function () {
+          var used = RF.store.get().projects.some(function (pr) { return (pr.expenses || []).some(function (ex) { return ex.imgId === id || Object.keys(ex.attach || {}).some(function (k) { return ex.attach[k] && ex.attach[k].id === id; }); }); });
+          if (!used) return RF.blobs.del(id);
+        }).catch(function () {});
       }
       function paintReq(r) {
         U.clear(reqBox);
@@ -276,6 +375,7 @@
         extras.forEach(function (k) { reqBox.appendChild(h('div', { class: 'req met' }, h('span', null, 'Otro adjunto: ' + e.attach[k].name + ' '), UI.btn('Quitar', { cls: 'ghost small', onclick: function () { RF.blobs.del(e.attach[k].id); delete e.attach[k]; silent(); paintReq(L.evaluateExpense(e, p, c.community, p.expenses)); } }))); });
         if (!r.requirements.length) { if (!extras.length) reqBox.appendChild(UI.empty('Este gasto no pide respaldos adicionales.')); return; }
         r.requirements.forEach(function (q) {
+          if (q.key === 'cotizaciones') { reqBox.appendChild(h('p', { class: 'hint' }, q.met ? 'Segunda cotización registrada en este gasto.' : 'Completa el apartado «Segunda cotización» de este gasto.')); return; }
           var auto = has[q.key] && !(e.has && e.has[q.key]);
           var cb = h('input', { type: 'checkbox', checked: q.met, disabled: auto, id: 'rq-' + q.key });
           cb.addEventListener('change', function () { e.has = e.has || {}; e.has[q.key] = cb.checked; refresh(); });
@@ -284,9 +384,8 @@
           if (q.key === 'anexo4') extra = UI.btn('Crear Anexo 4', { icon: 'form', cls: 'ghost', onclick: function () { location.hash = '#/h/anexo4'; } });
           if (q.key === 'anexo5') extra = UI.btn('Abrir Anexo 5', { icon: 'form', cls: 'ghost', onclick: function () { location.hash = '#/h/anexo5'; } });
           if (q.key === 'anexo1') extra = UI.btn('Abrir Anexo 1', { icon: 'form', cls: 'ghost', onclick: function () { location.hash = '#/h/anexo1'; } });
-          if (q.key === 'cotizaciones') extra = UI.btn('Comparar cotizaciones', { icon: 'scale', cls: 'ghost', onclick: function () { location.hash = '#/h/cotizaciones'; } });
           /* los respaldos que son un documento (no un anexo de la app) se pueden adjuntar: foto o PDF, queda en este equipo y va al Drive junto al comprobante */
-          var attachable = !/^(anexo\d|cotizaciones)/.test(q.key);
+          var attachable = !/^anexo\d/.test(q.key);
           var att = e.attach && e.attach[q.key];
           if (attachable) {
             var pick = h('input', { type: 'file', accept: 'image/*,application/pdf', class: 'sr-only', 'aria-label': 'Adjuntar: ' + q.label });
@@ -360,6 +459,7 @@
           e.cuenta === 'administracion' ? fld('Porcentaje que corresponde al proyecto (%)', 'pctUso', { type: 'pct', hint: 'Si el gasto es compartido, se pide el Anexo 5.' }) : null,
           fld('Monto a rendir ($)', 'montoRendir', { type: 'money' }), h('div', { class: 'field calc-field' }, h('span', { class: 'lbl' }, 'Según tu situación de IVA'), calcBox,
             UI.btn('Usar ese monto', { cls: 'ghost', onclick: function () { e._manualRendir = false; syncRendir(e, c.community); paint(); } }))),
+        cotBox,
         h('h3', { class: 'grp' }, '3. Dónde va'),
         h('div', { class: 'form-grid' }, fld('Cuenta', 'cuenta', { type: 'select', options: D.CUENTAS.map(function (x) { return { id: x.id, name: x.name }; }), noEmpty: true, after: function () { paint(); } }), fld('Actividad de tu Gantt', 'actId', { type: 'select', options: actOpts, noEmpty: true }), fld('Ítem del presupuesto', 'item', { type: 'text', ph: 'Ej: Materiales' }),
           fld('Glosa: qué compraste y para qué', 'glosa', { type: 'textarea', rows: 2, cls: 'wide', counter: D.REGLAS.GLOSA_MAX, counterWarn: D.REGLAS.GLOSA_AVISO })),
@@ -368,7 +468,7 @@
         h('div', { class: 'form-grid' }, fld('Forma de pago', 'formaPago', { type: 'select', options: D.FORMAS_PAGO, noEmpty: true }), fld('Fecha del pago', 'fechaPago', { type: 'date' })),
         h('h3', { class: 'grp' }, '5. Marcas'),
         h('details', { class: 'nofin', open: Object.keys(e.noFin || {}).some(function (k) { return e.noFin[k]; }) }, h('summary', null, '¿Se puede pagar con el aporte?'), h('p', { class: 'hint' }, 'Marca solo si el gasto es de alguno de estos tipos (el Manual dice que no se financian):'), h('div', { class: 'checks' }, (e.noFin = e.noFin || {}, D.NO_FINANCIABLE.map(function (t, i) { return UI.field(t, e.noFin, 'k' + i, { type: 'check', onChange: refresh }); })))),
-        h('div', { class: 'checks' }, fld('Es un viático o viaje', 'esViatico', { type: 'check' }), fld('Es un servicio técnico-profesional (no pide cotizaciones)', 'servicioTecnico', { type: 'check' }), e.cuenta === 'inversion' ? fld('Es un inmueble o derechos de agua', 'esInmueble', { type: 'check' }) : null),
+        h('div', { class: 'checks' }, fld('Es un viático o viaje', 'esViatico', { type: 'check' }), e.cuenta === 'inversion' ? fld('Es un inmueble o derechos de agua', 'esInmueble', { type: 'check' }) : null),
         fichaLink(e),
         h('h3', { class: 'grp' }, '6. Respaldos que hay que guardar'), reqBox,
         h('h3', { class: 'grp' }, '7. Revisión humana'),
@@ -617,5 +717,5 @@
     return page('Nube y copias', 'Lo que quede en este dispositivo puedes respaldarlo y llevarlo a otro.', root);
   } };
 
-  RF.rendicion = { fixTarget: fixTarget, rendicionDoc: rendicionDoc, expedienteDoc: expedienteDoc, newExpense: newExpense, addExpenseWithReceipt: addExpenseWithReceipt };
+  RF.rendicion = { fixTarget: fixTarget, rendicionDoc: rendicionDoc, expedienteDoc: expedienteDoc, comparacionesGastos: comparacionesGastos, newExpense: newExpense, addExpenseWithReceipt: addExpenseWithReceipt };
 })(typeof window !== 'undefined' ? window : globalThis);

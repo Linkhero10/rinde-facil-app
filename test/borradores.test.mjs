@@ -86,8 +86,8 @@ test('guardar sin cambios no vuelve a escribir el estado', () => {
   const estado = { ui: {} };
   const RF = cargar(estado);
   const root = pantalla([campo('input', { type: 'text', name: 'nombre', value: 'Ana' })]);
-  RF.borradores.guardar('cotizaciones', root);
-  RF.borradores.guardar('cotizaciones', root);
+  RF.borradores.guardar('calendario', root);
+  RF.borradores.guardar('calendario', root);
   assert.equal(RF.store.llamadas ? RF.store.llamadas.length : 1, 1);
 });
 

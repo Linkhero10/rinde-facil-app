@@ -850,14 +850,15 @@ await step('15j. Tamaño de letra y tema se eligen en una lista, sin mover el me
   await page.locator('#prefTheme').selectOption('system'); await page.locator('#prefText').selectOption('normal');
 });
 
-await step('15k. Cotizaciones se puede sacar en Excel (antes fallaba con «status is not a function») y el buscador encuentra Calendario y Seguridad', async () => {
-  await go('#/h/cotizaciones');
-  await page.getByRole('button', { name: 'Agregar compra' }).click();
+await step('15k. La rendición incluye la comparación y el buscador encuentra Calendario y Seguridad', async () => {
+  await go('#/h/gastos');
+  ok(await page.locator('a.side-item.tool[href="#/h/cotizaciones"]').count() === 0, 'el menú no ofrece la pantalla retirada');
+  ok(await page.evaluate(() => RF.tools.cotizaciones === undefined), 'no existe la herramienta retirada');
   const before = await page.evaluate(() => window.__rfDownloads.length);
   await page.getByRole('button', { name: 'Excel', exact: true }).click();
   await page.waitForFunction(n => window.__rfDownloads.length > n, before, { timeout: 5000 });
-  ok(!/No se pudo armar el documento/.test(await page.textContent('.tool-page')), 'el documento se arma sin error');
-  ok(/cotizaciones/.test(await page.evaluate(() => window.__rfDownloads[window.__rfDownloads.length - 1].filename)), 'se descargó el Excel de cotizaciones');
+  ok(!/No se pudo armar el documento/.test(await page.textContent('.tool-page')), 'la rendición se arma sin error');
+  ok(/rendicion-gastos/.test(await page.evaluate(() => window.__rfDownloads[window.__rfDownloads.length - 1].filename)), 'se descargó la rendición');
   for (const [q, esperado] of [['calendario', 'Calendario'], ['google calendar', 'Calendario'], ['cerrar sesión', 'Seguridad']]) {
     await page.keyboard.press('/'); await page.keyboard.type(q); await page.waitForTimeout(500);
     const txt = await page.evaluate(() => { const d = document.querySelector('dialog[open], [role=dialog]'); return d ? d.innerText : ''; });
@@ -942,32 +943,23 @@ await step('15n. Una cartola subida junto a las boletas se adjunta sola al gasto
   stub.store.vision.raw_text = stub.store.canned;
 });
 
-await step('15o. Montos grandes en cotizaciones, ayuda de la autorización, trámites opcionales sin pasos de relleno y sin secciones obsoletas', async () => {
-  await go('#/h/cotizaciones');
-  await page.getByRole('button', { name: 'Agregar compra' }).click();
-  /* proveedores: al escribir el nombre aparece al instante en «Proveedor elegido»; al elegirlo se rellena el monto */
-  const card = page.locator('.stage-card').last();
-  await card.locator('input[aria-label="Proveedor"]').nth(0).pressSequentially('Ferretería Sur', { delay: 10 });
-  await card.locator('input[aria-label="Monto"]').nth(0).pressSequentially('12500000', { delay: 10 });
-  await card.locator('input[aria-label="Proveedor"]').nth(1).pressSequentially('Otra Ltda', { delay: 10 });
-  await card.locator('input[aria-label="Monto"]').nth(1).pressSequentially('13000000', { delay: 10 });
-  const optsElegido = await card.locator('select[aria-label="Proveedor elegido"]').evaluate(el => [...el.options].map(o => o.textContent));
-  ok(optsElegido.includes('Ferretería Sur') && optsElegido.includes('Otra Ltda'), 'los dos proveedores aparecen de inmediato como opciones: ' + JSON.stringify(optsElegido));
-  await card.locator('select[aria-label="Proveedor elegido"]').selectOption('Otra Ltda');
-  ok(/13\.000\.000/.test(await card.locator('input[aria-label="Monto neto de la compra"]').inputValue()), 'al elegir proveedor se rellena el monto neto de la compra');
-  await card.locator('input[aria-label="Monto neto de la compra"]').fill('');
-  await card.locator('input[aria-label="Monto neto de la compra"]').pressSequentially('12500000', { delay: 20 });
-  const boxChk = await card.locator('label.check:has(.tip-btn)').boundingBox(), boxBtn = await card.locator('label.check .tip-btn').boundingBox();
-  ok(boxBtn.y >= boxChk.y - 2 && boxBtn.y + boxBtn.height <= boxChk.y + boxChk.height + 2 && boxBtn.x > boxChk.x + 20, 'el signo ? queda dentro de la línea de la casilla, pegado al texto: ' + JSON.stringify({ boxChk, boxBtn }));
-
-  const dbgN = await page.evaluate(() => ({ neto: RF.store.project().cotizaciones.slice(-1)[0].neto, n: RF.store.project().cotizaciones.length, vals: [...document.querySelectorAll('.stage-card input')].map(i => i.value).slice(0, 6) }));
-  ok(dbgN.neto === 12500000, 'se puede escribir un monto de ocho dígitos: ' + JSON.stringify(dbgN));
-  ok(/12\.500\.000/.test(await card.locator('input[aria-label="Monto neto de la compra"]').inputValue()), 'se muestra con puntos');
-  await page.getByRole('button', { name: 'Cómo saber si tengo la autorización' }).last().click();
-  ok(/visto bueno de CORFO/.test(await page.locator('.tip-pop:visible').first().textContent()), 'la ayuda explica qué es la autorización');
-  ok(await page.evaluate(() => RF.store.project().cotizaciones.slice(-1)[0].autorizacion !== true), 'tocar el ? no marca la casilla');
-  const opts = await card.locator('select[aria-label="Gasto al que corresponde"]').evaluate(el => [...el.options].map(o => o.textContent));
-  ok(opts.some(o => /Todavía no compro/.test(o)) && opts.some(o => /Otro gasto que aún no anoté/.test(o)), 'se puede comparar antes de comprar o elegir otro gasto');
+await step('15o. Segunda cotización dentro del gasto, ayuda de autorización y trámites opcionales', async () => {
+  await go('#/h/gastos');
+  await page.getByRole('button', { name: 'Anotar a mano' }).click();
+  await page.getByLabel('Nombre del proveedor', { exact: true }).fill('Ferretería Sur');
+  await page.getByLabel('RUT del proveedor', { exact: true }).fill('76.123.456-0');
+  await page.getByLabel('Monto neto ($)', { exact: true }).fill('12.500.000');
+  ok(await page.getByRole('heading', { name: 'Segunda cotización', exact: true }).isVisible(), 'el apartado se abre automáticamente');
+  await page.getByLabel('Nombre del proveedor alternativo').fill('Otra Ltda');
+  await page.getByLabel('RUT del proveedor alternativo').fill('12.345.678-5');
+  await page.getByLabel('Monto neto alternativo ($)').fill('13.000.000');
+  await page.getByLabel('Confirmo que los proveedores son distintos y no relacionados').check();
+  await page.getByLabel('Respaldo de la segunda cotización').setInputFiles({ name: 'oferta.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 oferta sintética') });
+  await page.waitForFunction(() => !!RF.store.project().expenses.slice(-1)[0].attach?.segundaCotizacion);
+  ok(await page.evaluate(() => { const p = RF.store.project(); return RF.logic.cotizacionGasto(p.expenses.slice(-1)[0], p).ok; }), 'oferta válida con respaldo');
+  await page.getByRole('button', { name: 'Cómo saber si tengo la autorización' }).click();
+  ok(/visto bueno de CORFO/.test(await page.locator('.tip-pop:visible').first().textContent()), 'la ayuda explica la autorización');
+  ok(await page.evaluate(() => RF.store.project().expenses.slice(-1)[0].has.autorizacion !== true), 'tocar el ? no marca la casilla');
   await go('#/t/TRM-028');
   ok(/\(opcional\)/.test(await page.textContent('.view-title')), 'Cambiar el PEA dice que es opcional');
   ok(await page.locator('.step-docs').count() === 1 && await page.locator('.tool-card').count() === 0, 'el formulario aparece una sola vez');
